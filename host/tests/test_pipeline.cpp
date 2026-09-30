@@ -80,9 +80,9 @@ TEST(pipeline_coalesces_requests_while_busy) {
   }
   r.settle();
   CHECK_EQ(r.panel.violations, 0);
-  // Only the first frame, at most one intermediate and the final frame reach the panel.
-  CHECK(r.count('F') + r.count('P') <= 3);
-  CHECK(r.scene.renders <= 4);
+  // Only the first frame and the final frame reach the panel.
+  CHECK_EQ(r.count('F') + r.count('P'), 2);
+  CHECK(r.scene.renders <= 2);
   CHECK(r.sched.coalesced() > 30u);
   static Framebuffer want;
   draw_scene(want, &r.scene);

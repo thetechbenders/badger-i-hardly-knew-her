@@ -30,6 +30,7 @@ class CliHost {
   virtual void print_status() = 0;
   virtual bool print_diag(const char *topic) = 0;  // false = unknown topic
   virtual bool self_test() = 0;
+  virtual bool set_gesture(bool on) = 0;  // false: sensor not available (mode still set)
   virtual void request_sleep() = 0;
   virtual void request_reboot(bool bootsel) = 0;
 };

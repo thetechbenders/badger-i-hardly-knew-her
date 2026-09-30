@@ -7,7 +7,7 @@
 
 namespace badge {
 
-constexpr int kMaxContacts = 4;
+constexpr int kMaxContacts = 6;
 constexpr int kMaxProjects = 4;
 
 struct ContactLine {
@@ -47,7 +47,16 @@ struct Prefs {
   uint8_t wake_selects_screen; // bool: the wake button picks the first screen
   uint8_t single_core;         // bool: diagnostic single-core display mode
   uint8_t led_level;           // activity LED brightness during refresh, 0..255
-  uint16_t battery_low_mv;     // show low-battery mark below this; 0 = never
+  uint16_t battery_low_mv;     // "LOW" below this (single-cell LiPo); 0 = never
+  uint16_t battery_bar_mv[4];  // 1..4 bars at or above these voltages
+  uint16_t battery_hyst_mv;    // hysteresis around every threshold
+  uint16_t battery_cal_permille;  // multimeter calibration factor (1000 = none)
+  uint8_t gesture_default_on;  // gesture mode state after boot
+  uint8_t gesture_rotation;    // sensor mounting rotation, 90 degree steps clockwise
+  uint8_t gesture_mirror;      // swap left/right after rotation
+  uint8_t gesture_sensitivity; // minimum ratio change (percent) for a swipe
+  uint16_t gesture_timeout_s;  // gesture mode switches itself off after this idle time; 0 = never
+  uint16_t gesture_cooldown_ms;  // ignore further swipes for this long after one
 };
 
 struct Settings {

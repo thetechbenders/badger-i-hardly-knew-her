@@ -62,9 +62,12 @@ TEST(app_long_presses) {
   CHECK(a.view().screen == Screen::Card);  // no QR configured
   a.on_button(press(Button::A));
   const uint8_t l0 = a.view().layout;
-  CHECK_EQ(a.on_button(press(Button::Up, Gesture::Long)), kActRedraw);
+  CHECK_EQ(a.on_button(press(Button::User, Gesture::Long)), kActRedraw);  // layout toggle moved to USR
   CHECK(a.view().layout != l0);
-  CHECK_EQ(a.on_button(press(Button::Down, Gesture::Long)), kActSleep);
+  CHECK_EQ(a.on_button(press(Button::Up, Gesture::Long)), kActGestureMode | kActRedraw);
+  CHECK(a.gesture_mode());
+  CHECK_EQ(a.on_button(press(Button::Down, Gesture::Long)), kActSleep | kActGestureMode);
+  CHECK(!a.gesture_mode());  // sensor off while powering down
   CHECK(a.sleeping());
   CHECK_EQ(a.on_button(press(Button::B)), kActNone);  // ignored once committed to sleep
 }
@@ -121,4 +124,57 @@ TEST(app_safe_mode_is_sticky) {
   CHECK_EQ(a.on_tick(1u << 30, true, true), kActNone);  // no auto power-off in safe mode
   a.on_button(press(Button::C, Gesture::Long));
   CHECK(a.view().screen == Screen::Info);
+}
+
+TEST(app_gesture_navigation) {
+  App a;
+  a.boot(cfg(2, true), -1, 0);
+  CHECK_EQ(a.on_swipe(Swipe::Right, 10), kActNone);  // gesture mode off: ignored
+  CHECK(a.view().screen == Screen::Badge);
+  a.on_button(press(Button::Up, Gesture::Long));
+  CHECK(a.gesture_mode());
+  a.on_swipe(Swipe::Right, 20);
+  CHECK(a.view().screen == Screen::Card);
+  a.on_swipe(Swipe::Right, 30);
+  CHECK(a.view().screen == Screen::Projects);
+  a.on_swipe(Swipe::Right, 40);
+  CHECK(a.view().screen == Screen::Badge);  // wraps
+  a.on_swipe(Swipe::Left, 50);
+  CHECK(a.view().screen == Screen::Projects);
+  a.on_swipe(Swipe::Up, 60);
+  CHECK(a.view().screen == Screen::Card);
+  a.on_swipe(Swipe::Up, 70);
+  CHECK(a.view().screen == Screen::QrFull);
+  a.on_swipe(Swipe::Right, 80);  // QR counts as the card
+  CHECK(a.view().screen == Screen::Projects);
+  a.on_swipe(Swipe::Down, 90);
+  CHECK(a.view().screen == Screen::Badge);
+  CHECK_EQ(a.on_swipe(Swipe::Down, 95), kActNone);  // already there: no refresh
+  // Buttons keep working in gesture mode.
+  CHECK_EQ(a.on_button(press(Button::B)), kActRedraw);
+  // No projects: the cycle is badge <-> card.
+  a.on_config_changed(cfg(0, false));
+  a.on_swipe(Swipe::Right, 100);
+  CHECK(a.view().screen == Screen::Badge);
+  a.on_swipe(Swipe::Up, 110);
+  CHECK(a.view().screen == Screen::Card);
+  a.on_swipe(Swipe::Up, 120);
+  CHECK(a.view().screen == Screen::Card);  // no QR configured
+}
+
+TEST(app_gesture_mode_timeout_and_defaults) {
+  App a;
+  AppConfig c = cfg();
+  c.gesture_default_on = true;
+  c.gesture_timeout_s = 60;
+  a.boot(c, -1, 0);
+  CHECK(a.gesture_mode());
+  a.on_swipe(Swipe::Right, 30000);  // swipes count as activity
+  CHECK_EQ(a.on_tick(80000, false, true), kActNone);
+  CHECK_EQ(a.on_tick(90001, false, true), kActGestureMode | kActRedraw);
+  CHECK(!a.gesture_mode());
+  c.safe_mode = true;
+  a.boot(c, -1, 0);
+  CHECK(!a.gesture_mode());
+  CHECK_EQ(a.on_swipe(Swipe::Right, 10), kActNone);
 }

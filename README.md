@@ -21,12 +21,22 @@ contact details are kept out of Git (see [Private content](#private-content)).
 | **A** | Photo badge | Clean full refresh (removes ghosting) |
 | **B** | Business card | Full-screen QR (if a QR destination is configured) |
 | **C** | Projects (if any are configured) | Diagnostics screen |
-| **UP / DOWN** | Previous / next project; from the full-screen QR, back to the card | UP: switch layout A ↔ B for this session · DOWN: power off now |
+| **UP / DOWN** | Previous / next project; from the full-screen QR, back to the card | UP: **gesture mode** on/off · DOWN: power off now |
+| **USR** | – | Switch layout A ↔ B for this session |
 
 - The badge boots to the photo badge. When woken from battery power-off by B
   or C, it opens the card or projects instead (`wake.selects_screen`).
-- Screens change only on deliberate button presses or USB commands, never on
-  a timer.
+- Screens change only on deliberate button presses, swipes (gesture mode)
+  or USB commands, never on a timer.
+- **Gesture mode** (optional APDS-9960 on Qwiic): swipe right/left for the
+  next/previous screen, up for the card (again for the QR), down for the
+  badge. It is off by default, the sensor and its IR emitter are powered down
+  whenever it is off, and a missing sensor never affects the rest of the
+  badge. See [docs/GESTURE.md](docs/GESTURE.md).
+- **Status area** (top right on every screen): battery bars for a
+  single-cell LiPo, `LOW`, `?` for an invalid reading, or `USB` on USB power
+  (never "charging": the board has no charger), plus the gesture
+  indicator. See [docs/BATTERY.md](docs/BATTERY.md).
 - Holding a button through a battery wake never counts as a long press.
 - On battery the badge powers itself off after `sleep.timeout_s` (default
   120 s) of inactivity. It first returns to the photo badge (`sleep.screen`),
@@ -77,5 +87,7 @@ the photo.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): modules, dual-core pipeline, refresh policy, power and recovery
 - [docs/FORMATS.md](docs/FORMATS.md): flash map, settings records, asset packs, profile JSON
 - [docs/DESIGN.md](docs/DESIGN.md): layout candidates, portrait conversion comparison, QR rules
+- [docs/GESTURE.md](docs/GESTURE.md): APDS-9960 wiring, power, calibration, aperture
+- [docs/BATTERY.md](docs/BATTERY.md): battery circuit, thresholds, sampling, multimeter validation
 - [docs/HARDWARE_SMOKE_TEST.md](docs/HARDWARE_SMOKE_TEST.md): checks to run on a physical badge
 - [docs/LICENSES.md](docs/LICENSES.md): dependency, font and asset licence inventory

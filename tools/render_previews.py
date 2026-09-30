@@ -110,6 +110,25 @@ def main(argv=None) -> int:
     sheet.save(args.out / "contact_sheet.png")
     (args.out / "qr_report.json").write_text(json.dumps(report, indent=2) + "\n")
 
+    # Status-area states (top-right of the badge), enlarged 6x for review.
+    states = [("4 bars", "4", "off"), ("3 bars", "3", "off"), ("2 bars", "2", "off"), ("1 bar", "1", "off"),
+              ("0 bars", "0", "off"), ("LOW", "low", "off"), ("invalid", "invalid", "off"), ("USB", "usb", "off"),
+              ("gesture on", "3", "on"), ("gesture fault", "3", "fault")]
+    crops = []
+    for label, batt, gest in states:
+        (p,) = render(args.preview, native, pairs, args.pack, "badge", ["--layout", "0", "--battery", batt,
+                                                                       "--gesture", gest, "--suffix", "_status"])
+        im = Image.open(p).convert("L")
+        p.unlink()
+        crops.append((label, im.crop((296 - 60, 0, 296, 12)).resize((60 * 6, 12 * 6), Image.Resampling.NEAREST)))
+    ss = Image.new("L", (60 * 6 + 140, len(crops) * (12 * 6 + 8) + 8), 235)
+    d2 = ImageDraw.Draw(ss)
+    for i, (label, im) in enumerate(crops):
+        y0 = 8 + i * (12 * 6 + 8)
+        d2.text((8, y0 + 30), label, fill=0)
+        ss.paste(im, (132, y0))
+    ss.save(args.out / "status_states_x6.png")
+
     failed = [s for s, r in report["screens"].items() if r["ok"] is False]
     for s, r in report["screens"].items():
         status = "not configured (placeholder shown)" if r["ok"] is None else ("DECODED OK" if r["ok"] else "FAILED")

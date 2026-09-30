@@ -57,6 +57,10 @@ int main(int argc, char **argv) {
   bool no_portrait = false;
   int layout = -1;
   std::string screens = "badge,card,projects,qr,info";
+  std::string suffix;
+  StatusInfo status;
+  status.battery.display = PowerDisplay::Battery;
+  status.battery.bars = 3;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     auto next = [&]() -> const char * {
@@ -77,6 +81,20 @@ int main(int argc, char **argv) {
       for (size_t p; (p = v.find("\\n")) != std::string::npos;) v.replace(p, 2, "\n");
       SetResult r = settings_set(&s, *f, v.c_str());
       if (r != SetResult::Ok) { std::fprintf(stderr, "--set %s: %s\n", f->key, set_result_str(r)); return 2; }
+    } else if (a == "--battery") {
+      // none | usb | invalid | low | 0..4 (bars)
+      std::string b = next();
+      status.battery.display = PowerDisplay::Battery;
+      if (b == "none") status.battery.display = PowerDisplay::Unknown;
+      else if (b == "usb") status.battery.display = PowerDisplay::Usb;
+      else if (b == "invalid") status.battery.display = PowerDisplay::Invalid;
+      else if (b == "low") { status.battery.bars = 0; status.battery.low = true; }
+      else status.battery.bars = uint8_t(std::atoi(b.c_str()) & 7);
+    } else if (a == "--gesture") {
+      std::string g = next();
+      status.gesture = g == "on" ? GestureIndicator::On : g == "fault" ? GestureIndicator::Fault : GestureIndicator::Off;
+    } else if (a == "--suffix") {
+      suffix = next();
     } else if (a == "--dump-fields") {
       size_t n;
       const FieldDesc *f = settings_fields(&n);
@@ -91,14 +109,15 @@ int main(int argc, char **argv) {
 
   RenderContext ctx;
   ctx.settings = &s;
+  ctx.status = status;
   AssetPackInfo pi = asset_pack_validate(pack.data(), pack.size());
   if (pi.status == AssetStatus::Ok && !no_portrait) asset_pack_bitmap(pack.data(), kAssetIdPortrait, &ctx.portrait);
   else if (!no_portrait) std::fprintf(stderr, "asset pack: %s (rendering without portrait)\n", asset_status_str(pi.status));
 
   static InfoLines info;
   info.add("Firmware  badger-i-hardly-knew-her  (host preview)");
-  info.add("Build     preview  |  pico-sdk 2.2.0  |  pimoroni-pico v1.29.0-2");
-  info.add("Power     USB  |  VSYS 5.02 V (sample)");
+  info.add("Battery   3.86 V (filtered 3.87) | 3/4 bars | approx.");
+  info.add("Gesture   off | sensor standby (off) | swipes 0");
   info.add("Reset     power-on  |  boots 1  |  faults 0");
   info.add("Settings  slot A seq 3  |  staged: clean");
   info.add("Assets    flash pack ok (1 entry, 1720 B)");
@@ -131,7 +150,7 @@ int main(int argc, char **argv) {
         std::string file = out + "/" + name;
         if (sc == Screen::Badge) file += lay ? "_layoutB" : "_layoutA";
         if (sc == Screen::Projects && nproj > 1) file += "_" + std::to_string(p + 1);
-        file += ".pbm";
+        file += suffix + ".pbm";
         if (!write_pbm(fb, file)) { std::fprintf(stderr, "cannot write %s\n", file.c_str()); return 1; }
         std::printf("%s\n", file.c_str());
       }

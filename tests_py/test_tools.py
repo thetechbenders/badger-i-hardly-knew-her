@@ -72,6 +72,14 @@ class RenderedOutput(unittest.TestCase):
             cpp[key] = (typ, int(size)) if typ == "str" else (typ, (int(lo), int(hi)))
         self.assertEqual(cpp, badge_profile.FIELD_LIMITS)
 
+    def test_status_states_render_distinctly(self):
+        seen = set()
+        for batt in ("none", "usb", "invalid", "low", "0", "1", "2", "3", "4"):
+            for gest in ("off", "on", "fault"):
+                (im,) = render("badge", {}, ["--layout", "0", "--battery", batt, "--gesture", gest])
+                seen.add(im.crop((296 - 56, 0, 296, 8)).tobytes())
+        self.assertEqual(len(seen), 27)
+
     def test_both_layouts_and_every_screen_render(self):
         ims = render("badge,card,projects,qr,info,recovery", {})
         self.assertGreaterEqual(len(ims), 7)
@@ -122,6 +130,10 @@ class Profile(unittest.TestCase):
             ("prefs", "sleep.timeout_s", 5),
             ("prefs", "bogus", 1),
             ("profile", "title", "tab\there"),
+            ("prefs", "battery.bar3_mv", 3650),     # not increasing
+            ("prefs", "battery.low_mv", 3700),      # above one bar
+            ("prefs", "gesture.rotation", 4),
+            ("prefs", "gesture.cooldown_ms", 50),
         ]
         for section, key, value in bad:
             doc = json.loads(json.dumps(base))

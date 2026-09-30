@@ -8,11 +8,14 @@
 get_filename_component(_BADGER_ROOT ${CMAKE_CURRENT_LIST_DIR}/.. ABSOLUTE)
 
 set(BADGER_CORE_SOURCES
+  ${_BADGER_ROOT}/firmware/core/apds9960.cpp
   ${_BADGER_ROOT}/firmware/core/app.cpp
   ${_BADGER_ROOT}/firmware/core/assetpack.cpp
+  ${_BADGER_ROOT}/firmware/core/battery.cpp
   ${_BADGER_ROOT}/firmware/core/crc32.cpp
   ${_BADGER_ROOT}/firmware/core/display_pipeline.cpp
   ${_BADGER_ROOT}/firmware/core/framebuffer.cpp
+  ${_BADGER_ROOT}/firmware/core/gesture.cpp
   ${_BADGER_ROOT}/firmware/core/input.cpp
   ${_BADGER_ROOT}/firmware/core/qr.cpp
   ${_BADGER_ROOT}/firmware/core/renderer.cpp

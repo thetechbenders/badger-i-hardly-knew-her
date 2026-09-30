@@ -78,23 +78,26 @@ uint32_t read_buttons() { return gpio_to_buttons(gpio_get_all(), true); }
 
 bool usb_powered() { return gpio_get(BADGER2040_VBUS_DETECT_PIN); }
 
-uint32_t vsys_mv() {
-  // Method from Pimoroni's Badger 2040 launcher: the 1.24 V reference gives
-  // the actual ADC supply, the battery sense divider has a gain of 1/3.
+BatteryRaw read_battery_raw() {
+  // Circuit (Pico SDK board header + Pimoroni's Badger 2040 battery example):
+  // GPIO27 powers a 1.24 V reference on GPIO28 (ADC2); GPIO29 (ADC3) senses
+  // the battery through a divider with gain 1/3. The RP2040 ADC is referenced
+  // to its 3V3 supply, which sags on a low cell, so the reference reading is
+  // used to recover the true supply voltage.
   gpio_put(BADGER2040_VREF_POWER_PIN, 1);
-  sleep_us(200);
+  sleep_us(1000);  // reference settling
   auto read = [](uint input) {
     adc_select_input(input);
+    (void)adc_read();  // discard the first conversion after switching input
     uint32_t sum = 0;
-    for (int i = 0; i < 16; ++i) sum += adc_read();
-    return sum / 16;
+    for (int i = 0; i < 32; ++i) sum += adc_read();
+    return uint16_t((sum + 16) / 32);
   };
-  const uint32_t ref = read(BADGER2040_1V2_REF_PIN - 26);
-  const uint32_t bat = read(BADGER2040_BAT_SENSE_PIN - 26);
+  BatteryRaw r;
+  r.ref_counts = read(BADGER2040_1V2_REF_PIN - 26);  // ADC2
+  r.bat_counts = read(BADGER2040_BAT_SENSE_PIN - 26);  // ADC3
   gpio_put(BADGER2040_VREF_POWER_PIN, 0);
-  if (ref == 0) return 0;
-  // vdd = 1.24 V * 4095 / ref ; vbat = bat / 4095 * 3 * vdd = 3 * 1240 mV * bat / ref
-  return uint32_t((3ull * 1240ull * bat) / ref);
+  return r;
 }
 
 void led(uint8_t level) {

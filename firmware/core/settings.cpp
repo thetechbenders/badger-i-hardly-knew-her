@@ -48,7 +48,7 @@ const FieldDesc kFields[] = {
     STR_FIELD("affiliation", 0x003, profile.affiliation, "company or group; optional"),
     STR_FIELD("interests", 0x004, profile.interests, "interests line; optional"),
     STR_FIELD("event", 0x005, profile.event, "event tag, e.g. Formnext 2026; optional"),
-    CONTACT(1), CONTACT(2), CONTACT(3), CONTACT(4),
+    CONTACT(1), CONTACT(2), CONTACT(3), CONTACT(4), CONTACT(5), CONTACT(6),
     STR_FIELD("qr.payload", 0x010, profile.qr_payload, "QR content: https:// URL or BEGIN:VCARD...; empty = not configured"),
     STR_FIELD("qr.caption", 0x011, profile.qr_caption, "text next to the QR code"),
     PROJECT(1), PROJECT(2), PROJECT(3), PROJECT(4),
@@ -61,7 +61,19 @@ const FieldDesc kFields[] = {
     NUM_FIELD("wake.selects_screen", 0x306, FieldType::Bool, prefs.wake_selects_screen, 0, 1, "wake button picks the first screen"),
     NUM_FIELD("diag.single_core", 0x307, FieldType::Bool, prefs.single_core, 0, 1, "run the display service on core 0 (next boot)"),
     NUM_FIELD("led.level", 0x308, FieldType::U8, prefs.led_level, 0, 255, "activity LED brightness while refreshing"),
-    NUM_FIELD("battery.low_mv", 0x309, FieldType::U16, prefs.battery_low_mv, 0, 5000, "low-battery mark threshold; 0 = off"),
+    NUM_FIELD("battery.low_mv", 0x309, FieldType::U16, prefs.battery_low_mv, 0, 4500, "show LOW below this (LiPo); 0 = off"),
+    NUM_FIELD("battery.bar1_mv", 0x30A, FieldType::U16, prefs.battery_bar_mv[0], 3000, 4500, "1 bar at or above"),
+    NUM_FIELD("battery.bar2_mv", 0x30B, FieldType::U16, prefs.battery_bar_mv[1], 3000, 4500, "2 bars at or above"),
+    NUM_FIELD("battery.bar3_mv", 0x30C, FieldType::U16, prefs.battery_bar_mv[2], 3000, 4500, "3 bars at or above"),
+    NUM_FIELD("battery.bar4_mv", 0x30D, FieldType::U16, prefs.battery_bar_mv[3], 3000, 4500, "4 bars at or above"),
+    NUM_FIELD("battery.hyst_mv", 0x30E, FieldType::U16, prefs.battery_hyst_mv, 0, 300, "hysteresis around thresholds"),
+    NUM_FIELD("battery.cal_permille", 0x30F, FieldType::U16, prefs.battery_cal_permille, 900, 1100, "scale readings to match a multimeter (1000 = none)"),
+    NUM_FIELD("gesture.default_on", 0x310, FieldType::Bool, prefs.gesture_default_on, 0, 1, "gesture mode on after boot"),
+    NUM_FIELD("gesture.rotation", 0x311, FieldType::U8, prefs.gesture_rotation, 0, 3, "sensor mounting rotation x 90 deg clockwise"),
+    NUM_FIELD("gesture.mirror", 0x312, FieldType::Bool, prefs.gesture_mirror, 0, 1, "swap left/right (sensor facing the other way)"),
+    NUM_FIELD("gesture.sensitivity", 0x313, FieldType::U8, prefs.gesture_sensitivity, 10, 90, "minimum swipe strength; higher = fewer false swipes"),
+    NUM_FIELD("gesture.timeout_s", 0x314, FieldType::U16, prefs.gesture_timeout_s, 0, 3600, "gesture mode auto-off after idle; 0 = never"),
+    NUM_FIELD("gesture.cooldown_ms", 0x315, FieldType::U16, prefs.gesture_cooldown_ms, 200, 3000, "one swipe per this interval"),
 };
 
 constexpr size_t kFieldCount = sizeof(kFields) / sizeof(kFields[0]);
@@ -152,6 +164,18 @@ void settings_get(const Settings &s, const FieldDesc &f, char *buf, size_t bufle
 }
 
 bool settings_validate(const Settings &s, const FieldDesc **first_bad) {
+  // Battery thresholds must be strictly increasing, LOW below one bar.
+  const uint16_t *b = s.prefs.battery_bar_mv;
+  for (int i = 1; i < 4; ++i) {
+    if (b[i] <= b[i - 1]) {
+      if (first_bad) *first_bad = find_field(i == 1 ? "battery.bar2_mv" : i == 2 ? "battery.bar3_mv" : "battery.bar4_mv");
+      return false;
+    }
+  }
+  if (s.prefs.battery_low_mv && s.prefs.battery_low_mv > b[0]) {
+    if (first_bad) *first_bad = find_field("battery.low_mv");
+    return false;
+  }
   for (const auto &f : kFields) {
     const uint8_t *base = reinterpret_cast<const uint8_t *>(&s) + f.offset;
     bool ok = true;
@@ -185,7 +209,21 @@ void settings_defaults(Settings *s) {
   s->prefs.wake_selects_screen = 1;
   s->prefs.single_core = 0;
   s->prefs.led_level = 24;
-  s->prefs.battery_low_mv = 0;
+  // Single-cell LiPo, resting voltage under the badge's light load. The
+  // mapping to remaining charge is approximate (see docs/BATTERY.md).
+  s->prefs.battery_low_mv = 3500;
+  s->prefs.battery_bar_mv[0] = 3600;
+  s->prefs.battery_bar_mv[1] = 3700;
+  s->prefs.battery_bar_mv[2] = 3800;
+  s->prefs.battery_bar_mv[3] = 3950;
+  s->prefs.battery_hyst_mv = 40;
+  s->prefs.battery_cal_permille = 1000;
+  s->prefs.gesture_default_on = 0;
+  s->prefs.gesture_rotation = 0;
+  s->prefs.gesture_mirror = 0;
+  s->prefs.gesture_sensitivity = 30;
+  s->prefs.gesture_timeout_s = 300;
+  s->prefs.gesture_cooldown_ms = 700;
   for (size_t i = 0; i < kDefaultProfileCount; ++i) {
     const FieldDesc *f = find_field(kDefaultProfile[i].key);
     // profilegen.py validates keys and lengths; a mismatch here is a build bug

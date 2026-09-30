@@ -36,8 +36,9 @@ BOOTSEL (Pico SDK convention).
 | `defaults` | Stage the factory defaults (compiled-in profile); needs `commit` |
 | `export` | Print `set ...` lines that recreate the staged settings |
 | `refresh [clean]` | Redraw; `clean` forces a full refresh with the slow OTP waveform |
-| `diag [all\|reset\|mem\|flash\|settings\|assets\|display\|qr]` | Diagnostics |
+| `diag [all\|reset\|mem\|flash\|settings\|assets\|display\|qr\|battery\|gesture]` | Diagnostics; `diag battery` takes a fresh reading and shows raw ADC counts |
 | `selftest` | Verify font tables, built-in assets, settings validity and queue health |
+| `gesture on\|off` | Gesture mode (not saved; see `gesture.default_on`) |
 | `echo on\|off` | Terminal echo |
 | `sleep` | Power off (battery) or emulated sleep (USB), after the current refresh |
 | `reboot [bootsel]` | Reboot, optionally into the USB bootloader |
@@ -53,8 +54,8 @@ Text limits are in UTF-8 bytes (one less than the storage size).
 | `affiliation` | text 55 | Optional |
 | `interests` | text 111 | Optional, wraps to 3 lines on the badge |
 | `event` | text 31 | Optional event strip, e.g. "Formnext 2026" |
-| `contact1..4.label` | text 15 | e.g. Email, Web, GitHub |
-| `contact1..4.value` | text 71 | Empty value hides the whole line (label included) |
+| `contact1..6.label` | text 15 | e.g. Work, Email, Phone, GitHub |
+| `contact1..6.value` | text 71 | Empty value hides the whole line (label included); lines that do not fit the card are omitted, caption first |
 | `qr.payload` | text 383 | `https://…` URL (recommended) or `BEGIN:VCARD…`; empty = "QR NOT CONFIGURED" placeholder |
 | `qr.caption` | text 39 | Shown next to the code |
 | `project1..4.title` | text 39 | Empty hides the project |
@@ -70,7 +71,16 @@ Text limits are in UTF-8 bytes (one less than the storage size).
 | `wake.selects_screen` | bool | Waking with B/C opens card/projects (default true) |
 | `diag.single_core` | bool | Run the display service on core 0 (takes effect at next boot) |
 | `led.level` | 0..255 | Activity LED while refreshing (default 24; 0 = off) |
-| `battery.low_mv` | 0..5000 | Low-battery mark threshold; 0 = off |
+| `battery.low_mv` | 0..4500 | Show `LOW` below this (default 3500; 0 = off; must be ≤ bar1) |
+| `battery.bar1_mv`..`bar4_mv` | 3000..4500 | 1–4 bars at or above (defaults 3600/3700/3800/3950; strictly increasing) |
+| `battery.hyst_mv` | 0..300 | Hysteresis around thresholds (default 40) |
+| `battery.cal_permille` | 900..1100 | Multimeter calibration factor (default 1000) |
+| `gesture.default_on` | bool | Gesture mode on after boot (default false) |
+| `gesture.rotation` | 0..3 | Sensor mounting rotation × 90° clockwise |
+| `gesture.mirror` | bool | Swap left/right after rotation |
+| `gesture.sensitivity` | 10..90 | Minimum swipe strength (default 30) |
+| `gesture.timeout_s` | 0..3600 | Gesture mode auto-off after idle (default 300; 0 = never) |
+| `gesture.cooldown_ms` | 200..3000 | One swipe per interval (default 700) |
 
 ## Example session
 

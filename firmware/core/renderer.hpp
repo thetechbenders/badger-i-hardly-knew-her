@@ -6,6 +6,7 @@
 
 #include "app.hpp"
 #include "assetpack.hpp"
+#include "battery.hpp"
 #include "framebuffer.hpp"
 #include "qr.hpp"
 #include "settings.hpp"
@@ -19,13 +20,29 @@ struct InfoLines {
   void add(const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 };
 
+enum class GestureIndicator : uint8_t { Off, On, Fault };
+
+// Top-right status area shown on every screen: gesture indicator, then the
+// power state (USB, or battery bars with LOW / ? states). It reflects the
+// last measurement at render time; e-paper keeps it while powered off.
+struct StatusInfo {
+  BatteryState battery;  // display == Unknown -> nothing drawn
+  GestureIndicator gesture = GestureIndicator::Off;
+};
+
 struct RenderContext {
   const Settings *settings = nullptr;
   MonoBitmap portrait;           // may be invalid (missing asset)
   const InfoLines *info = nullptr;
-  bool battery_low = false;
+  StatusInfo status;
   const char *recovery_reason = nullptr;
 };
+
+constexpr int kStatusWidth = 56;   // reserved width (right aligned)
+constexpr int kStatusHeight = 8;   // rows 0..7 are never used by content
+
+// Region reserved for the status area on this screen (for tests).
+Rect status_rect(const View &v, const RenderContext &ctx);
 
 // Layout geometry, exposed for tests and the preview tool.
 struct CardGeometry {

@@ -11,6 +11,7 @@
 
 #include <cstdint>
 
+#include "battery.hpp"
 #include "input.hpp"
 
 namespace badge::board {
@@ -25,8 +26,9 @@ int wake_button();
 void init();
 uint32_t read_buttons();  // bit i = Button i pressed (debounce elsewhere)
 bool usb_powered();       // VBUS detect
-// Battery/VSYS estimate in millivolts using the on-board 1.24 V reference.
-uint32_t vsys_mv();
+// Raw battery-sense and 1.24 V reference ADC counts (see battery.hpp for the
+// conversion). Enables the reference only for the measurement (~1 ms).
+BatteryRaw read_battery_raw();
 void led(uint8_t level);  // PWM, 0..255
 // Drop the power latch. Returns only if the board is still powered (USB
 // connected or a button held), after which the caller emulates sleep.

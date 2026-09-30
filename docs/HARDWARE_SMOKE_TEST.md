@@ -22,7 +22,8 @@ each run. Keep a serial terminal open on USB where noted (`status`, `diag all`).
    arrow hints at the right edge.
 3. Long-press each button (≥ 1 s): A = visibly slower clean refresh;
    B = full-screen QR (or card if unconfigured); C = diagnostics;
-   UP = layout B, then A again; DOWN = power-off sequence (step D).
+   UP = gesture mode on/off (indicator appears / disappears);
+   USR long = layout B, then A again; DOWN = power-off sequence (step D).
 4. Tap a button very briefly (< 20 ms, a glancing touch). **Expect**: no action.
 5. Hold A and B together, release A, then B. **Expect**: badge, then card.
 
@@ -100,3 +101,79 @@ each run. Keep a serial terminal open on USB where noted (`status`, `diag all`).
    with two different phones (iOS camera, Android camera) at 15–40 cm, under
    hall-style lighting. Record the distance range that works.
 2. If trying a vCard: repeat, and note whether 2 px modules scan reliably.
+
+## I. Gesture sensor (APDS-9960 on Qwiic)
+
+Record the breakout model, the mounting and the enclosure for every run.
+
+1. **Missing sensor.** Boot without the sensor.
+   - **Expect**: normal operation. `diag gesture` shows `not detected`.
+   - UP long shows the struck-through indicator; buttons still work.
+   - Plug the sensor in: within ~30 s `diag gesture` shows `standby` or
+     `active`, and the indicator becomes plain.
+2. **Fault while active.** Pull the Qwiic cable in gesture mode.
+   - **Expect**: the badge keeps working; after 3 errors the state goes to
+     `fault` and the indicator is redrawn struck through.
+   - Replug: it recovers automatically.
+3. **IR emitter off when inactive.** Use a phone camera without an IR filter
+   (most front cameras) or an IR viewer.
+   - Gesture mode off: no IR glow at the sensor. On: faint pulsing glow.
+   - After `gesture off`, after the `gesture.timeout_s` auto-off, and after a
+     USB emulated sleep: the glow is gone.
+4. **Orientation calibration.**
+   - Swipe left-to-right across the badge 5 times and check `diag gesture`
+     (last raw → result).
+   - Set `gesture.rotation` / `gesture.mirror` until all four directions map
+     correctly, then `commit`.
+5. **Reliability.** Mounted as it will be worn. For each direction do 20
+   swipes at ~3 cm, ~6 cm and ~10 cm, at a normal hand speed, and record:
+   - correct / wrong direction / missed;
+   - the `diag gesture` counters (sessions, rejected, cooldown-suppressed);
+   - the conditions: hall-style overhead light, near a window (sunlight IR),
+     and dim light.
+   Target: ≥ 90 % correct at the intended distance and no wrong-direction
+   screen changes. Tune `gesture.sensitivity` if needed.
+6. **One swipe, one change.**
+   - Swipe right once firmly and then return the hand: exactly one screen
+     change.
+   - Swipe 3 times during a slow (`refresh.speed 0`) refresh: one further
+     refresh, showing the final screen.
+7. **Enclosure effects.** Repeat step 5 (one distance, all directions) in
+   each condition:
+   - bare sensor;
+   - behind the printed aperture plate (`hardware/gesture_sensor`);
+   - in the final enclosure.
+   If the enclosure increases `rejected` counts or wrong directions, suspect
+   IR crosstalk: use a darker or more opaque material, reduce the wall
+   thickness or `face_gap`, and never put a cover over the aperture.
+8. **Power.** Measure in series with the battery, averaged over ≥ 10 s:
+   - awake, gesture mode off;
+   - awake, gesture mode on (sensor active, idle);
+   - awake, gesture mode on during continuous swiping;
+   - powered off.
+   Also measure the Qwiic connector's 3V3 pin while powered off. **Expect**
+   0 V, meaning the rail is switched and gestures cannot wake the badge.
+   If it reads 3.3 V, the sensor stays powered: record this and report it.
+9. **No gesture wake.** With the badge powered off, swipe over the sensor.
+   **Expect**: nothing happens (only the front buttons wake it).
+
+## J. Battery meter (single-cell LiPo)
+
+1. **USB.** On USB the icon reads `USB`, never bars and never "charging".
+2. **Battery.** On battery, compare the Info screen (C long; it redraws every
+   15 s with a fresh sample) against a multimeter at the JST connector, at
+   ≥ 3 charge levels. Record badge mV, multimeter mV and the difference.
+   Set `battery.cal_permille` for a ratio error; lower the thresholds for a
+   constant offset (see BATTERY.md).
+3. **Stability.** Leave it on for 10 minutes with occasional button presses.
+   **Expect**: no bar flicker between adjacent levels.
+4. **LOW.** Run a cell down (or use a bench supply on the battery input,
+   stepping down slowly). Check that LOW appears below `battery.low_mv` and
+   goes away only above it plus the hysteresis. Record where the
+   board/regulator browns out.
+5. **Invalid.** If a reading ever shows `?`, capture `diag battery` (raw
+   counts) over a VBUS-blocking data-only USB cable.
+6. **Last measurement kept.** Power off. **Expect**: the e-paper keeps the
+   last icon. Wake: a fresh sample appears on the first frame.
+7. **No keep-awake.** Confirm auto power-off still happens after
+   `sleep.timeout_s`: the meter never keeps the badge awake.

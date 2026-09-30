@@ -1,4 +1,5 @@
 #include <string>
+#include <vector>
 
 #include "check.hpp"
 #include "renderer.hpp"
@@ -170,4 +171,103 @@ TEST(qr_geometry_integer_modules_and_quiet_zone) {
   // Too long for the panel.
   set("qr.payload", ("https://example.com/" + std::string(360, 'x')).c_str());
   CHECK(card_geometry(c, false).qr_status == QrStatus::TooLong);
+}
+
+namespace {
+StatusInfo status_of(PowerDisplay d, uint8_t bars, bool low, GestureIndicator g) {
+  StatusInfo s;
+  s.battery.display = d;
+  s.battery.bars = bars;
+  s.battery.low = low;
+  s.gesture = g;
+  return s;
+}
+}  // namespace
+
+TEST(render_status_area_reserved_on_every_screen) {
+  settings_defaults(&g_s);
+  size_t n;
+  const FieldDesc *f = settings_fields(&n);
+  for (int worst = 0; worst < 2; ++worst) {
+    if (worst) {
+      for (size_t i = 0; i < n; ++i)
+        if (f[i].type == FieldType::Str && std::strcmp(f[i].key, "qr.payload") != 0)
+          set(f[i].key, maxlen(f[i].key, "\xC3\x9C").c_str());  // tall accented capitals
+      set("qr.payload", "https://example.com/c");
+    }
+    InfoLines info;
+    for (int i = 0; i < InfoLines::kMax; ++i) info.add("%s", std::string(80, 'W').c_str());
+    for (uint8_t sc = 0; sc < uint8_t(Screen::Count); ++sc) {
+      for (uint8_t layout = 0; layout < 2; ++layout) {
+        for (int portrait = 0; portrait < 2; ++portrait) {
+          RenderContext c = ctx_with(portrait);
+          c.info = &info;
+          View v;
+          v.screen = Screen(sc);
+          v.layout = layout;
+          render(g_fb, v, c);  // status Unknown/Off: nothing drawn there
+          const Rect sr = status_rect(v, c);
+          CHECK(sr.x >= 0 && sr.right() <= 296);
+          if (v.screen == Screen::Recovery) {
+            for (int x = sr.x; x < sr.right(); ++x)
+              for (int y = sr.y; y < sr.bottom(); ++y) CHECK(g_fb.get(x, y) == Ink::Black);  // inside the header
+          } else {
+            CHECK(region_white(g_fb, sr));
+          }
+          // Drawing the fullest status changes nothing outside its rectangle.
+          c.status = status_of(PowerDisplay::Battery, 0, true, GestureIndicator::Fault);
+          render(g_fb2, v, c);
+          for (int x = 0; x < 296; ++x)
+            for (int y = 0; y < 128; ++y) {
+              const bool inside = x >= sr.x && x < sr.right() && y >= sr.y && y < sr.bottom();
+              if (!inside) CHECK(g_fb.get(x, y) == g_fb2.get(x, y));
+            }
+          CHECK(!g_fb.equals(g_fb2));
+        }
+      }
+    }
+  }
+}
+
+TEST(render_status_states_are_distinct) {
+  settings_defaults(&g_s);
+  RenderContext c = ctx_with();
+  View v;
+  const StatusInfo states[] = {
+      status_of(PowerDisplay::Unknown, 0, false, GestureIndicator::Off),
+      status_of(PowerDisplay::Usb, 0, false, GestureIndicator::Off),
+      status_of(PowerDisplay::Invalid, 0, false, GestureIndicator::Off),
+      status_of(PowerDisplay::Battery, 0, true, GestureIndicator::Off),
+      status_of(PowerDisplay::Battery, 0, false, GestureIndicator::Off),
+      status_of(PowerDisplay::Battery, 1, false, GestureIndicator::Off),
+      status_of(PowerDisplay::Battery, 2, false, GestureIndicator::Off),
+      status_of(PowerDisplay::Battery, 3, false, GestureIndicator::Off),
+      status_of(PowerDisplay::Battery, 4, false, GestureIndicator::Off),
+      status_of(PowerDisplay::Battery, 4, false, GestureIndicator::On),
+      status_of(PowerDisplay::Battery, 4, false, GestureIndicator::Fault),
+  };
+  std::vector<uint32_t> hashes;
+  for (const auto &st : states) {
+    c.status = st;
+    render(g_fb, v, c);
+    const uint32_t h = g_fb.hash();
+    for (uint32_t o : hashes) CHECK(o != h);
+    hashes.push_back(h);
+  }
+}
+
+TEST(render_card_six_contacts_with_vcard) {
+  settings_defaults(&g_s);
+  const char *vals[6] = {"work@example.com", "person@example.com", "+1 (555) 010-0000", "handle", "user_name", "x"};
+  const char *labels[6] = {"Work", "Email", "Phone", "GitHub", "Discord", "Extra"};
+  for (int i = 0; i < 6; ++i) {
+    set(("contact" + std::to_string(i + 1) + ".label").c_str(), labels[i]);
+    set(("contact" + std::to_string(i + 1) + ".value").c_str(), vals[i]);
+  }
+  set("qr.payload", "BEGIN:VCARD\nVERSION:3.0\nN:Brown;Dan;;;\nFN:Dan Brown\nEND:VCARD");
+  RenderContext c = ctx_with();
+  View v;
+  v.screen = Screen::Card;
+  render(g_fb, v, c);
+  CHECK(card_geometry(c, false).qr_status == QrStatus::Ok);
 }

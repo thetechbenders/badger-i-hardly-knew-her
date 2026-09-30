@@ -151,7 +151,8 @@ void Cli::cmd_help() {
       "  defaults              stage factory defaults (then commit)\r\n"
       "  export                print replayable set commands\r\n"
       "  refresh [clean]       redraw the current screen\r\n"
-      "  diag [all|mem|flash|display|assets|reset|settings|qr]\r\n"
+      "  diag [all|mem|flash|display|assets|reset|settings|qr|battery|gesture]\r\n"
+      "  gesture on|off        gesture mode (APDS-9960 on Qwiic)\r\n"
       "  echo on|off           terminal echo\r\n"
       "  sleep                 power off (battery) / emulated sleep (USB)\r\n"
       "  reboot [bootsel]\r\n");
@@ -312,6 +313,14 @@ void Cli::execute(char *line) {
     if (a && !std::strcmp(a, "on")) { echo_ = true; ok(); return; }
     if (a && !std::strcmp(a, "off")) { echo_ = false; ok(); return; }
     err("usage: echo on|off");
+    return;
+  }
+  if (!std::strcmp(cmd, "gesture")) {
+    char *a = next_token(&args);
+    if (!a || (std::strcmp(a, "on") && std::strcmp(a, "off"))) { err("usage: gesture on|off"); return; }
+    const bool on = !std::strcmp(a, "on");
+    if (!host_.set_gesture(on) && on) host_.write("gesture mode on, but the sensor is not available (see diag gesture)\r\n");
+    ok();
     return;
   }
   if (!std::strcmp(cmd, "sleep")) { ok(); host_.request_sleep(); return; }

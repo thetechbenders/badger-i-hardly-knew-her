@@ -28,6 +28,7 @@ void App::boot(const AppConfig &cfg, int wake_button, uint32_t now_ms) {
   view_.layout = cfg.layout;
   layout_toggled_ = false;
   sleep_pending_ = false;
+  gesture_on_ = cfg.gesture_default_on && !cfg.safe_mode;
   last_activity_ms_ = now_ms;
   if (cfg.safe_mode) {
     view_.screen = Screen::Recovery;
@@ -73,12 +74,14 @@ uint32_t App::on_button(const ButtonEvent &e) {
     case Button::B: return cfg_.qr_configured ? go(Screen::QrFull) : go(Screen::Card);
     case Button::C: return go(Screen::Info);
     case Button::Up:
+      return set_gesture_mode(!gesture_on_);
+    case Button::Down:
+      sleep_pending_ = true;
+      return kActSleep | (gesture_on_ ? kActGestureMode : kActNone);
+    case Button::User:
       layout_toggled_ = !layout_toggled_;
       view_.layout = uint8_t(cfg_.layout ^ (layout_toggled_ ? 1 : 0));
       return (view_.screen == Screen::Badge) ? kActRedraw : kActNone;
-    case Button::Down:
-      sleep_pending_ = true;
-      return kActSleep;
     default: return kActNone;
   }
 }
@@ -104,6 +107,33 @@ uint32_t App::on_project_step(int delta) {
   return view_.screen == Screen::Projects ? kActRedraw : kActNone;
 }
 
+uint32_t App::set_gesture_mode(bool on) {
+  if (on == gesture_on_) return kActNone;
+  gesture_on_ = on;
+  return kActGestureMode | kActRedraw;  // the status indicator changes
+}
+
+uint32_t App::on_swipe(Swipe s, uint32_t now_ms) {
+  if (!gesture_on_ || sleep_pending_ || cfg_.safe_mode || view_.screen == Screen::Recovery) return kActNone;
+  last_activity_ms_ = now_ms;
+  // Cycle of main screens; the full-screen QR counts as the card.
+  Screen cycle[3] = {Screen::Badge, Screen::Card, Screen::Projects};
+  const int n = cfg_.project_count > 0 ? 3 : 2;
+  Screen cur = view_.screen == Screen::QrFull ? Screen::Card : view_.screen;
+  int idx = -1;
+  for (int i = 0; i < n; ++i)
+    if (cycle[i] == cur) idx = i;
+  switch (s) {
+    case Swipe::Right: return go(cycle[idx < 0 ? 0 : (idx + 1) % n]);
+    case Swipe::Left: return go(cycle[idx < 0 ? 0 : (idx + n - 1) % n]);
+    case Swipe::Up:
+      if (view_.screen == Screen::Card && cfg_.qr_configured) return go(Screen::QrFull);
+      return go(Screen::Card);
+    case Swipe::Down: return go(Screen::Badge);
+    default: return kActNone;
+  }
+}
+
 uint32_t App::on_config_changed(const AppConfig &cfg) {
   const bool leaving_safe = cfg_.safe_mode && !cfg.safe_mode;
   cfg_ = cfg;
@@ -121,6 +151,15 @@ uint32_t App::on_activity(uint32_t now_ms) {
 }
 
 uint32_t App::on_tick(uint32_t now_ms, bool on_battery, bool display_settled) {
+  uint32_t a = kActNone;
+  if (gesture_on_ && cfg_.gesture_timeout_s && !sleep_pending_ &&
+      now_ms - last_activity_ms_ >= uint32_t(cfg_.gesture_timeout_s) * 1000u) {
+    a |= set_gesture_mode(false);  // stop the sensor and its IR emitter when idle
+  }
+  return a | on_tick_power(now_ms, on_battery, display_settled);
+}
+
+uint32_t App::on_tick_power(uint32_t now_ms, bool on_battery, bool display_settled) {
   if (sleep_pending_ || !on_battery || cfg_.sleep_timeout_s == 0 || cfg_.safe_mode) return kActNone;
   if (!display_settled) return kActNone;  // never cut power mid-refresh
   if (now_ms - last_activity_ms_ >= uint32_t(cfg_.sleep_timeout_s) * 1000u) {

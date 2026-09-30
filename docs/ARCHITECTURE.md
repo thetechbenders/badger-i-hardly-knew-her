@@ -16,6 +16,7 @@ Verified against the Pico SDK board header `boards/pimoroni_badger2040.h`
 | VBUS detect | 24 | High when USB power is present |
 | Battery sense | 29 (ADC3, 1/3 divider) + 1.24 V ref on 28 (ADC2), enabled by 27 | Method from Pimoroni's launcher |
 | White LED | 25 (PWM) | |
+| Qwiic (I2C0) | SDA 4, SCL 5, 3V3, GND | Four-wire: no interrupt line. Optional APDS-9960 at 0x39, polled. |
 | Flash | 2 MiB W25Q16, boot2 `w25q080` | |
 
 There is no RTC (only the Badger 2040 W has the PCF85063A), so timed wake is
@@ -36,8 +37,10 @@ firmware/core/        portable C++17, no SDK headers; compiled for device and ho
   assetpack           validated bitmap container (built-in or flashed)
   spsc_queue          lock-free bounded single-producer/single-consumer ring
   display_pipeline    RenderScheduler (app side) + DisplayService (panel side)
+  battery             LiPo meter: conversion, EMA filter, hysteresis, USB/invalid states
+  gesture, apds9960   swipe decoding, orientation, cooldown; sensor driver/service over I2cBus
 firmware/cli/         USB CLI parser and dispatcher over a CliHost interface
-firmware/platform/    RP2040 only: board, UC8151 panel adapter, flash backend,
+firmware/platform/    RP2040 only: board (incl. ADC battery sampling), I2C0 bus, UC8151 panel adapter, flash backend,
                       diagnostics (reset/fault/watchdog/memory), main loop
 host/                 unit tests, simulated panel, preview renderer
 tools/                portrait, fonts, asset packs, profile compiler, previews, badgerctl
@@ -57,6 +60,8 @@ core 0 ─ main loop (event driven: WFE with 10 ms timeout)
   ├─ RenderScheduler: renders newest View into a free buffer
   │        ── FrameJob{buffer, seq, speed, clean} ─► JobQueue (SPSC, 4)
   │        ◄─ DisplayEvent{released, done, …} ───── EventQueue (SPSC, 8)
+  ├─ APDS-9960 service on I2C0 (polled every 10 ms only in gesture mode)
+  ├─ battery sampling (boot, before planned refreshes, every 60 s)
   ├─ Settings (staged + committed) and flash commits
   └─ watchdog feed (only while core 1's heartbeat advances), LED, VBUS/VSYS
 
@@ -83,9 +88,10 @@ core 1 ─ DisplayService: the only owner of the UC8151 driver, SPI0 and the
 1. A button or CLI action changes the `View`, or content changes; the
    scheduler marks the screen dirty. Further requests before rendering are
    **coalesced**: only the newest view is ever rendered.
-2. The scheduler renders only when a buffer is free **and** no job is already
-   waiting. Otherwise it waits, so a burst of presses during a 4.5 s refresh
-   produces at most one more refresh, showing the final state.
+2. The scheduler renders only when the previous frame is completely done on
+   the panel (rendering takes milliseconds, a refresh takes seconds). A burst
+   of presses or swipes during a 4.5 s refresh therefore produces exactly one
+   more refresh, showing the final state.
 3. The frame hash is compared with the last submitted frame; **unchanged
    screens are suppressed** without touching the panel.
 4. DisplayService takes the newest queued job (older ones are dropped) and

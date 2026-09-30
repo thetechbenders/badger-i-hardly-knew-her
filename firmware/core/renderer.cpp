@@ -66,15 +66,78 @@ int col_wrapped(Framebuffer &fb, Column &c, const Font &f, const char *s, int ma
   return n;
 }
 
+// Title: one line of bold 12 px if it fits, else wrapped onto two lines of
+// the same font (keeps long job titles whole instead of shrinking them).
+void col_title(Framebuffer &fb, Column &c, const char *s, int gap_after) {
+  if (str_empty(s)) return;
+  const Font &f = fonts::sans_bold_12;
+  if (text_width(f, s) <= c.w) {
+    col_line(fb, c, kTitleChain, 1, s, gap_after);
+    return;
+  }
+  if (c.y + 2 * f.line_height > c.bottom) {
+    col_line(fb, c, kTitleChain, 2, s, gap_after);
+    return;
+  }
+  col_wrapped(fb, c, f, s, 2, gap_after);
+}
+
 void draw_portrait(Framebuffer &fb, const MonoBitmap &p, int x, int y) {
   fb.blit_mono(p.bits, p.width, p.height, p.stride, x, y);
 }
 
-void draw_battery_low(Framebuffer &fb, int x, int y) {
-  // 13x7 outline battery with a single sliver of charge.
-  fb.draw_rect({int16_t(x), int16_t(y), 12, 7}, Ink::Black);
-  fb.fill_rect({int16_t(x + 12), int16_t(y + 2), 1, 3}, Ink::Black);
-  fb.fill_rect({int16_t(x + 2), int16_t(y + 2), 2, 3}, Ink::Black);
+// ------------------------------------------------------------- status
+// 16 x 7 battery: 15 x 7 body, 1 px terminal, four 2 px bars.
+void draw_battery_icon(Framebuffer &fb, int x, int y, int bars, Ink ink) {
+  fb.draw_rect({int16_t(x), int16_t(y), 15, 7}, ink);
+  fb.fill_rect({int16_t(x + 15), int16_t(y + 2), 1, 3}, ink);
+  for (int i = 0; i < bars && i < 4; ++i) fb.fill_rect({int16_t(x + 2 + 3 * i), int16_t(y + 2), 2, 3}, ink);
+}
+
+// 11 x 7 double-headed arrow ("swipe"); crossed out when the sensor is missing.
+void draw_gesture_icon(Framebuffer &fb, int x, int y, bool fault, Ink ink) {
+  fb.hline(x, y + 3, 11, ink);
+  for (int i = 1; i <= 3; ++i) {  // thin chevron heads
+    fb.set(x + i, y + 3 - i, ink);
+    fb.set(x + i, y + 3 + i, ink);
+    fb.set(x + 10 - i, y + 3 - i, ink);
+    fb.set(x + 10 - i, y + 3 + i, ink);
+  }
+  if (fault)  // struck through: sensor missing or faulty
+    for (int i = 0; i < 7; ++i) fb.set(x + 2 + i, y + 6 - i, ink);
+}
+
+// Right-aligned at xr (exclusive), rows y..y+6. Returns the left edge used.
+int draw_status(Framebuffer &fb, const StatusInfo &st, int xr, int y, Ink ink) {
+  const Font &f = fonts::sans_bold_10;
+  const int text_top = y - (f.ascent - f.cap_height);  // caps occupy rows y..y+6
+  int x = xr;
+  switch (st.battery.display) {
+    case PowerDisplay::Unknown: break;
+    case PowerDisplay::Usb: {
+      // USB power detected. Never "charging": the board has no charger.
+      x -= text_width(f, "USB");
+      draw_text(fb, f, x, text_top, "USB", ink);
+      break;
+    }
+    case PowerDisplay::Battery:
+    case PowerDisplay::Invalid: {
+      x -= 16;
+      const bool invalid = st.battery.display == PowerDisplay::Invalid;
+      draw_battery_icon(fb, x, y, invalid ? 0 : st.battery.bars, ink);
+      const char *tag = invalid ? "?" : (st.battery.low ? "LOW" : nullptr);
+      if (tag) {
+        x -= text_width(f, tag) + 2;
+        draw_text(fb, f, x, text_top, tag, ink);
+      }
+      break;
+    }
+  }
+  if (st.gesture != GestureIndicator::Off) {
+    x -= (x == xr ? 11 : 11 + 4);
+    draw_gesture_icon(fb, x, y, st.gesture == GestureIndicator::Fault, ink);
+  }
+  return x;
 }
 
 void draw_dashed_rect(Framebuffer &fb, Rect r) {
@@ -122,7 +185,7 @@ void render_badge(Framebuffer &fb, const View &v, const RenderContext &ctx) {
     const int bottom = has_event ? H - 16 - 4 : H - 6;
     Column c{cx, cw, 10, bottom};
     col_line(fb, c, kNameChain, 3, p.name, 2);
-    col_line(fb, c, kTitleChain, 2, p.title, 1);
+    col_title(fb, c, p.title, 1);
     col_line(fb, c, kBodyChain, 2, p.affiliation, 0);
     if (!str_empty(p.interests) && c.y + 6 + fonts::sans_10.line_height <= bottom) {
       c.y += 4;
@@ -146,7 +209,7 @@ void render_badge(Framebuffer &fb, const View &v, const RenderContext &ctx) {
       c.y += 4;
     }
     col_line(fb, c, kNameChain, 3, p.name, 1);
-    col_line(fb, c, kTitleChain, 2, p.title, 1);
+    col_title(fb, c, p.title, 1);
     col_line(fb, c, kBodyChain, 2, p.affiliation, 0);
     if (!str_empty(p.interests)) {
       // Interests band: white text on black, anchored to the bottom edge.
@@ -162,7 +225,6 @@ void render_badge(Framebuffer &fb, const View &v, const RenderContext &ctx) {
       }
     }
   }
-  if (ctx.battery_low) draw_battery_low(fb, right || !has_portrait ? 2 : W - 15, 2);
 }
 
 // ------------------------------------------------------------------- card
@@ -209,7 +271,7 @@ void render_card(Framebuffer &fb, const RenderContext &ctx) {
   // A QR symbol carries its own white quiet zone; text may sit right next
   // to it. The placeholder box gets a small gap.
   const int left_w = g.qr.x - (g.qr_status == QrStatus::Ok ? 2 : 8) - 8;
-  Column c{8, left_w, 6, H - 4};
+  Column c{8, left_w, 9, H - 2};
   col_line(fb, c, kNameChainSmall, 2, p.name, 0);
   col_line(fb, c, kBodyChain, 2, p.title, 2);
   if (!str_empty(p.affiliation) && !str_empty(p.title)) {
@@ -236,8 +298,11 @@ void render_card(Framebuffer &fb, const RenderContext &ctx) {
   const int value_x = c.x + (label_w ? label_w + 6 : 0);
   const int value_w = c.x + c.w - value_x;
   const int pitch = 14;
-  const bool has_caption = !str_empty(p.qr_caption) && g.qr_status == QrStatus::Ok;
-  const int bottom = has_caption ? H - fonts::sans_10.line_height - 3 : H - 2;
+  // The caption is optional: contact lines win when space runs out.
+  const int caption_h = fonts::sans_10.line_height + 1;
+  const bool has_caption = !str_empty(p.qr_caption) && g.qr_status == QrStatus::Ok &&
+                           c.y + lines * pitch <= H - 2 - caption_h;
+  const int bottom = has_caption ? H - 2 - caption_h : H - 1;
   for (const auto &cl : p.contacts) {
     if (str_empty(cl.value)) continue;
     if (c.y + pitch > bottom) break;
@@ -262,7 +327,6 @@ void render_card(Framebuffer &fb, const RenderContext &ctx) {
     FitResult r = fit_text(kSmallChain, 1, buf, c.w);
     draw_fitted(fb, r, buf, c.x, H - fonts::sans_10.line_height - 1, c.w);
   }
-  if (ctx.battery_low) draw_battery_low(fb, 2, H - 9);
 }
 
 void render_qr_full(Framebuffer &fb, const RenderContext &ctx) {
@@ -311,7 +375,7 @@ void render_projects(Framebuffer &fb, const View &v, const RenderContext &ctx) {
   }
   if (total > 1) {
     // Hints next to the UP/DOWN buttons on the right edge.
-    draw_triangle(fb, W - 9, 8, -1);
+    draw_triangle(fb, W - 9, kStatusHeight + 8, -1);  // below the status area
     draw_triangle(fb, W - 9, H - 12, +1);
   }
 }
@@ -319,14 +383,15 @@ void render_projects(Framebuffer &fb, const View &v, const RenderContext &ctx) {
 // ----------------------------------------------------------- diagnostics
 
 void render_info(Framebuffer &fb, const RenderContext &ctx, bool recovery) {
-  int y = 2;
+  int y = 10;  // rows 0..7 belong to the status area
   if (recovery) {
     fb.fill_rect({0, 0, W, 20}, Ink::Black);
     draw_text(fb, fonts::sans_bold_14, 6, 2, "SAFE MODE", Ink::White);
     const char *why = ctx.recovery_reason ? ctx.recovery_reason : "";
     const Font *rc[] = {&fonts::sans_10};
-    FitResult r = fit_text(rc, 1, why, W - 110);
-    draw_fitted(fb, r, why, 100, 4, W - 106, Align::Right, Ink::White);
+    const int rw = W - 100 - kStatusWidth - 8;
+    FitResult r = fit_text(rc, 1, why, rw);
+    draw_fitted(fb, r, why, 100, 8, rw, Align::Right, Ink::White);
     y = 24;
   }
   if (!ctx.info) return;
@@ -338,9 +403,25 @@ void render_info(Framebuffer &fb, const RenderContext &ctx, bool recovery) {
   }
 }
 
+int status_right(const View &v, const RenderContext &ctx) {
+  switch (v.screen) {
+    case Screen::Badge:
+      if (ctx.portrait.valid() && v.layout == uint8_t(Layout::PortraitRight)) return W - ctx.portrait.width - 4;
+      return W - 2;
+    case Screen::Card: return card_geometry_impl(ctx, false).qr.x - 4;
+    case Screen::Recovery: return W - 4;
+    default: return W - 2;
+  }
+}
+
 }  // namespace
 
 CardGeometry card_geometry(const RenderContext &ctx, bool full_screen) { return card_geometry_impl(ctx, full_screen); }
+
+Rect status_rect(const View &v, const RenderContext &ctx) {
+  const int xr = status_right(v, ctx);
+  return {int16_t(xr - kStatusWidth), 0, int16_t(kStatusWidth), int16_t(kStatusHeight)};
+}
 
 void render(Framebuffer &fb, const View &v, const RenderContext &ctx) {
   fb.reset_clip();
@@ -355,6 +436,10 @@ void render(Framebuffer &fb, const View &v, const RenderContext &ctx) {
     case Screen::Recovery: render_info(fb, ctx, true); break;
     default: break;
   }
+  fb.reset_clip();
+  const Rect sr = status_rect(v, ctx);
+  fb.set_clip(sr);  // the status area can never spill into content
+  draw_status(fb, ctx.status, sr.right(), 0, v.screen == Screen::Recovery ? Ink::White : Ink::Black);
   fb.reset_clip();
 }
 

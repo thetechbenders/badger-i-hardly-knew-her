@@ -140,7 +140,10 @@ int RenderScheduler::poll(RenderFn fn, void *ctx, uint8_t speed, uint8_t max_par
     }
   }
   if (!dirty_) return seen;
-  if (accepted_seq_ != submitted_seq_) return seen;  // one job already waiting: coalesce
+  // Render only once the previous frame is fully on the panel: requests that
+  // arrive during a refresh (seconds) collapse into one frame of the newest
+  // view. Rendering takes milliseconds, so waiting costs nothing visible.
+  if (done_seq_ != submitted_seq_) return seen;
   int buf = -1;
   for (int i = 0; i < nbuf_; ++i)
     if (owned_[i]) { buf = i; break; }

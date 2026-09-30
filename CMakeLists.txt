@@ -64,6 +64,7 @@ add_executable(${FW}
   firmware/platform/panel_uc8151.cpp
   firmware/platform/flash_rp2040.cpp
   firmware/platform/diagnostics.cpp
+  firmware/platform/i2c_rp2040.cpp
   # Only the panel driver is taken from pimoroni-pico (MIT).
   ${PIMORONI_PICO_PATH}/drivers/uc8151_legacy/uc8151_legacy.cpp
 )
@@ -81,7 +82,7 @@ target_compile_definitions(${FW} PRIVATE
   PICO_FLASH_SIZE_BYTES=2097152
 )
 target_link_libraries(${FW} PRIVATE
-  pico_stdlib pico_multicore pico_flash hardware_spi hardware_pwm hardware_adc hardware_flash hardware_watchdog)
+  pico_stdlib pico_multicore pico_flash hardware_spi hardware_i2c hardware_pwm hardware_adc hardware_flash hardware_watchdog)
 pico_enable_stdio_usb(${FW} 1)
 pico_enable_stdio_uart(${FW} 0)
 pico_set_program_name(${FW} "badger-i-hardly-knew-her")

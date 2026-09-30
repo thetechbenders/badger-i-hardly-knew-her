@@ -8,12 +8,19 @@
 //   C short   projects (if any)        C long    diagnostics screen
 //   UP/DOWN   previous/next project on the projects screen; from the
 //             full-screen QR, either returns to the card
-//   UP long   toggle layout candidate for this session (not saved)
+//   UP long   gesture mode on/off (APDS-9960 on Qwiic; not saved)
 //   DOWN long power off now (battery) / emulated sleep (USB)
+//   USR long  toggle layout candidate for this session (not saved)
+//
+// Gesture mode (swipes, only while enabled; buttons always work)
+//   left / right  previous / next screen in badge -> card -> projects
+//   up            business card; again from the card: full-screen QR
+//   down          photo badge
 #pragma once
 
 #include <cstdint>
 
+#include "gesture.hpp"
 #include "input.hpp"
 
 namespace badge {
@@ -37,6 +44,7 @@ enum Action : uint32_t {
   kActRedraw = 1u << 0,       // view or content changed
   kActCleanRefresh = 1u << 1, // force a full clean refresh
   kActSleep = 1u << 2,        // begin the power-off sequence
+  kActGestureMode = 1u << 3,  // gesture mode changed: start/stop the sensor
 };
 
 struct AppConfig {
@@ -47,6 +55,8 @@ struct AppConfig {
   uint16_t sleep_timeout_s = 0;
   bool sleep_to_badge = true;
   bool wake_selects_screen = true;
+  bool gesture_default_on = false;
+  uint16_t gesture_timeout_s = 0;
 };
 
 class App {
@@ -56,6 +66,8 @@ class App {
   uint32_t on_button(const ButtonEvent &e);
   uint32_t on_screen_request(Screen s, int project = -1);  // from the CLI
   uint32_t on_project_step(int delta);
+  uint32_t on_swipe(Swipe s, uint32_t now_ms);
+  uint32_t set_gesture_mode(bool on);
   uint32_t on_config_changed(const AppConfig &cfg);  // content/prefs changed
   uint32_t on_activity(uint32_t now_ms);             // any user/USB activity
   // Periodic check; `on_battery` gates auto power-off.
@@ -63,16 +75,19 @@ class App {
 
   const View &view() const { return view_; }
   bool sleeping() const { return sleep_pending_; }
+  bool gesture_mode() const { return gesture_on_ && !sleep_pending_; }
   // View to show right before power-off (badge or the current one).
   View sleep_view() const;
   uint32_t idle_ms(uint32_t now_ms) const { return now_ms - last_activity_ms_; }
 
  private:
   uint32_t go(Screen s);
+  uint32_t on_tick_power(uint32_t now_ms, bool on_battery, bool display_settled);
   AppConfig cfg_;
   View view_;
   bool layout_toggled_ = false;
   bool sleep_pending_ = false;
+  bool gesture_on_ = false;
   uint32_t last_activity_ms_ = 0;
 };
 

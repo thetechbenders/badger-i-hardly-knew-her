@@ -22,11 +22,13 @@ class FakeHost : public CliHost {
   void print_status() override { write("s\r\n"); }
   bool print_diag(const char *t) override { return std::strcmp(t, "bogus") != 0; }
   bool self_test() override { return true; }
+  bool set_gesture(bool on) override { gesture = on ? 1 : 0; return false; }
   void request_sleep() override { slept = true; }
   void request_reboot(bool b) override { rebooted = b ? 2 : 1; }
 
   std::string out;
   Settings staged_, committed_;
+  int gesture = -1;
   int changes = 0, commits = 0, step = 0, refreshed = 0, rebooted = 0;
   bool slept = false;
   Screen screen = Screen::Badge;
@@ -122,6 +124,11 @@ TEST(cli_screen_and_control_commands) {
   CHECK(has_err(run(cli, h, "diag bogus\n")));
   CHECK(ends_ok(run(cli, h, "reboot bootsel\n")));
   CHECK_EQ(h.rebooted, 2);
+  CHECK(run(cli, h, "gesture on\n").find("not available") != std::string::npos);
+  CHECK_EQ(h.gesture, 1);
+  CHECK(has_err(run(cli, h, "gesture maybe\n")));
+  CHECK(ends_ok(run(cli, h, "gesture off\n")));
+  CHECK_EQ(h.gesture, 0);
   CHECK(ends_ok(run(cli, h, "sleep\n")));
   CHECK(h.slept);
 }

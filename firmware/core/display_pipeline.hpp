@@ -109,9 +109,9 @@ class DisplayService {
   DisplayStats stats_;
 };
 
-// Renders the newest desired view whenever a buffer is free and nothing is
-// already waiting in the job queue: obsolete views are never rendered and at
-// most one job is pending ahead of the one being displayed.
+// Renders the newest desired view once the previous frame has finished on
+// the panel: however many requests arrive during a refresh, exactly one more
+// frame (the newest view) follows it. Obsolete views are never rendered.
 class RenderScheduler {
  public:
   using RenderFn = void (*)(Framebuffer &fb, void *ctx);

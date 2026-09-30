@@ -8,15 +8,15 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-MAX_CONTACTS = 4
+MAX_CONTACTS = 6
 MAX_PROJECTS = 4
 
 # key -> (type, capacity-or-(min,max)). String capacity includes the NUL.
 FIELD_LIMITS: dict[str, tuple] = {
     "name": ("str", 48), "title": ("str", 56), "affiliation": ("str", 56),
     "interests": ("str", 112), "event": ("str", 32),
-    **{f"contact{i}.label": ("str", 16) for i in range(1, 5)},
-    **{f"contact{i}.value": ("str", 72) for i in range(1, 5)},
+    **{f"contact{i}.label": ("str", 16) for i in range(1, 7)},
+    **{f"contact{i}.value": ("str", 72) for i in range(1, 7)},
     "qr.payload": ("str", 384), "qr.caption": ("str", 40),
     **{f"project{i}.title": ("str", 40) for i in range(1, 5)},
     **{f"project{i}.tagline": ("str", 64) for i in range(1, 5)},
@@ -26,7 +26,12 @@ FIELD_LIMITS: dict[str, tuple] = {
     "refresh.max_partials": ("u8", (0, 20)), "sleep.timeout_s": ("u16", (0, 3600)),
     "sleep.screen": ("u8", (0, 1)), "wake.selects_screen": ("bool", (0, 1)),
     "diag.single_core": ("bool", (0, 1)), "led.level": ("u8", (0, 255)),
-    "battery.low_mv": ("u16", (0, 5000)),
+    "battery.low_mv": ("u16", (0, 4500)),
+    **{f"battery.bar{i}_mv": ("u16", (3000, 4500)) for i in range(1, 5)},
+    "battery.hyst_mv": ("u16", (0, 300)), "battery.cal_permille": ("u16", (900, 1100)),
+    "gesture.default_on": ("bool", (0, 1)), "gesture.rotation": ("u8", (0, 3)),
+    "gesture.mirror": ("bool", (0, 1)), "gesture.sensitivity": ("u8", (10, 90)),
+    "gesture.timeout_s": ("u16", (0, 3600)), "gesture.cooldown_ms": ("u16", (200, 3000)),
 }
 
 
@@ -88,6 +93,13 @@ def flatten(doc: dict) -> list[tuple[str, str]]:
             if not lo <= n <= hi or (k == "sleep.timeout_s" and 0 < n < 15):
                 raise ProfileError(f"{k}: {n} out of range {lo}..{hi}")
         pairs.append((k, v))
+    d = dict(pairs)
+    bars = [int(d.get(f"battery.bar{i}_mv", dflt)) for i, dflt in zip(range(1, 5), (3600, 3700, 3800, 3950))]
+    if any(b <= a for a, b in zip(bars, bars[1:])):
+        raise ProfileError("battery.bar1..4_mv must be strictly increasing")
+    low = int(d.get("battery.low_mv", 3500))
+    if low and low > bars[0]:
+        raise ProfileError("battery.low_mv must not exceed battery.bar1_mv")
     payload = out.get("qr.payload", "")
     if payload and not (payload.startswith("https://") or payload.startswith("BEGIN:VCARD")):
         raise ProfileError("qr.payload must be an https:// URL or a BEGIN:VCARD block")

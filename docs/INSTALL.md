@@ -66,8 +66,9 @@ presses), and each commit is verified by reading it back.
 ## 4. Battery
 
 - The original Badger 2040 has a JST battery input and **no charger**. This
-  firmware does not charge anything. Use the battery types Pimoroni
-  specifies for the board, and recharge or replace them off-board.
+  firmware does not charge anything. It is configured for a single-cell
+  LiPo, which must be protected and charged off-board. Check the cell's
+  connector polarity against the board before plugging it in.
 - **On battery**, a front button press powers the board and the firmware
   latches power (GPIO10) within milliseconds of boot. After
   `sleep.timeout_s` without input, or a long press of DOWN, the badge draws
@@ -81,9 +82,10 @@ presses), and each commit is verified by reading it back.
   not processed during emulated sleep.
 - Auto power-off never runs on USB, in safe mode, or while a refresh is in
   progress. `sleep.timeout_s 0` disables it.
-- `battery.low_mv` (default 0 = off) shows a small battery mark on the badge
-  and card when VSYS falls below the threshold. Pick a value that suits your
-  battery; readings on USB power reflect VBUS, not the battery.
+- Every screen shows a four-bar meter tuned for a **single-cell LiPo**, plus
+  `LOW`, `?` (invalid reading) or `USB`. Validate it against a multimeter
+  and calibrate it as described in [BATTERY.md](BATTERY.md). A powered-off
+  badge shows the last measurement.
 
 ## 5. Recovery
 

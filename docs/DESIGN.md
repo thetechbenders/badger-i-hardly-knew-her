@@ -28,6 +28,15 @@ from the face. B remains available as
 `layout 1`, and a long press on UP swaps layouts for the session, so both
 can be compared on the real panel.
 
+Every screen reserves a 56 × 8 px status area at the top right of its main
+column, with no content rows 0–7 there. It holds the battery meter and the
+gesture indicator (`build/previews/*/status_states_x6.png`). A host test
+renders every screen with worst-case text and checks that the area stays
+free and that the status never draws outside it.
+
+Long titles wrap onto two lines of the same bold font instead of shrinking,
+e.g. "Principal Mechanical Design / Engineer".
+
 Screens without a portrait asset fall back to a full-width text layout.
 Empty optional fields (affiliation, interests, event, contacts, project
 tagline/link) are skipped entirely: no labels, rules or gaps are left behind.

@@ -16,6 +16,7 @@ choice.
 | pimoroni-pico `drivers/uc8151_legacy` | v1.29.0-2 | MIT | `third_party/licenses/pimoroni-pico-MIT.txt` | E-paper panel driver (unmodified, compiled from `deps/`) |
 | Nayuki QR Code generator (C) | v1.8.0 | MIT | `third_party/qrcodegen/LICENSE` | QR encoding (vendored, unmodified) |
 | DejaVu fonts (Sans, Sans Bold, Sans Condensed Bold) | 2.37 | Bitstream Vera + Arev licences; DejaVu changes public domain | `third_party/licenses/dejavu-fonts-LICENSE.txt` | Rasterised into bitmap tables in `firmware/generated/fonts.cpp` |
+| APDS-9960 register settings | – | – | – | Values chosen following the Broadcom datasheet and the SparkFun APDS-9960 library defaults; no library code is included |
 | newlib / libgcc / libstdc++ (Arm GNU Toolchain 13.2.Rel1) | 13.2 | newlib: BSD-style licences; GCC runtime: GPL with the GCC Runtime Library Exception | shipped with the toolchain | C/C++ runtime |
 
 Notes:
@@ -39,6 +40,7 @@ Notes:
 | NumPy | BSD-3-Clause |
 | pyzbar + zbar | MIT / LGPL-2.1 (dynamically loaded for tests only) |
 | pyserial | BSD-3-Clause |
+| OpenSCAD (renders `hardware/gesture_sensor/*.scad`) | GPL-2.0 (tool only; the model is this project's own) |
 
 ## Assets
 
