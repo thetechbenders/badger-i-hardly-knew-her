@@ -19,6 +19,7 @@ files=(badger_badge.uf2 badger_badge-assets.uf2 badger_badge.bin badger_badge.el
        memory-report.txt SHA256SUMS)
 
 build_private() {  # src_dir build_dir
+  mkdir -p "$(dirname "$2")"
   BUILD_DIR="$2" "$1/scripts/build-firmware.sh" -DPython3_EXECUTABLE="$(command -v "$py")" \
     -DBADGER_PROFILE="$1/local/profile.json" -DBADGER_PORTRAIT="$1/local/portrait.png" >"$2.log" 2>&1 ||
     { tail -30 "$2.log" >&2; echo "error: private build failed (log: $2.log)" >&2; exit 1; }
@@ -93,13 +94,20 @@ EOF
 verify() {
   local archive tmp dir commit
   archive="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
-  [ -f "$archive.sha256" ] && (cd "$(dirname "$archive")" && sha256sum -c --quiet "$(basename "$archive").sha256")
+  if [ -f "$archive.sha256" ]; then
+    (cd "$(dirname "$archive")" && sha256sum -c --quiet "$(basename "$archive").sha256") ||
+      { echo "FAIL  archive checksum"; return 1; }
+    echo "ok    archive checksum"
+  fi
   tmp="$(mktemp -d)"
   trap 'rm -rf "$tmp"' RETURN
   tar -C "$tmp" -xzf "$archive"
   dir="$(find "$tmp" -mindepth 1 -maxdepth 1 -type d)"
-  (cd "$dir" && sha256sum -c --quiet MANIFEST.sha256) && echo "ok    manifest: every file intact"
-  (cd "$dir/artifacts" && sha256sum -c --quiet SHA256SUMS) && echo "ok    artifact SHA256SUMS"
+  # Explicit failures: a failing `a && b` list does not trip `set -e`.
+  (cd "$dir" && sha256sum -c --quiet MANIFEST.sha256) || { echo "FAIL  manifest: archive modified or damaged"; return 1; }
+  echo "ok    manifest: every file intact"
+  (cd "$dir/artifacts" && sha256sum -c --quiet SHA256SUMS) || { echo "FAIL  artifact SHA256SUMS"; return 1; }
+  echo "ok    artifact SHA256SUMS"
   commit="$(sed -n 's/^commit //p' "$dir/BUILDINFO")"
   git clone -q "$dir/source.bundle" "$tmp/src"
   git -C "$tmp/src" checkout -q "$commit"
@@ -112,7 +120,8 @@ verify() {
     if cmp -s "$dir/artifacts/$f" "$tmp/src/build/fw/$f"; then echo "ok    rebuilt $f is byte-identical"
     else echo "FAIL  rebuilt $f differs"; same=0; fi
   done
-  [ "$same" = 1 ] && echo "restore and reproducibility verified" || { echo "reproducibility check FAILED"; return 1; }
+  if [ "$same" != 1 ]; then echo "reproducibility check FAILED"; return 1; fi
+  echo "restore and reproducibility verified"
 }
 
 case "${1:-}" in
