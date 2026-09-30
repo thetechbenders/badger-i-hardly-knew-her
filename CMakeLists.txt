@@ -55,6 +55,9 @@ badger_generate_content(${CMAKE_CURRENT_BINARY_DIR}/generated)
 get_filename_component(BADGER_PROFILE_NAME ${BADGER_PROFILE} NAME)
 configure_file(firmware/platform/build_info.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/generated/build_info.cpp @ONLY)
 
+get_filename_component(BADGER_SDK_REAL "${PICO_SDK_PATH}" REALPATH)
+get_filename_component(BADGER_PIMORONI_REAL "${PIMORONI_PICO_PATH}" REALPATH)
+
 set(FW badger_badge)
 add_executable(${FW}
   ${BADGER_CORE_SOURCES}
@@ -76,7 +79,12 @@ target_compile_options(${FW} PRIVATE
   $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti>
   # Reproducible across checkout locations: no absolute source paths in
   # __FILE__ strings or debug info (applies to the SDK sources built here too).
-  -ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=.)
+  -ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=.
+  # pico_sdk_import resolves PICO_SDK_PATH to its real path, so an SDK outside
+  # the tree (a deps symlink, PICO_SDK_PATH in the environment) must map to
+  # the same names an in-tree deps/ gets from the rule above.
+  -ffile-prefix-map=${BADGER_SDK_REAL}=./deps/pico-sdk
+  -ffile-prefix-map=${BADGER_PIMORONI_REAL}=./deps/pimoroni-pico)
 set_source_files_properties(${PIMORONI_PICO_PATH}/drivers/uc8151_legacy/uc8151_legacy.cpp
                             third_party/qrcodegen/qrcodegen.c PROPERTIES COMPILE_OPTIONS "-w")
 target_compile_definitions(${FW} PRIVATE
