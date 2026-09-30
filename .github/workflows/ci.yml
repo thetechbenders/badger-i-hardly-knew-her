@@ -35,9 +35,22 @@ jobs:
       - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ninja-build \
+          sudo apt-get install -y --no-install-recommends ninja-build python3-venv \
             gcc-arm-none-eabi=15:13.2.rel1-2 libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
           arm-none-eabi-gcc --version | head -1
+      # The asset/profile generators run under CMake's Python3_EXECUTABLE, so
+      # install the pinned tooling into a venv and hand CMake that exact
+      # interpreter (jobs don't share the host job's environment).
+      - name: Install asset-generation Python dependencies
+        run: |
+          python3 -m venv "$RUNNER_TEMP/venv"
+          py="$RUNNER_TEMP/venv/bin/python"
+          "$py" -m pip install --upgrade pip
+          "$py" -m pip install -r tools/requirements.txt
+          "$py" -m pip check
+          pinned=$(sed -n 's/^pillow==\([^ #]*\).*/\1/p' tools/requirements.txt)
+          "$py" -c "import sys, PIL; print('Pillow', PIL.__version__, 'on', sys.executable); sys.exit(PIL.__version__ != '$pinned')"
+          echo "BADGER_PYTHON=$py" >> "$GITHUB_ENV"
       - name: Cache pinned dependencies
         uses: actions/cache@v4
         with:
@@ -48,6 +61,7 @@ jobs:
       - name: Build firmware (public sample content)
         run: |
           scripts/build-firmware.sh \
+            -DPython3_EXECUTABLE="$BADGER_PYTHON" \
             -DBADGER_PROFILE=$PWD/config/sample-profile.json \
             -DBADGER_PORTRAIT=$PWD/assets/sample/portrait_placeholder.png
       - name: Memory report
