@@ -114,10 +114,12 @@ verify() {
   echo "ok    source bundle restores commit $commit"
   cp -r "$dir/local" "$tmp/src/local"
   if [ -d "$root/deps/pico-sdk" ]; then ln -s "$root/deps" "$tmp/src/deps"; else (cd "$tmp/src" && scripts/fetch-deps.sh); fi
-  build_private "$tmp/src" "$tmp/src/build/fw"
+  # Same relative build directory as `create`: it is recorded in the ELF's
+  # debug info (the UF2/BIN would match regardless).
+  build_private "$tmp/src" "$tmp/src/build/fw-private"
   local same=1
   for f in badger_badge.uf2 badger_badge.bin badger_badge.elf badger_badge-assets.uf2; do
-    if cmp -s "$dir/artifacts/$f" "$tmp/src/build/fw/$f"; then echo "ok    rebuilt $f is byte-identical"
+    if cmp -s "$dir/artifacts/$f" "$tmp/src/build/fw-private/$f"; then echo "ok    rebuilt $f is byte-identical"
     else echo "FAIL  rebuilt $f differs"; same=0; fi
   done
   if [ "$same" != 1 ]; then echo "reproducibility check FAILED"; return 1; fi
