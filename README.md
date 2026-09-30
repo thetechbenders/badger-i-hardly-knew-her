@@ -1,5 +1,7 @@
 # Badger? I hardly knew her!
 
+![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/thetechbenders/badger-i-hardly-knew-her?utm_source=oss&utm_medium=github&utm_campaign=thetechbenders%2Fbadger-i-hardly-knew-her&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
+
 A photo badge and digital business card for **Formnext 2026**, written as native
 C/C++ firmware for the **original Pimoroni Badger 2040** (RP2040, 296 × 128
 monochrome e-paper, five front buttons, USB-C, battery connector). It uses the
