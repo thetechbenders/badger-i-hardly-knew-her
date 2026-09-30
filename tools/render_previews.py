@@ -5,7 +5,12 @@ sheet, and a QR decode report.
 
   tools/render_previews.py --preview build/host/badger_preview --out previews \
       [--profile config/sample-profile.json] [--pack pack.bin] [--scale 3] \
-      [--qr https://example.com/x]
+      [--qr https://example.com/x] [--diagnostic-max] [--preview-arg=--faults ...]
+
+--diagnostic-max renders a HOST DIAGNOSTIC SAMPLE: every text field filled
+to its byte limit with labelled filler (breakable, so titles wrap), all
+contacts and projects used, and a long QR URL. It checks layout limits; it
+is never a real profile.
 
 QR verification decodes the final full-screen bitmap of the card and QR
 screens (as sent to the panel) with zbar at native resolution and enlarged,
@@ -53,6 +58,25 @@ def render(preview: Path, out: Path, pairs, pack: Path | None, screens: str, ext
     return [Path(line) for line in res.stdout.split()]
 
 
+def diagnostic_max_pairs() -> list[tuple[str, str]]:
+    """Labelled worst-case content: each text field at its byte limit."""
+    filler = "HOST DIAGNOSTIC SAMPLE Wide Wörds Überlong Titles Wrap WWW MMM "
+    pairs = []
+    for key, (typ, lim) in prof.FIELD_LIMITS.items():
+        if typ != "str" or key == "qr.payload":
+            continue
+        out = ""
+        while len((out + filler).encode()) < lim - 1:
+            out += filler
+        for ch in filler:  # top up to exactly lim - 1 bytes
+            if len((out + ch).encode()) > lim - 1:
+                break
+            out += ch
+        pairs.append((key, out.rstrip() if key.endswith(".label") else out))
+    pairs.append(("qr.payload", "https://example.com/host-diagnostic-sample/" + "x" * 100))
+    return pairs
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--preview", type=Path, default=Path("build/host/badger_preview"))
@@ -62,10 +86,14 @@ def main(argv=None) -> int:
     ap.add_argument("--scale", type=int, default=3)
     ap.add_argument("--qr", help="override qr.payload (e.g. to exercise the QR screens)")
     ap.add_argument("--screens", default="badge,card,projects,qr,info,recovery")
+    ap.add_argument("--diagnostic-max", action="store_true", help="labelled worst-case content (see above)")
+    ap.add_argument("--preview-arg", action="append", default=[], help="extra badger_preview argument")
     args = ap.parse_args(argv)
 
     from PIL import Image, ImageDraw
     pairs = prof.load(args.profile) if args.profile else []
+    if args.diagnostic_max:
+        pairs = diagnostic_max_pairs()
     if args.qr is not None:
         pairs = [(k, v) for k, v in pairs if k != "qr.payload"] + [("qr.payload", args.qr)]
     payload = dict(pairs).get("qr.payload", "")
@@ -74,7 +102,7 @@ def main(argv=None) -> int:
     big = args.out / f"x{args.scale}"
     native.mkdir(parents=True, exist_ok=True)
     big.mkdir(parents=True, exist_ok=True)
-    pbms = render(args.preview, native, pairs, args.pack, args.screens)
+    pbms = render(args.preview, native, pairs, args.pack, args.screens, args.preview_arg)
     report = {"payload": payload, "screens": {}}
     pngs = []
     for pbm in pbms:
@@ -131,7 +159,7 @@ def main(argv=None) -> int:
 
     failed = [s for s, r in report["screens"].items() if r["ok"] is False]
     for s, r in report["screens"].items():
-        status = "not configured (placeholder shown)" if r["ok"] is None else ("DECODED OK" if r["ok"] else "FAILED")
+        status = "not configured (nothing drawn)" if r["ok"] is None else ("DECODED OK" if r["ok"] else "FAILED")
         print(f"QR {s:5s}: {status}")
     print(f"wrote {len(pngs)} screens to {args.out}")
     return 1 if failed else 0

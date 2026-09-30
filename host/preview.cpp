@@ -3,6 +3,8 @@
 //
 //   badger_preview --out DIR [--pack FILE|--no-portrait] [--layout N]
 //                  [--set key=value ...] [--screens badge,card,...]
+//                  [--battery none|usb|invalid|low|0..4] [--gesture off|on|fault]
+//                  [--faults]   diagnostics show fault states (host diagnostic sample)
 //   badger_preview --dump-fields     (key type size min max, for tests)
 #include <cstdio>
 #include <cstdlib>
@@ -54,7 +56,7 @@ int main(int argc, char **argv) {
   settings_defaults(&s);
   std::string out = ".";
   std::vector<uint8_t> pack(kBuiltinAssetPack, kBuiltinAssetPack + kBuiltinAssetPack_size);
-  bool no_portrait = false;
+  bool no_portrait = false, faults = false;
   int layout = -1;
   std::string screens = "badge,card,projects,qr,info";
   std::string suffix;
@@ -93,6 +95,8 @@ int main(int argc, char **argv) {
     } else if (a == "--gesture") {
       std::string g = next();
       status.gesture = g == "on" ? GestureIndicator::On : g == "fault" ? GestureIndicator::Fault : GestureIndicator::Off;
+    } else if (a == "--faults") {
+      faults = true;
     } else if (a == "--suffix") {
       suffix = next();
     } else if (a == "--dump-fields") {
@@ -115,16 +119,30 @@ int main(int argc, char **argv) {
   else if (!no_portrait) std::fprintf(stderr, "asset pack: %s (rendering without portrait)\n", asset_status_str(pi.status));
 
   static InfoLines info;
-  info.add("Firmware  badger-i-hardly-knew-her  (host preview)");
-  info.add("Battery   3.86 V (filtered 3.87) | 3/4 bars | approx.");
-  info.add("Gesture   off | sensor standby (off) | swipes 0");
-  info.add("Reset     power-on  |  boots 1  |  faults 0");
-  info.add("Settings  slot A seq 3  |  staged: clean");
-  info.add("Assets    flash pack ok (1 entry, 1720 B)");
-  info.add("Display   dual-core  |  full 3 partial 1 skipped 2");
-  info.add("Memory    heap free 180 KiB  |  stack margin 3.1 KiB");
+  if (!faults) {
+    info.add("Firmware  badger-i-hardly-knew-her  (host preview)");
+    info.add("Battery   3.86 V (filtered 3.87) | 3/4 bars | approx.");
+    info.add("Gesture   off | sensor standby (off) | swipes 0");
+    info.add("Reset     power-on  |  boots 1  |  faults 0");
+    info.add("Settings  slot A seq 3  |  staged: clean");
+    info.add("Assets    flash pack ok (1 entry, 1720 B)");
+    info.add("Display   dual-core  |  full 3 partial 1 skipped 2");
+    info.add("Memory    heap free 180 KiB  |  stack margin 3.1 KiB");
+    ctx.recovery_reason = "3 watchdog resets";
+  } else {
+    // Same line formats as build_info_lines() in main.cpp, fault values.
+    info.add("Firmware  HOST DIAGNOSTIC SAMPLE - fault states");
+    info.add("Battery   INVALID reading 0.41 V");
+    info.add("Gesture   on | sensor fault | swipes 0");
+    info.add("Reset     watchdog timeout | boot 4 | streak 3");
+    info.add("Last      core1 display heartbeat stalled");
+    info.add("Settings  slot B seq 4294967295 | recovered | UNSAVED");
+    info.add("Assets    built-in (flash pack invalid): ok");
+    info.add("Display   dual-core | full 1 part 0 skip 0 | TIMEOUTS");
+    info.add("Memory    flash 176 K | stack free 212/96 B");
+    ctx.recovery_reason = "repeated crashes";
+  }
   ctx.info = &info;
-  ctx.recovery_reason = "3 watchdog resets";
 
   static Framebuffer fb;
   const int layouts[2] = {0, 1};

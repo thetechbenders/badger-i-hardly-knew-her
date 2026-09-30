@@ -24,8 +24,8 @@
       },
       {
         "title": "Dragon family",
-        "tagline": "[tagline not configured]",
-        "body": "[Placeholder – describe the Dragon-family projects with: set project2.body ...]",
+        "tagline": "Tools for embedded development and validation.",
+        "body": "DragonBreath · DragonSniff · DragonBench · dragon-core.",
         "link": ""
       }
     ]

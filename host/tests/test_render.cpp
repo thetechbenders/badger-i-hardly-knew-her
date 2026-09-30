@@ -164,7 +164,7 @@ TEST(qr_geometry_integer_modules_and_quiet_zone) {
       CHECK(g_fb.get(g.qr.x + q - 1, g.qr.y + q) == Ink::White);
     }
   }
-  // Unconfigured: no symbol, clearly marked placeholder.
+  // Unconfigured: no symbol and no placeholder (render_unconfigured_qr_...).
   set("qr.payload", "");
   RenderContext c = ctx_with();
   CHECK(card_geometry(c, false).qr_status == QrStatus::Empty);
@@ -270,4 +270,121 @@ TEST(render_card_six_contacts_with_vcard) {
   v.screen = Screen::Card;
   render(g_fb, v, c);
   CHECK(card_geometry(c, false).qr_status == QrStatus::Ok);
+}
+
+namespace {
+void clear_contacts() {
+  for (int i = 1; i <= kMaxContacts; ++i) {
+    set(("contact" + std::to_string(i) + ".label").c_str(), "");
+    set(("contact" + std::to_string(i) + ".value").c_str(), "");
+  }
+}
+}  // namespace
+
+// No payload: nothing QR-like is drawn (no dashed box, no "not configured"
+// text) and the contact column takes the width the code would have used.
+TEST(render_unconfigured_qr_leaves_no_trace) {
+  settings_defaults(&g_s);
+  clear_contacts();
+  set("name", "Ada");
+  set("title", "Engineer");
+  set("contact1.label", "Email");
+  set("contact1.value", "a@b.c");
+  set("qr.payload", "");
+  set("qr.caption", "Scan me");
+  RenderContext c = ctx_with();
+  View v;
+  v.screen = Screen::Card;
+  render(g_fb, v, c);
+  CHECK(region_white(g_fb, {150, 0, 146, 128}));  // right part of the card is empty
+  CHECK(status_rect(v, c).right() == 294);        // status back in the top-right corner
+  // The full-screen QR request falls back to the card.
+  v.screen = Screen::QrFull;
+  render(g_fb2, v, c);
+  CHECK(g_fb.equals(g_fb2));
+  // Width is reclaimed: a long value runs past where the code would start.
+  set("contact1.value", maxlen("contact1.value", "W").c_str());
+  v.screen = Screen::Card;
+  render(g_fb, v, c);
+  CHECK(!region_white(g_fb, {200, 20, 80, 90}));
+}
+
+// With every contact empty the card shows identity only: no placeholder
+// sentence, no orphaned labels.
+TEST(render_card_without_contacts_is_clean) {
+  settings_defaults(&g_s);
+  clear_contacts();
+  set("contact3.label", "Phone");  // label without a value hides the line
+  set("qr.payload", "");
+  set("affiliation", "");
+  RenderContext c = ctx_with();
+  View v;
+  v.screen = Screen::Card;
+  render(g_fb, v, c);
+  CHECK(region_white(g_fb, {0, 60, 296, 68}));  // nothing below the name/title/rule block
+}
+
+// Maximum-length content with wrapped titles, every status state and a
+// fault message still keeps every screen inside the panel and the status
+// area; host-only sample, the strings are clearly synthetic.
+TEST(render_maximum_content_all_screens_and_states) {
+  settings_defaults(&g_s);
+  size_t n;
+  const FieldDesc *f = settings_fields(&n);
+  for (size_t i = 0; i < n; ++i)
+    if (f[i].type == FieldType::Str && std::strcmp(f[i].key, "qr.payload") != 0)
+      set(f[i].key, maxlen(f[i].key, "Wi ").c_str());  // breakable, so titles wrap
+  set("qr.payload", "https://example.com/c");
+  InfoLines info;
+  info.add("Last      hard fault pc=10001234 lr=10005678 core1");
+  info.add("Display   dual-core | full 9 part 9 skip 9 | TIMEOUTS");
+  for (int i = 2; i < InfoLines::kMax; ++i) info.add("%s", std::string(70, 'W').c_str());
+  const StatusInfo states[] = {
+      status_of(PowerDisplay::Usb, 0, false, GestureIndicator::On),
+      status_of(PowerDisplay::Battery, 0, true, GestureIndicator::Fault),
+      status_of(PowerDisplay::Invalid, 0, false, GestureIndicator::Off),
+  };
+  for (uint8_t sc = 0; sc < uint8_t(Screen::Count); ++sc)
+    for (uint8_t layout = 0; layout < 2; ++layout)
+      for (const StatusInfo &st : states) {
+        RenderContext c = ctx_with();
+        c.info = &info;
+        c.recovery_reason = "repeated crashes";
+        c.status = st;
+        View v;
+        v.screen = Screen(sc);
+        v.layout = layout;
+        v.project = 1;
+        render(g_fb, v, c);  // ASan/UBSan catch any overrun
+        CHECK(g_fb.hash() != Framebuffer().hash());
+        if (v.screen == Screen::Badge) {
+          const int px = layout ? 296 - c.portrait.width : 0;
+          CHECK(portrait_intact(g_fb, c.portrait, px, (128 - c.portrait.height) / 2));
+        }
+      }
+}
+
+// The end of a realistic project tagline and body must be visible: if the
+// renderer ellipsized them, changing the last character would not change
+// the frame. (Regression: the Dragon-family tagline was cut to "validati...".)
+TEST(render_project_page_shows_full_tagline_and_body) {
+  settings_defaults(&g_s);
+  const std::string tagline = "Tools for embedded development and validation.";
+  const std::string body = "DragonBreath \xC2\xB7 DragonSniff \xC2\xB7 DragonBench \xC2\xB7 dragon-core.";
+  set("project1.title", "Jump Jet");
+  set("project2.title", "Dragon family");
+  set("project2.tagline", tagline.c_str());
+  set("project2.body", body.c_str());
+  RenderContext c = ctx_with();
+  View v;
+  v.screen = Screen::Projects;
+  v.project = 1;
+  render(g_fb, v, c);
+  set("project2.tagline", (tagline.substr(0, tagline.size() - 2) + "X.").c_str());
+  render(g_fb2, v, c);
+  CHECK(!g_fb.equals(g_fb2));
+  set("project2.tagline", tagline.c_str());
+  set("project2.body", (body.substr(0, body.size() - 2) + "X.").c_str());
+  render(g_fb2, v, c);
+  CHECK(!g_fb.equals(g_fb2));
 }

@@ -240,18 +240,22 @@ CardGeometry card_geometry_impl(const RenderContext &ctx, bool full) {
     g.qr = {int16_t(x), int16_t((H - side) / 2), int16_t(side), int16_t(side)};
     g.qr_scale = g_qr.scale;
     g.qr_version = g_qr.version;
-  } else {
+  } else if (g.qr_status == QrStatus::TooLong) {
+    // Configuration error: keep a visible marker where the code would go.
     const int side = 108;
     g.qr = {int16_t(full ? 10 : W - side - 10), int16_t((H - side) / 2), int16_t(side), int16_t(side)};
+  } else {
+    g.qr = {int16_t(W), 0, 0, 0};  // not configured: nothing is drawn, text gets the width
   }
   return g;
 }
 
-void draw_qr_placeholder(Framebuffer &fb, Rect r, QrStatus st) {
+// Only for a payload that cannot be encoded; an empty payload draws nothing.
+void draw_qr_too_long(Framebuffer &fb, Rect r) {
   draw_dashed_rect(fb, r);
-  const char *l1 = st == QrStatus::TooLong ? "QR PAYLOAD" : "QR NOT";
-  const char *l2 = st == QrStatus::TooLong ? "TOO LONG" : "CONFIGURED";
-  const char *l3 = st == QrStatus::TooLong ? "shorten qr.payload" : "set qr.payload";
+  const char *l1 = "QR PAYLOAD";
+  const char *l2 = "TOO LONG";
+  const char *l3 = "shorten qr.payload";
   const Font &b = fonts::sans_bold_12;
   const int y = r.y + (r.h - 2 * b.line_height - fonts::sans_10.line_height - 4) / 2;
   const Font *bc[] = {&b};
@@ -266,11 +270,13 @@ void render_card(Framebuffer &fb, const RenderContext &ctx) {
   const Profile &p = ctx.settings->profile;
   const CardGeometry g = card_geometry_impl(ctx, false);
   if (g.qr_status == QrStatus::Ok) qr_draw(fb, g_qr, g.qr.x, g.qr.y);
-  else draw_qr_placeholder(fb, g.qr, g.qr_status);
+  else if (g.qr_status == QrStatus::TooLong) draw_qr_too_long(fb, g.qr);
 
   // A QR symbol carries its own white quiet zone; text may sit right next
-  // to it. The placeholder box gets a small gap.
-  const int left_w = g.qr.x - (g.qr_status == QrStatus::Ok ? 2 : 8) - 8;
+  // to it. The error box gets a small gap; without a QR the text column
+  // spans the card.
+  const int left_w = g.qr_status == QrStatus::Empty ? W - 16
+                                                    : g.qr.x - (g.qr_status == QrStatus::Ok ? 2 : 8) - 8;
   Column c{8, left_w, 9, H - 2};
   col_line(fb, c, kNameChainSmall, 2, p.name, 0);
   col_line(fb, c, kBodyChain, 2, p.title, 2);
@@ -315,12 +321,6 @@ void render_card(Framebuffer &fb, const RenderContext &ctx) {
     draw_fitted(fb, vr, cl.value, value_x, c.y + (vr.font == &fonts::sans_10 ? 1 : 0), value_w);
     c.y += pitch;
   }
-  if (lines == 0) {
-    const Font *sc[] = {&fonts::sans_10};
-    const char *msg = "Contact details not configured";
-    FitResult r = fit_text(sc, 1, msg, c.w);
-    draw_fitted(fb, r, msg, c.x, c.y, c.w);
-  }
   if (has_caption) {
     char buf[48];
     std::snprintf(buf, sizeof buf, "%s \xE2\x86\x92", p.qr_caption);  // caption + arrow
@@ -333,7 +333,7 @@ void render_qr_full(Framebuffer &fb, const RenderContext &ctx) {
   const Profile &p = ctx.settings->profile;
   const CardGeometry g = card_geometry_impl(ctx, true);
   if (g.qr_status == QrStatus::Ok) qr_draw(fb, g_qr, g.qr.x, g.qr.y);
-  else draw_qr_placeholder(fb, g.qr, g.qr_status);
+  else draw_qr_too_long(fb, g.qr);
   const int x = g.qr.right() + 6;
   Column c{x, W - x - 8, 10, H - 6};
   col_line(fb, c, kNameChainSmall, 2, p.name, 4);
@@ -364,7 +364,12 @@ void render_projects(Framebuffer &fb, const View &v, const RenderContext &ctx) {
   const Font *hc[] = {&fonts::sans_bold_10};
   col_line(fb, c, hc, 1, hdr, 1);
   col_line(fb, c, kNameChainSmall, 2, pr.title, 0);
-  col_line(fb, c, kTitleChain, 2, pr.tagline, 3);
+  // Tagline: one line (bold 12, else 10) if it fits; otherwise two lines of
+  // bold 10 rather than an ellipsis, so it matches single-line taglines.
+  if (!str_empty(pr.tagline) && fit_text(kTitleChain, 2, pr.tagline, c.w).ellipsized)
+    col_wrapped(fb, c, fonts::sans_bold_10, pr.tagline, 2, 3);
+  else
+    col_line(fb, c, kTitleChain, 2, pr.tagline, 3);
   const bool has_link = !str_empty(pr.link);
   Column body = c;
   body.bottom = has_link ? H - fonts::sans_10.line_height - 3 : H - 3;
@@ -408,7 +413,10 @@ int status_right(const View &v, const RenderContext &ctx) {
     case Screen::Badge:
       if (ctx.portrait.valid() && v.layout == uint8_t(Layout::PortraitRight)) return W - ctx.portrait.width - 4;
       return W - 2;
-    case Screen::Card: return card_geometry_impl(ctx, false).qr.x - 4;
+    case Screen::Card: {
+      const CardGeometry g = card_geometry_impl(ctx, false);
+      return g.qr_status == QrStatus::Empty ? W - 2 : g.qr.x - 4;
+    }
     case Screen::Recovery: return W - 4;
     default: return W - 2;
   }
@@ -431,7 +439,12 @@ void render(Framebuffer &fb, const View &v, const RenderContext &ctx) {
     case Screen::Badge: render_badge(fb, v, ctx); break;
     case Screen::Card: render_card(fb, ctx); break;
     case Screen::Projects: render_projects(fb, v, ctx); break;
-    case Screen::QrFull: render_qr_full(fb, ctx); break;
+    case Screen::QrFull:
+      // Never reachable unconfigured (the app shows the card instead), but
+      // keep the renderer total: no empty code screen.
+      if (qr_configured(ctx.settings->profile)) render_qr_full(fb, ctx);
+      else render_card(fb, ctx);
+      break;
     case Screen::Info: render_info(fb, ctx, false); break;
     case Screen::Recovery: render_info(fb, ctx, true); break;
     default: break;

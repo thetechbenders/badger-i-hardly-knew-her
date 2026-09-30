@@ -63,6 +63,28 @@ class RenderedOutput(unittest.TestCase):
         for screen in ("card", "qr"):
             (im,) = render(screen, {"qr.payload": ""})
             self.assertEqual(decode_qr(framed(im, 3)), [])
+            # Nothing QR-like: the right third of the card stays white.
+            self.assertEqual(im.crop((200, 12, 296, 128)).getextrema(), (255, 255))
+
+    def test_diagnostic_max_sample_renders_every_screen_and_decodes(self):
+        import render_previews
+        with tempfile.TemporaryDirectory() as d:
+            rc = render_previews.main(["--preview", str(PREVIEW), "--out", d, "--diagnostic-max",
+                                       "--preview-arg=--faults", "--preview-arg=--battery", "--preview-arg=low",
+                                       "--preview-arg=--gesture", "--preview-arg=fault"])
+            self.assertEqual(rc, 0)
+            report = json.loads((Path(d) / "qr_report.json").read_text())
+            self.assertTrue(all(r["ok"] for r in report["screens"].values()))
+            names = {p.stem for p in (Path(d) / "native").glob("*.png")}
+            self.assertTrue({"badge_layoutA", "badge_layoutB", "card", "qr", "info", "recovery",
+                             "projects_1", "projects_4"} <= names, names)
+        for key, value in render_previews.diagnostic_max_pairs():
+            typ, cap = badge_profile.FIELD_LIMITS[key]
+            if key != "qr.payload" and not key.endswith(".label"):
+                self.assertEqual(len(value.encode()), cap - 1, key)
+            # Labelled on screen (15-byte contact labels hold "HOST DIAGNOSTIC").
+            self.assertTrue(value.startswith("HOST DIAGNOSTIC") if key != "qr.payload"
+                            else "host-diagnostic-sample" in value, key)
 
     def test_field_table_matches_python(self):
         out = subprocess.run([str(PREVIEW), "--dump-fields"], capture_output=True, text=True, check=True).stdout
