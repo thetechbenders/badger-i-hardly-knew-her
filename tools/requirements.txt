@@ -1,0 +1,7 @@
+# Host tooling. Pillow is pinned because it bundles FreeType, which
+# rasterises the fonts: a different version can change glyph bitmaps
+# (tools/fontgen.py --check detects that).
+pillow==12.3.0
+numpy>=1.26
+pyzbar==0.1.9   # needs the zbar shared library (apt: libzbar0)
+pyserial>=3.5   # badgerctl.py only

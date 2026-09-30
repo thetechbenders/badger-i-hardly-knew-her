@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  host:
+    name: Host tests and previews
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install host packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build libzbar0
+          python3 -m pip install --user -r tools/requirements.txt
+      - name: Unit, render, QR-decode and tooling tests
+        run: scripts/run-host-tests.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: previews
+          path: build/previews/
+
+  firmware:
+    name: RP2040 cross-build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # git describe for build metadata
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ninja-build \
+            gcc-arm-none-eabi=15:13.2.rel1-2 libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
+          arm-none-eabi-gcc --version | head -1
+      - name: Cache pinned dependencies
+        uses: actions/cache@v4
+        with:
+          path: deps
+          key: deps-${{ hashFiles('deps.lock', 'scripts/fetch-deps.sh') }}
+      - name: Fetch dependencies (verifies pinned commits)
+        run: scripts/fetch-deps.sh
+      - name: Build firmware (public sample content)
+        run: |
+          scripts/build-firmware.sh \
+            -DBADGER_PROFILE=$PWD/config/sample-profile.json \
+            -DBADGER_PORTRAIT=$PWD/assets/sample/portrait_placeholder.png
+      - name: Memory report
+        run: cat build/fw/memory-report.txt | head -12
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware-sample
+          path: |
+            build/fw/badger_badge.uf2
+            build/fw/badger_badge-assets.uf2
+            build/fw/badger_badge.elf
+            build/fw/badger_badge.elf.map
+            build/fw/badger_badge.bin
+            build/fw/memory-report.txt
+            build/fw/SHA256SUMS

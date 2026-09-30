@@ -1,0 +1,38 @@
+{
+  "format": 1,
+  "_comment": "Public sample profile. Values in [brackets] are placeholders; copy to local/profile.json (git-ignored) for your real details.",
+  "profile": {
+    "name": "Dan Brown",
+    "title": "Engineer + Maker",
+    "affiliation": "",
+    "interests": "3D printing · electronics · embedded systems",
+    "event": "Formnext 2026",
+    "contacts": [
+      {"label": "Email", "value": "[email not configured]"},
+      {"label": "Web", "value": "[website not configured]"}
+    ],
+    "qr": {
+      "payload": "",
+      "caption": "Scan for contact details"
+    },
+    "projects": [
+      {
+        "title": "Jump Jet",
+        "tagline": "Chamber heater for the Prusa CORE One family",
+        "body": "Heated-chamber project for Prusa CORE One printers. Work in progress – happy to talk design, electronics and firmware.",
+        "link": ""
+      },
+      {
+        "title": "Dragon family",
+        "tagline": "[tagline not configured]",
+        "body": "[Placeholder – describe the Dragon-family projects with: set project2.body ...]",
+        "link": ""
+      }
+    ]
+  },
+  "prefs": {
+    "layout": 0,
+    "refresh.speed": 1,
+    "sleep.timeout_s": 120
+  }
+}

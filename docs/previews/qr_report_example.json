@@ -1,0 +1,27 @@
+{
+  "payload": "https://example.com/dan",
+  "screens": {
+    "card": {
+      "decoded": {
+        "native": [
+          "https://example.com/dan"
+        ],
+        "x3": [
+          "https://example.com/dan"
+        ]
+      },
+      "ok": true
+    },
+    "qr": {
+      "decoded": {
+        "native": [
+          "https://example.com/dan"
+        ],
+        "x3": [
+          "https://example.com/dan"
+        ]
+      },
+      "ok": true
+    }
+  }
+}

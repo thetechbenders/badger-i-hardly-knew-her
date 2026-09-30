@@ -1,0 +1,152 @@
+// Render/display pipeline shared by the dual-core and single-core modes.
+//
+//   core 0 (app)                               display context (core 1, or core 0
+//   ------------                               in single-core diagnostic mode)
+//   RenderScheduler                            DisplayService
+//     owns: job buffers while Free               owns: Panel (SPI, BUSY, RESET, DC, CS),
+//     renders the newest desired view             the "shown" image, refresh policy
+//     -- FrameJob{buffer, seq, ...} -->  JobQueue (SPSC, depth 4)
+//     <-- DisplayEvent{...} ----------  EventQueue (SPSC, depth 8)
+//
+// Buffer ownership moves with the FrameJob and comes back with the
+// BufferReleased event; neither side touches a buffer it does not own.
+// The Pimoroni UC8151 driver has no locking and busy-waits internally, so
+// every Panel call happens only inside DisplayService (one context).
+#pragma once
+
+#include <cstdint>
+
+#include "framebuffer.hpp"
+#include "spsc_queue.hpp"
+
+namespace badge {
+
+enum class RefreshMode : uint8_t { None = 0, Full, Partial, Clean };
+const char *refresh_mode_str(RefreshMode m);
+
+struct FrameJob {
+  uint8_t buffer;
+  uint8_t speed;          // configured update speed (0..3)
+  uint8_t max_partials;   // 0 disables partial refresh
+  uint8_t clean;          // force a full refresh with the OTP (cleanest) waveform
+  uint32_t seq;
+};
+
+enum class DisplayEventKind : uint8_t {
+  BufferReleased,  // job accepted (or dropped); buffer ownership returns to core 0
+  Done,            // refresh complete, panel powered down
+  Suppressed,      // identical to the shown image; no refresh
+  Dropped,         // superseded by a newer job before it started
+  Timeout,         // BUSY never cleared; panel re-initialised
+};
+
+struct DisplayEvent {
+  DisplayEventKind kind;
+  RefreshMode mode;
+  uint8_t buffer;
+  uint8_t reserved;
+  uint32_t seq;
+  uint32_t duration_ms;
+};
+
+using JobQueue = SpscQueue<FrameJob, 4>;
+using EventQueue = SpscQueue<DisplayEvent, 8>;
+
+class Panel {
+ public:
+  virtual ~Panel() = default;
+  virtual void init(uint8_t speed) = 0;  // reset + configure; may block briefly
+  virtual void set_speed(uint8_t speed) = 0;
+  virtual uint8_t speed() const = 0;
+  virtual bool busy() = 0;
+  virtual void start_full(const Framebuffer &fb) = 0;
+  virtual void start_partial(const Framebuffer &fb, Rect r) = 0;
+  virtual void finish() = 0;  // power the booster off after a refresh
+  virtual uint32_t expected_ms() const = 0;
+};
+
+struct DisplayStats {
+  uint32_t full = 0, partial = 0, clean = 0, suppressed = 0, dropped = 0, timeouts = 0;
+  uint32_t last_ms = 0, max_ms = 0;
+  uint32_t event_overflows = 0;  // must stay 0; checked by diagnostics and tests
+  uint32_t heartbeat = 0;  // incremented every poll (watchdog liveness)
+};
+
+class DisplayService {
+ public:
+  static constexpr uint32_t kPartialMaxAreaPct = 40;
+  static constexpr uint32_t kBusyTimeoutMs = 15000;
+
+  DisplayService(Panel &panel, Framebuffer *buffers, int nbuf, JobQueue &jobs, EventQueue &events)
+      : panel_(panel), buffers_(buffers), nbuf_(nbuf), jobs_(jobs), events_(events) {}
+
+  void start(uint8_t speed);
+  // Non-blocking step. Returns true while a refresh is in progress.
+  bool poll(uint32_t now_ms);
+  bool busy() const { return state_ == State::Refreshing; }
+  const DisplayStats &stats() const { return stats_; }
+  // For tests / diagnostics: the image most recently sent to the panel.
+  const Framebuffer &shown() const { return shown_; }
+
+ private:
+  enum class State : uint8_t { Idle, Refreshing };
+  void emit(DisplayEventKind k, const FrameJob &j, RefreshMode m, uint32_t dur);
+  void begin(const FrameJob &j, uint32_t now_ms);
+
+  Panel &panel_;
+  Framebuffer *buffers_;
+  int nbuf_;
+  JobQueue &jobs_;
+  EventQueue &events_;
+  Framebuffer shown_;
+  bool shown_known_ = false;  // panel content unknown until the first full refresh
+  State state_ = State::Idle;
+  FrameJob active_{};
+  RefreshMode active_mode_ = RefreshMode::None;
+  uint32_t started_ms_ = 0;
+  uint8_t partials_since_full_ = 0;
+  uint8_t base_speed_ = 1;
+  DisplayStats stats_;
+};
+
+// Renders the newest desired view whenever a buffer is free and nothing is
+// already waiting in the job queue: obsolete views are never rendered and at
+// most one job is pending ahead of the one being displayed.
+class RenderScheduler {
+ public:
+  using RenderFn = void (*)(Framebuffer &fb, void *ctx);
+
+  RenderScheduler(Framebuffer *buffers, int nbuf, JobQueue &jobs, EventQueue &events)
+      : buffers_(buffers), nbuf_(nbuf), jobs_(jobs), events_(events) {}
+
+  // Mark the screen dirty. `clean` requests a full clean refresh.
+  void invalidate(bool clean = false) {
+    if (dirty_) ++coalesced_;  // an unrendered view is superseded
+    dirty_ = true;
+    clean_ |= clean;
+  }
+  // Drain display events; render + submit if possible. Returns events seen.
+  int poll(RenderFn fn, void *ctx, uint8_t speed, uint8_t max_partials);
+  // True when the newest view has been rendered and fully shown.
+  bool settled() const { return !dirty_ && done_seq_ == submitted_seq_ && free_count() == nbuf_; }
+  bool display_active() const { return done_seq_ != submitted_seq_; }
+  int free_count() const;
+  uint32_t coalesced() const { return coalesced_; }
+  uint32_t suppressed() const { return suppressed_; }
+  uint32_t submitted() const { return submitted_seq_; }
+  uint32_t timeouts() const { return timeouts_; }
+
+ private:
+  Framebuffer *buffers_;
+  int nbuf_;
+  JobQueue &jobs_;
+  EventQueue &events_;
+  bool owned_[4] = {true, true, true, true};  // true = core 0 owns (free)
+  bool dirty_ = false, clean_ = false;
+  bool have_last_ = false;
+  uint32_t last_hash_ = 0;
+  uint32_t submitted_seq_ = 0, accepted_seq_ = 0, done_seq_ = 0;
+  uint32_t coalesced_ = 0, suppressed_ = 0, timeouts_ = 0;
+};
+
+}  // namespace badge
