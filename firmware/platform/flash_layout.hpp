@@ -8,7 +8,7 @@
 //   0x1FE000 - 0x1FFFFF  settings slots A and B (2 x 4 KiB sectors)
 //
 // Note: stock MicroPython/BadgerOS keeps its LittleFS filesystem in the top
-// 1408 KiB of flash. Installing this firmware leaves most of that data in
+// 1 MiB (2022 releases) or 1408 KiB (later releases) of flash. Installing this firmware leaves most of that data in
 // place until our settings/asset writes overwrite the top sectors, after
 // which BadgerOS's filesystem is corrupt; see docs/INSTALL.md.
 #pragma once

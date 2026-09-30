@@ -3,11 +3,14 @@
 ## What replacing the stock firmware does
 
 The Badger 2040 ships with MicroPython plus **BadgerOS**: the launcher,
-apps, badge text and images live as files in a LittleFS filesystem in the
-top 1408 KiB of the 2 MiB flash (0x0A0000–0x1FFFFF).
+apps, badge text and images live as files in a LittleFS filesystem at the
+top of the 2 MiB flash. Its size depends on the release: the 2022 BadgerOS
+(MicroPython v1.18, `os.uname()` machine "Pimoroni Badger2040 2MB with
+RP2040") uses the top 1 MiB (0x100000–0x1FFFFF); later releases use the top
+1408 KiB (0x0A0000–0x1FFFFF). Either way it covers the regions below.
 
 - Flashing `badger_badge.uf2` overwrites only the sectors the image covers
-  (0x000000–0x029100 today). MicroPython stops working at once.
+  (0x000000–0x02C6FF today). MicroPython stops working at once.
 - The BadgerOS files are **not** erased by flashing, but this firmware keeps
   its settings at 0x1FE000–0x1FFFFF and its asset pack at 0x1E0000–0x1EFFFF,
   both inside the old filesystem area. The first `commit` or asset flash

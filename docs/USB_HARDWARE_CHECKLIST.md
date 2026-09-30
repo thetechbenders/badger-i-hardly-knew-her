@@ -10,9 +10,12 @@ Conventions: `>` lines are CLI commands (a terminal on the badge's USB serial
 port, or `python3 tools/badgerctl.py cmd "…"`). Every command ends in `OK` or
 `ERR …`. "Refresh" means one visible e-paper update.
 
-Status as of this revision: **all steps pending**. No badge was reachable
-from the development session. A Raspberry Pi USB device (`2E8A:0005`,
-MicroPython CDC) was enumerated by the OS but was deliberately not opened.
+Status as of this revision: **all steps pending**; 0.1 done read-only.
+The badge on COM19 identified itself as `Pimoroni Badger2040 2MB with RP2040`,
+MicroPython v1.18 (2022-04-01) with BadgerOS,
+filesystem 1 MiB with `badge.txt`, `main.py` and `state` at the top level.
+(Identified by interrupting the badge app, querying `os.uname()` and the
+file list, then a soft reset; nothing was written.)
 
 ## 0. Before anything is written to the badge
 
@@ -20,8 +23,11 @@ Nothing in 0.1–0.3 writes to the badge.
 
 - [ ] 0.1 Identify the board. If it enumerates as `2E8A:0005` it is running
       MicroPython/BadgerOS; as `2E8A:000A` it is running this firmware.
-- [ ] 0.2 **BadgerOS files** (MicroPython running): `mpremote connect <port> cp -r :/ ./badger-backup/`
-      (read-only copy). Record the file list.
+- [ ] 0.2 **BadgerOS files** (MicroPython running; close Thonny first):
+      `python -m pip install mpremote`, then
+      `python -m mpremote connect COM19 fs cp :badge.txt :main.py badger-backup/` and
+      `python -m mpremote connect COM19 fs cp -r :state badger-backup/` (read-only copy).
+      Record the file list (`python -m mpremote connect COM19 fs ls -r` if supported).
 - [ ] 0.3 **Whole-flash image**: BOOTSEL (hold BOOT/USR, tap RST), then
       `picotool save -a badger-2040-full-backup.bin` and
       `picotool info -a > badger-2040-info.txt`. Keep the image with its SHA-256.
