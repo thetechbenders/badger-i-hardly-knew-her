@@ -73,6 +73,11 @@ Git ignores `local/`. Put these there:
   (`tools/portrait.py`, see [docs/DESIGN.md](docs/DESIGN.md)).
 - `local/profile.json`: your real profile. Copy
   `config/sample-profile.json` as a starting point.
+- `local/backups/`: `scripts/private-backup.sh create` writes a private
+  archive here. It holds the inputs, the personalised firmware built from a
+  clean commit, a `git bundle` of the source, checksums and RESTORE.md.
+  `scripts/private-backup.sh verify <archive>` restores it into a temporary
+  directory, rebuilds, and confirms the firmware is byte-identical.
 
 If these files exist, a local build embeds them automatically; CI always
 builds the public sample. The portrait can also be shipped separately as
@@ -90,4 +95,6 @@ the photo.
 - [docs/GESTURE.md](docs/GESTURE.md): APDS-9960 wiring, power, calibration, aperture
 - [docs/BATTERY.md](docs/BATTERY.md): battery circuit, thresholds, sampling, multimeter validation
 - [docs/HARDWARE_SMOKE_TEST.md](docs/HARDWARE_SMOKE_TEST.md): checks to run on a physical badge
+- [docs/USB_HARDWARE_CHECKLIST.md](docs/USB_HARDWARE_CHECKLIST.md): USB-only checklist (no battery / sensor), with pending items
+- [docs/REVIEW.md](docs/REVIEW.md): code-review findings, fixes and remaining limitations
 - [docs/LICENSES.md](docs/LICENSES.md): dependency, font and asset licence inventory

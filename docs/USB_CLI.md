@@ -12,6 +12,11 @@ BOOTSEL (Pico SDK convention).
 - Echo is on by default for interactive terminals. `echo off` disables it
   (badgerctl does this).
 - Lines longer than 480 bytes are rejected whole. Backspace and Ctrl-C work.
+- A line containing a raw control byte (NUL, ESC/arrow keys, …; TAB is
+  allowed) is rejected whole: `ERR control character 0x.. in line`.
+- A partial line left idle for 30 s is discarded silently, so a script
+  starting later is never glued onto stale input. `badgerctl.py` also sends
+  Ctrl-C first.
 - Values: everything after `set <key> ` up to the end of the line (trailing
   spaces trimmed). Wrap the value in `"..."` to keep leading or trailing
   spaces. Escapes: `\n` (line break), `\"`, `\\`. Text must be UTF-8 without
@@ -42,6 +47,7 @@ BOOTSEL (Pico SDK convention).
 | `echo on\|off` | Terminal echo |
 | `sleep` | Power off (battery) or emulated sleep (USB), after the current refresh |
 | `reboot [bootsel]` | Reboot, optionally into the USB bootloader |
+| `crashtest hang0\|hang1\|panic\|fault0\|fault1 confirm` | Recovery test: fail on purpose (core-0 hang, core-1 stall, panic, hard fault on core 0/1). The watchdog reboots; `diag reset` shows what was caught. Three in a row enter safe mode. Core-1 kinds are refused in single-core/safe mode. |
 
 ## Keys
 
@@ -56,7 +62,7 @@ Text limits are in UTF-8 bytes (one less than the storage size).
 | `event` | text 31 | Optional event strip, e.g. "Formnext 2026" |
 | `contact1..6.label` | text 15 | e.g. Work, Email, Phone, GitHub |
 | `contact1..6.value` | text 71 | Empty value hides the whole line (label included); lines that do not fit the card are omitted, caption first |
-| `qr.payload` | text 383 | `https://…` URL (recommended) or `BEGIN:VCARD…`; empty = "QR NOT CONFIGURED" placeholder |
+| `qr.payload` | text 383 | `https://…` URL or `BEGIN:VCARD…`; empty = no QR drawn at all (card text uses the full width) |
 | `qr.caption` | text 39 | Shown next to the code |
 | `project1..4.title` | text 39 | Empty hides the project |
 | `project1..4.tagline` | text 63 | |

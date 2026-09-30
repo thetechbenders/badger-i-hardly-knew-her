@@ -40,6 +40,13 @@ e.g. "Principal Mechanical Design / Engineer".
 Screens without a portrait asset fall back to a full-width text layout.
 Empty optional fields (affiliation, interests, event, contacts, project
 tagline/link) are skipped entirely: no labels, rules or gaps are left behind.
+A card with no contacts shows only the identity block. Project taglines
+that do not fit one line wrap onto two lines of bold 10 instead of being cut.
+
+`scripts/run-host-tests.sh` also writes `build/previews/diagnostic-max/`, a
+**HOST DIAGNOSTIC SAMPLE**. Every text field is filled to its byte limit with
+labelled filler, with LOW battery, a gesture fault and fault-state
+diagnostics. It checks layout limits; it is not content.
 
 ## Portrait conversion
 
@@ -91,8 +98,13 @@ crop coordinates are needed because it is 1932 × 2576.
   faster at arm's length, and the details can be updated without reflashing.
   An offline vCard also decodes (tested), but at 2 px modules it needs a
   closer, steadier phone.
-- An empty payload shows a dashed **QR NOT CONFIGURED** box instead of a
-  code. An over-long payload shows **QR PAYLOAD TOO LONG**.
+- An empty payload draws **nothing**: no box and no placeholder text. The
+  card's text column then spans the full width, and the full-screen QR is
+  not offered. An over-long payload (a configuration error) shows a dashed
+  **QR PAYLOAD TOO LONG** box.
+- Provisional local default: a trimmed offline vCard. A GitHub-link
+  alternative is kept for side-by-side phone scanning; the final choice is
+  pending that test (USB_HARDWARE_CHECKLIST.md §8).
 - Verification: `tools/render_previews.py` and `tests_py/` decode the final
   296 × 128 card and full-screen QR bitmaps with zbar, at native size and
   enlarged, and require an exact payload match.

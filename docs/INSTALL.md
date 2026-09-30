@@ -94,6 +94,7 @@ presses), and each commit is verified by reading it back.
 | Power lost during a `commit` | The write goes to the *other* A/B slot. The previous record keeps a valid CRC and loads on the next boot. `diag settings` reports `recovered`. |
 | Settings corrupt or from an unknown format | Invalid records are ignored and factory defaults are used. Individually invalid fields fall back to their defaults. |
 | Asset pack missing or corrupt | The built-in pack is used; if there is none, the layouts drop the portrait and use the full width. `diag assets` shows the reason. |
+| Panel not responding (BUSY held low) | Resets are bounded: the badge keeps running without the display, retries every 2–60 s and redraws once the controller answers. `diag display` shows `panel NOT RESPONDING`. |
 | Firmware hangs or crashes | The watchdog (5 s) reboots. The reason (watchdog / panic message / hard-fault PC) survives the reboot and shows in `diag reset` and on the info screen. |
 | 3 crashes in a row | **Safe mode**: stored settings are not applied, the display runs single-core, and a SAFE MODE screen is shown. Fix it over USB (`defaults`, `commit`, `reboot`). |
 | Force safe mode | Hold **A + C** while pressing RST (USB) or while waking (battery). |

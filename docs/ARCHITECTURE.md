@@ -107,6 +107,14 @@ core 1 ─ DisplayService: the only owner of the UC8151 driver, SPI0 and the
      previous image).
 5. The panel is never commanded while BUSY. If BUSY stays low for 15 s the
    controller is reset and the next frame is a clean redraw.
+6. Every controller reset is **bounded**. The Pimoroni driver's `busy_wait()`
+   has no timeout, so `Uc8151Panel` pulses RESET itself and waits at most
+   500 ms for BUSY before calling the driver. A controller that does not
+   answer puts `DisplayService` into a *panel fault* state. Jobs are then
+   released at once (so core 0, buttons, USB and sleep keep working), the
+   heartbeat continues, and re-initialisation is retried with a 2 → 60 s
+   backoff. Recovery forces one clean redraw. `diag display` and `selftest`
+   report `panel NOT RESPONDING`.
 
 Refresh speeds use the driver's LUT sets (`update_speed` 0–3), and
 `refresh.speed` selects them. Changing speed re-runs the controller setup,
@@ -140,18 +148,30 @@ milliseconds, well inside the 5 s watchdog.
   finish, then releases the latch. The image is complete before power goes.
   If the CPU keeps running (USB, or a held button), sleep is emulated: it
   waits for release, then a new press, then reboots.
-- Reset classification uses `CHIP_RESET` (power-on / RUN pin / debugger), the
-  watchdog reason, and a CRC-protected record in uninitialised RAM that
-  survives watchdog and soft resets. The SDK panic hook (`PICO_PANIC_FUNCTION`,
+- Reset classification (`core/crash_record.*`, host-tested) first asks
+  `WATCHDOG.REASON`, which every chip-level reset clears. Only for a chip
+  reset does it read `CHIP_RESET` (power-on / RUN pin / debugger); that
+  register still describes the original power-on after a watchdog reset.
+  A CRC-protected record in `.uninitialized_data` survives watchdog and soft
+  resets. It carries the reason and is discarded after any power-on, even if
+  SRAM kept it intact. The SDK panic hook (`PICO_PANIC_FUNCTION`,
   which also catches `assert`), `BADGE_ASSERT` and a hard-fault handler record
   a message or PC before rebooting through the watchdog.
 - Three abnormal resets in a row, without 60 s of healthy uptime between them,
   enter safe mode.
+- If core 1's heartbeat stalls for 3 s, core 0 records "core1 display
+  heartbeat stalled" and stops feeding the watchdog. A core-0 hang shows up
+  as an unannounced watchdog timeout. `crashtest … confirm` exercises each
+  path over USB (USB_HARDWARE_CHECKLIST.md §9).
 
 ## Memory
 
-Sample build: 164 KiB flash; 56.5 KiB static RAM. The two render buffers,
+Sample build: 178 KiB flash; 59.7 KiB static RAM. The two render buffers,
 the shown image, the driver buffer (4.6 KiB each) and three Settings copies
 (2.6 KiB each) dominate. There are 4 KiB stacks per core; large objects are
-static, never on the stack. Stacks are painted at boot, and `diag mem`
-reports the minimum free stack seen.
+static, never on the stack. Each core paints its own stack below its
+current SP at start-up, and `diag mem` reports the minimum free stack seen.
+The measured regions are the ones the SDK uses: core 0
+`0x20041000–0x20042000` (SCRATCH_Y) and core 1 `0x20040000–0x20041000`
+(SCRATCH_X, where `multicore_launch_core1()` places `core1_stack`).
+`scripts/verify_artifacts.py` checks this in the linked ELF.

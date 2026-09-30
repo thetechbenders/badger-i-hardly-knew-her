@@ -71,15 +71,16 @@ each run. Keep a serial terminal open on USB where noted (`status`, `diag all`).
 
 1. Press RST during a refresh. **Expect**: it reboots cleanly, then does one
    full refresh; `diag reset` shows `reset button`. (If it reports something
-   else, record it: CHIP_RESET decoding still needs confirming on this board.)
+   else, record it. The classifier trusts WATCHDOG.REASON first and reads
+   CHIP_RESET only for chip resets; this needs confirming on the board.)
 2. `reboot`. **Expect**: `reboot command`.
 3. Hold A + C and press RST. **Expect**: the SAFE MODE screen, stored settings
    not applied, and the CLI still works. `reboot` returns to normal.
 4. Pull USB during a refresh (no battery). **Expect**: on reconnect, it boots
    normally. The panel may show a partial image until the first refresh.
-5. Optional (debug build): temporarily add `BADGE_ASSERT(false)` behind a CLI
-   command, trigger it three times, and confirm safe mode and the recorded
-   message. Remove it again.
+5. Crash paths: `crashtest panic|fault0|fault1|hang0|hang1 confirm`. See
+   USB_HARDWARE_CHECKLIST.md §9 for the expected `diag reset` output and the
+   safe-mode sequence.
 
 ## G. Settings persistence
 

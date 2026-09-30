@@ -73,8 +73,23 @@ returns to these defaults.
 The post-build step **fails** if the image would overlap the asset region, or
 if less than 32 KiB of RAM would remain for the heap.
 
-Current sample build: 164.1 KiB flash (of 1920 KiB available before the
-asset region), 56.5 KiB static RAM of 264 KiB, 4 KiB stack per core.
+`scripts/verify_artifacts.py build/fw [--require-clean]` checks a build before
+flashing, offline:
+- UF2 blocks carry the RP2040 family ID; the firmware UF2 equals the `.bin`
+  and ends before the asset region; the asset UF2 lies inside
+  0x1E0000–0x1EFFFF; nothing touches the guard gap or the settings sectors.
+- Both stacks are where the SDK puts them, and the crash record is in NOLOAD
+  `.uninitialized_data`.
+- `git describe` is embedded, there are no absolute paths, and the memory
+  report and `SHA256SUMS` are consistent.
+
+Builds are **reproducible across checkout locations** (`-ffile-prefix-map`,
+fixed `--abbrev=12` in the version string). CI rebuilds from a second clone
+and compares UF2/BIN/ELF byte for byte. The `.elf.map` lists absolute object
+paths and is not expected to match.
+
+Current sample build: 177.6 KiB flash (of 1920 KiB available before the
+asset region), 59.7 KiB static RAM of 264 KiB, 4 KiB stack per core.
 
 ## CI
 
@@ -84,8 +99,10 @@ asset region), 56.5 KiB static RAM of 264 KiB, 4 KiB stack per core.
    decoding of the rendered screens, a font reproducibility check and the
    previews (uploaded as an artifact).
 2. **firmware**: a real RP2040 cross-build with the pinned toolchain and
-   dependencies, using the public sample content. It uploads the UF2, ELF,
-   map, bin, memory report and SHA256SUMS.
+   dependencies, using the public sample content. It then runs
+   `verify_artifacts.py --require-clean`, runs the second-checkout
+   reproducibility check, and uploads the UF2, ELF, map, bin, memory report
+   and SHA256SUMS.
 
 ## Regenerating assets
 
