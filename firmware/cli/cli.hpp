@@ -4,6 +4,9 @@
 // final line that is exactly "OK" or starts with "ERR ", so scripts can wait
 // for completion. Values after `set <key>` run to the end of the line; wrap
 // in double quotes to keep leading/trailing spaces. Escapes: \n \\ \" \t.
+// A line containing raw control bytes (NUL, ESC, ...) is rejected whole, and
+// a partial line left idle for kIdleDiscardMs is dropped silently, so a
+// script that starts talking later is not glued onto stale input.
 #pragma once
 
 #include <cstddef>
@@ -13,6 +16,11 @@
 #include "settings.hpp"
 
 namespace badge {
+
+// `crashtest <kind> confirm`: exercise the watchdog / panic / fault paths
+// over USB (docs/USB_HARDWARE_CHECKLIST.md). Never triggered by buttons.
+enum class CrashTest : uint8_t { HangCore0, HangCore1, Panic, FaultCore0, FaultCore1 };
+bool crash_test_from_name(const char *name, CrashTest *out);
 
 class CliHost {
  public:
@@ -33,18 +41,25 @@ class CliHost {
   virtual bool set_gesture(bool on) = 0;  // false: sensor not available (mode still set)
   virtual void request_sleep() = 0;
   virtual void request_reboot(bool bootsel) = 0;
+  // Deliberate failure for recovery testing (see CrashTest). Does not return
+  // on the device; returns false if the kind is unavailable (e.g. no core 1).
+  virtual bool crash_test(CrashTest kind) = 0;
 };
 
 class Cli {
  public:
   static constexpr size_t kMaxLine = 480;
+  static constexpr uint32_t kIdleDiscardMs = 30000;
   explicit Cli(CliHost &host) : host_(host) {}
   // Feed received bytes; complete lines are executed immediately.
   void feed(const char *data, size_t len);
+  // Same, with the receive time: drops a stale partial line first.
+  void feed(const char *data, size_t len, uint32_t now_ms);
   void execute(char *line);  // exposed for tests; modifies `line`
   void set_echo(bool on) { echo_ = on; }
   uint32_t commands() const { return commands_; }
   uint32_t errors() const { return errors_; }
+  uint32_t stale_discards() const { return stale_discards_; }
 
  private:
   void ok();
@@ -59,7 +74,11 @@ class Cli {
   char line_[kMaxLine + 1];
   size_t len_ = 0;
   bool overflow_ = false;
+  int bad_char_ = -1;  // first control byte seen in this line, -1 = none
   bool echo_ = true;
+  bool have_rx_time_ = false;
+  uint32_t last_rx_ms_ = 0;
+  uint32_t stale_discards_ = 0;
   bool last_cr_ = false;
   uint32_t commands_ = 0, errors_ = 0;
 };

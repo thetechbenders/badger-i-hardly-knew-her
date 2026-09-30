@@ -32,6 +32,17 @@ bool parse_int(const char *s, int *out) {
 }
 }  // namespace
 
+bool crash_test_from_name(const char *name, CrashTest *out) {
+  static const struct {
+    const char *name;
+    CrashTest kind;
+  } kNames[] = {{"hang0", CrashTest::HangCore0}, {"hang1", CrashTest::HangCore1}, {"panic", CrashTest::Panic},
+                {"fault0", CrashTest::FaultCore0}, {"fault1", CrashTest::FaultCore1}};
+  for (const auto &n : kNames)
+    if (!std::strcmp(name, n.name)) { *out = n.kind; return true; }
+  return false;
+}
+
 bool cli_unescape(char *s) {
   size_t n = std::strlen(s);
   // Trim trailing whitespace first (terminals often add it).
@@ -100,6 +111,19 @@ void Cli::err(const char *fmt, ...) {
   host_.write("\r\n");
 }
 
+void Cli::feed(const char *data, size_t len, uint32_t now_ms) {
+  if (have_rx_time_ && (len_ || overflow_ || bad_char_ >= 0) && now_ms - last_rx_ms_ >= kIdleDiscardMs) {
+    len_ = 0;
+    overflow_ = false;
+    bad_char_ = -1;
+    last_cr_ = false;
+    ++stale_discards_;
+  }
+  have_rx_time_ = true;
+  last_rx_ms_ = now_ms;
+  feed(data, len);
+}
+
 void Cli::feed(const char *data, size_t len) {
   for (size_t i = 0; i < len; ++i) {
     const char c = data[i];
@@ -109,12 +133,15 @@ void Cli::feed(const char *data, size_t len) {
       if (echo_) host_.write("\r\n");
       if (overflow_) {
         err("line too long (max %u bytes)", unsigned(kMaxLine));
+      } else if (bad_char_ >= 0) {
+        err("control character 0x%02x in line; line ignored", unsigned(bad_char_));
       } else {
         line_[len_] = 0;
         execute(line_);
       }
       len_ = 0;
       overflow_ = false;
+      bad_char_ = -1;
       continue;
     }
     if (c == 0x08 || c == 0x7F) {  // backspace
@@ -128,7 +155,14 @@ void Cli::feed(const char *data, size_t len) {
     if (c == 0x03) {  // Ctrl-C: discard the line
       len_ = 0;
       overflow_ = false;
+      bad_char_ = -1;
       if (echo_) host_.write("^C\r\n");
+      continue;
+    }
+    if (uint8_t(c) < 0x20 && c != '\t') {
+      // NUL would silently truncate the command; ESC sequences and other
+      // control bytes are never valid input. Reject the whole line at EOL.
+      if (bad_char_ < 0) bad_char_ = uint8_t(c);
       continue;
     }
     if (len_ >= kMaxLine) { overflow_ = true; continue; }
@@ -155,7 +189,8 @@ void Cli::cmd_help() {
       "  gesture on|off        gesture mode (APDS-9960 on Qwiic)\r\n"
       "  echo on|off           terminal echo\r\n"
       "  sleep                 power off (battery) / emulated sleep (USB)\r\n"
-      "  reboot [bootsel]\r\n");
+      "  reboot [bootsel]\r\n"
+      "  crashtest hang0|hang1|panic|fault0|fault1 confirm   crash on purpose (recovery test)\r\n");
 }
 
 void Cli::cmd_fields() {
@@ -330,6 +365,17 @@ void Cli::execute(char *line) {
     ok();
     host_.request_reboot(a != nullptr);
     return;
+  }
+  if (!std::strcmp(cmd, "crashtest")) {
+    char *a = next_token(&args);
+    char *c = next_token(&args);
+    CrashTest k;
+    if (!a || !crash_test_from_name(a, &k) || !c || std::strcmp(c, "confirm") || next_token(&args)) {
+      err("usage: crashtest hang0|hang1|panic|fault0|fault1 confirm");
+      return;
+    }
+    if (!host_.crash_test(k)) err("crashtest %s not available in this mode (single-core?)", a);
+    return;  // on the device a successful crash test never returns
   }
   err("unknown command '%s' (try: help)", cmd);
 }

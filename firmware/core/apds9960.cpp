@@ -82,7 +82,12 @@ bool Apds9960::power(bool on) {
 
 void Apds9960::schedule_retry(uint32_t now_ms) {
   next_retry_ms_ = now_ms + backoff_ms_;
-  backoff_ms_ = backoff_ms_ >= 15000 ? 30000 : backoff_ms_ * 2;
+  backoff_ms_ = backoff_ms_ >= kRetryMaxMs / 2 ? kRetryMaxMs : backoff_ms_ * 2;
+}
+
+void Apds9960::became_ready(uint32_t now_ms) {
+  state_ = SensorState::Standby;
+  ready_since_ms_ = now_ms;
 }
 
 void Apds9960::io_error(uint32_t now_ms) {
@@ -99,8 +104,8 @@ void Apds9960::io_error(uint32_t now_ms) {
 
 void Apds9960::start(uint32_t now_ms) {
   if (probe_and_configure() && power(false)) {
-    state_ = SensorState::Standby;
-    backoff_ms_ = 1000;
+    became_ready(now_ms);
+    backoff_ms_ = kRetryMinMs;
   } else {
     state_ = SensorState::Absent;
     consec_errors_ = 0;
@@ -119,6 +124,9 @@ void Apds9960::shutdown() {
 }
 
 Swipe Apds9960::poll(uint32_t now_ms) {
+  if ((state_ == SensorState::Standby || state_ == SensorState::Active) && backoff_ms_ != kRetryMinMs &&
+      now_ms - ready_since_ms_ >= kStableMs)
+    backoff_ms_ = kRetryMinMs;  // healthy long enough: the next fault retries quickly again
   switch (state_) {
     case SensorState::Unprobed:
       start(now_ms);
@@ -127,8 +135,7 @@ Swipe Apds9960::poll(uint32_t now_ms) {
     case SensorState::Fault:
       if (!wanted_ || int32_t(now_ms - next_retry_ms_) < 0) return Swipe::None;
       if (probe_and_configure() && power(false)) {
-        state_ = SensorState::Standby;
-        backoff_ms_ = 1000;
+        became_ready(now_ms);  // backoff kept until stable (see header)
       } else {
         consec_errors_ = 0;
         schedule_retry(now_ms);

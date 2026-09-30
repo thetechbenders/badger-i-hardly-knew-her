@@ -6,7 +6,6 @@
 #include <cstdio>
 #include <cstring>
 
-#include "crc32.hpp"
 #include "hardware/structs/vreg_and_chip_reset.h"
 #include "hardware/sync.h"
 #include "hardware/watchdog.h"
@@ -17,26 +16,14 @@
 namespace badge::diag {
 
 namespace {
-constexpr uint32_t kMagic = 0xBAD6E001;
 constexpr uint32_t kPaint = 0xA5A5A5A5;
 
-// Lives in .uninitialized_data: survives watchdog/soft resets, garbage after
-// power loss (detected by magic + CRC).
-struct Record {
-  uint32_t magic;
-  uint32_t boot_count;
-  uint32_t crash_streak;
-  uint32_t pending;  // ResetKind set right before an intentional reset
-  uint32_t fault_pc;
-  char message[64];
-  uint32_t crc;
-};
-Record __uninitialized_ram(g_rec);
+// Lives in .uninitialized_data (NOLOAD, not zeroed by crt0): survives
+// watchdog/soft resets, garbage after power loss (magic + CRC, and the reset
+// flags decide whether it is trusted; see crash_record.hpp).
+// scripts/verify_artifacts.py checks the placement in the linked ELF.
+CrashRecord __uninitialized_ram(g_rec);
 BootInfo g_info;
-
-uint32_t rec_crc() { return crc32(&g_rec, offsetof(Record, crc)); }
-void rec_seal() { g_rec.crc = rec_crc(); }
-bool rec_valid() { return g_rec.magic == kMagic && g_rec.crc == rec_crc(); }
 
 extern "C" {
 extern char __StackLimit, __StackTop, __StackBottom, __StackOneBottom, __StackOneTop;
@@ -44,62 +31,17 @@ extern char __flash_binary_end, __bss_end__, end;
 }
 }  // namespace
 
-const char *reset_kind_str(ResetKind k) {
-  switch (k) {
-    case ResetKind::PowerOn: return "power-on";
-    case ResetKind::ResetPin: return "reset button";
-    case ResetKind::Debugger: return "debugger";
-    case ResetKind::WatchdogHang: return "watchdog timeout";
-    case ResetKind::Panic: return "panic/assert";
-    case ResetKind::HardFault: return "hard fault";
-    case ResetKind::SoftReboot: return "reboot command";
-    case ResetKind::SleepWake: return "wake from USB sleep";
-    default: return "unknown";
-  }
-}
-
 const BootInfo &boot(bool force_safe) {
+  // WATCHDOG.REASON is cleared by every chip-level reset; CHIP_RESET is not
+  // updated by a watchdog reset (it keeps describing the last chip reset,
+  // usually the original power-on), so it is only read for chip resets.
   const uint32_t chip = vreg_and_chip_reset_hw->chip_reset;
-  const bool valid = rec_valid();
-  if (!valid) {
-    std::memset(&g_rec, 0, sizeof g_rec);
-    g_rec.magic = kMagic;
-    g_rec.pending = uint32_t(ResetKind::Unknown);
-  }
-  ResetKind kind;
-  if (!valid || (chip & VREG_AND_CHIP_RESET_CHIP_RESET_HAD_POR_BITS)) {
-    kind = ResetKind::PowerOn;
-    g_rec.crash_streak = 0;
-    g_rec.boot_count = 0;
-  } else if (chip & VREG_AND_CHIP_RESET_CHIP_RESET_HAD_RUN_BITS) {
-    kind = ResetKind::ResetPin;
-  } else if (chip & VREG_AND_CHIP_RESET_CHIP_RESET_HAD_PSM_RESTART_BITS) {
-    kind = ResetKind::Debugger;
-  } else if (g_rec.pending != uint32_t(ResetKind::Unknown)) {
-    kind = ResetKind(g_rec.pending);
-  } else if (watchdog_caused_reboot()) {
-    kind = ResetKind::WatchdogHang;
-  } else {
-    kind = ResetKind::Unknown;
-  }
-  const bool abnormal = kind == ResetKind::WatchdogHang || kind == ResetKind::Panic ||
-                        kind == ResetKind::HardFault;
-  if (abnormal) ++g_rec.crash_streak;
-  else if (kind != ResetKind::ResetPin && kind != ResetKind::Unknown) g_rec.crash_streak = 0;
-  ++g_rec.boot_count;
-
-  g_info.kind = kind;
-  g_info.boot_count = g_rec.boot_count;
-  g_info.crash_streak = g_rec.crash_streak;
-  g_info.safe_mode = force_safe || g_rec.crash_streak >= kSafeModeStreak;
-  g_info.fault_pc = abnormal ? g_rec.fault_pc : 0;
-  std::memcpy(g_info.message, abnormal ? g_rec.message : "", abnormal ? sizeof g_info.message : 1);
-  g_info.message[sizeof g_info.message - 1] = 0;
-
-  g_rec.pending = uint32_t(ResetKind::Unknown);
-  g_rec.fault_pc = 0;
-  g_rec.message[0] = 0;
-  rec_seal();
+  ResetFlags f;
+  f.watchdog = watchdog_caused_reboot();
+  f.por = chip & VREG_AND_CHIP_RESET_CHIP_RESET_HAD_POR_BITS;
+  f.run_pin = chip & VREG_AND_CHIP_RESET_CHIP_RESET_HAD_RUN_BITS;
+  f.debugger = chip & VREG_AND_CHIP_RESET_CHIP_RESET_HAD_PSM_RESTART_BITS;
+  g_info = classify_boot(g_rec, f, force_safe);
   return g_info;
 }
 
@@ -111,17 +53,14 @@ void feed_watchdog() { watchdog_update(); }
 void mark_healthy() {
   if (g_rec.crash_streak) {
     g_rec.crash_streak = 0;
-    rec_seal();
+    record_seal(g_rec);
   }
 }
 
-static void record(ResetKind why, uint32_t pc, const char *msg) {
-  g_rec.pending = uint32_t(why);
-  g_rec.fault_pc = pc;
-  std::strncpy(g_rec.message, msg ? msg : "", sizeof g_rec.message - 1);
-  g_rec.message[sizeof g_rec.message - 1] = 0;
-  rec_seal();
-}
+static void record(ResetKind why, uint32_t pc, const char *msg) { record_note(g_rec, why, pc, msg); }
+
+void note_hang(const char *msg) { record(ResetKind::WatchdogHang, 0, msg); }
+void clear_pending() { record(ResetKind::Unknown, 0, nullptr); }
 
 void reboot(ResetKind why, bool to_bootsel) {
   record(why, 0, nullptr);

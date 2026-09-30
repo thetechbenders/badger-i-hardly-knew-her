@@ -16,9 +16,54 @@ const char *refresh_mode_str(RefreshMode m) {
 
 void DisplayService::start(uint8_t speed) {
   base_speed_ = speed;
-  panel_.init(speed);
   shown_known_ = false;
+  retry_backoff_ms_ = kPanelRetryMinMs;
+  retry_armed_ = false;
+  if (panel_.init(speed)) {
+    state_ = State::Idle;
+    panel_ok_ = true;
+  } else {
+    ++stats_.panel_faults;
+    state_ = State::PanelFault;  // retry timer is armed on the first poll
+    panel_ok_ = false;
+  }
+}
+
+void DisplayService::panel_failed(uint32_t now_ms) {
+  ++stats_.panel_faults;
+  shown_known_ = false;
+  state_ = State::PanelFault;
+  panel_ok_ = false;
+  retry_at_ms_ = now_ms + retry_backoff_ms_;
+  retry_armed_ = true;
+  retry_backoff_ms_ = retry_backoff_ms_ >= kPanelRetryMaxMs / 2 ? kPanelRetryMaxMs : retry_backoff_ms_ * 2;
+}
+
+// Controller unresponsive: never touch it except for a bounded re-init now
+// and then. Jobs are released at once (as if shown) so core 0 never waits
+// for a refresh that cannot happen; recovery forces one clean redraw.
+void DisplayService::poll_fault(uint32_t now_ms) {
+  FrameJob job{};
+  while (jobs_.pop(&job)) {
+    ++stats_.dropped;
+    emit(DisplayEventKind::BufferReleased, job, RefreshMode::None, 0);
+    emit(DisplayEventKind::Done, job, RefreshMode::None, 0);
+  }
+  if (!retry_armed_) {
+    retry_at_ms_ = now_ms + retry_backoff_ms_;
+    retry_armed_ = true;
+    return;
+  }
+  if (int32_t(now_ms - retry_at_ms_) < 0) return;
+  if (!panel_.init(base_speed_)) {
+    panel_failed(now_ms);
+    return;
+  }
   state_ = State::Idle;
+  panel_ok_ = true;
+  retry_armed_ = false;
+  retry_backoff_ms_ = kPanelRetryMinMs;
+  emit(DisplayEventKind::PanelReset, job, RefreshMode::None, 0);
 }
 
 void DisplayService::emit(DisplayEventKind k, const FrameJob &j, RefreshMode m, uint32_t dur) {
@@ -56,7 +101,11 @@ void DisplayService::begin(const FrameJob &j, uint32_t now_ms) {
 
   const uint8_t want_speed = mode == RefreshMode::Clean ? 0 : j.speed;
   base_speed_ = j.speed;
-  if (panel_.speed() != want_speed) panel_.set_speed(want_speed);
+  if (panel_.speed() != want_speed && !panel_.set_speed(want_speed)) {
+    panel_failed(now_ms);
+    emit(DisplayEventKind::Done, j, RefreshMode::None, 0);  // never shown
+    return;
+  }
   if (mode == RefreshMode::Partial) {
     panel_.start_partial(shown_, diff);
     ++partials_since_full_;
@@ -74,15 +123,21 @@ void DisplayService::begin(const FrameJob &j, uint32_t now_ms) {
 }
 
 bool DisplayService::poll(uint32_t now_ms) {
-  ++stats_.heartbeat;
+  heartbeat_.store(heartbeat_.load(std::memory_order_relaxed) + 1, std::memory_order_relaxed);
+  if (state_ == State::PanelFault) {
+    poll_fault(now_ms);
+    return false;
+  }
   if (state_ == State::Refreshing) {
     if (panel_.busy()) {
       if (now_ms - started_ms_ > kBusyTimeoutMs) {
         ++stats_.timeouts;
-        panel_.init(base_speed_);  // hardware reset of the controller
-        shown_known_ = false;      // image state unknown: next job is a full refresh
-        state_ = State::Idle;
         emit(DisplayEventKind::Timeout, active_, active_mode_, now_ms - started_ms_);
+        shown_known_ = false;  // image state unknown: next job is a full refresh
+        state_ = State::Idle;
+        // Hardware reset of the controller. Bounded: if BUSY stays low this
+        // is a panel fault, not a hang of the display context.
+        if (!panel_.init(base_speed_)) panel_failed(now_ms);
       }
       return true;
     }
@@ -133,6 +188,13 @@ int RenderScheduler::poll(RenderFn fn, void *ctx, uint8_t speed, uint8_t max_par
         ++timeouts_;
         if (int32_t(e.seq - done_seq_) > 0) done_seq_ = e.seq;
         // The panel was reset and its content is unknown: redraw everything.
+        have_last_ = false;
+        dirty_ = true;
+        clean_ = true;
+        break;
+      case DisplayEventKind::PanelReset:
+        // Recovered from a panel fault: whatever was rendered meanwhile was
+        // never shown, so the same frame must not be suppressed by hash.
         have_last_ = false;
         dirty_ = true;
         clean_ = true;

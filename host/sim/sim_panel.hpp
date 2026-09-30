@@ -17,8 +17,8 @@ class SimPanel : public Panel {
     Rect r;
   };
   explicit SimPanel(const std::atomic<uint32_t> *clock) : clock_(clock) {}
-  void init(uint8_t speed) override;
-  void set_speed(uint8_t speed) override;
+  bool init(uint8_t speed) override;
+  bool set_speed(uint8_t speed) override;
   uint8_t speed() const override { return speed_; }
   bool busy() override;
   void start_full(const Framebuffer &fb) override;
@@ -29,7 +29,8 @@ class SimPanel : public Panel {
   std::vector<Op> ops;
   Framebuffer image;          // what the panel would show
   int violations = 0;         // commands issued while busy
-  bool stuck = false;         // simulate a BUSY line that never clears
+  bool stuck = false;         // BUSY stuck low until the next reset (transient)
+  bool dead = false;          // BUSY held low permanently: every reset times out
 
  private:
   uint32_t now() const { return clock_->load(); }

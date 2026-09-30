@@ -14,6 +14,7 @@
 // every Panel call happens only inside DisplayService (one context).
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 
 #include "framebuffer.hpp"
@@ -38,6 +39,7 @@ enum class DisplayEventKind : uint8_t {
   Suppressed,      // identical to the shown image; no refresh
   Dropped,         // superseded by a newer job before it started
   Timeout,         // BUSY never cleared; panel re-initialised
+  PanelReset,      // panel (re)initialised after a fault: content unknown, redraw
 };
 
 struct DisplayEvent {
@@ -55,8 +57,10 @@ using EventQueue = SpscQueue<DisplayEvent, 8>;
 class Panel {
  public:
   virtual ~Panel() = default;
-  virtual void init(uint8_t speed) = 0;  // reset + configure; may block briefly
-  virtual void set_speed(uint8_t speed) = 0;
+  // Reset + configure. Must be bounded in time: returns false if the
+  // controller does not come out of reset (BUSY held low).
+  virtual bool init(uint8_t speed) = 0;
+  virtual bool set_speed(uint8_t speed) = 0;  // same contract as init()
   virtual uint8_t speed() const = 0;
   virtual bool busy() = 0;
   virtual void start_full(const Framebuffer &fb) = 0;
@@ -69,13 +73,15 @@ struct DisplayStats {
   uint32_t full = 0, partial = 0, clean = 0, suppressed = 0, dropped = 0, timeouts = 0;
   uint32_t last_ms = 0, max_ms = 0;
   uint32_t event_overflows = 0;  // must stay 0; checked by diagnostics and tests
-  uint32_t heartbeat = 0;  // incremented every poll (watchdog liveness)
+  uint32_t panel_faults = 0;     // init/reset failures (controller unresponsive)
 };
 
 class DisplayService {
  public:
   static constexpr uint32_t kPartialMaxAreaPct = 40;
   static constexpr uint32_t kBusyTimeoutMs = 15000;
+  static constexpr uint32_t kPanelRetryMinMs = 2000;   // re-init backoff after a panel fault
+  static constexpr uint32_t kPanelRetryMaxMs = 60000;
 
   DisplayService(Panel &panel, Framebuffer *buffers, int nbuf, JobQueue &jobs, EventQueue &events)
       : panel_(panel), buffers_(buffers), nbuf_(nbuf), jobs_(jobs), events_(events) {}
@@ -84,14 +90,23 @@ class DisplayService {
   // Non-blocking step. Returns true while a refresh is in progress.
   bool poll(uint32_t now_ms);
   bool busy() const { return state_ == State::Refreshing; }
+  // False while the controller is unresponsive. Jobs are then released
+  // without touching the panel, so the app keeps running (buttons, USB,
+  // sleep), and re-initialisation is retried with backoff.
+  bool panel_ok() const { return panel_ok_.load(std::memory_order_relaxed); }
   const DisplayStats &stats() const { return stats_; }
+  // Incremented on every poll, from the display context; read by core 0 for
+  // watchdog liveness, hence atomic.
+  uint32_t heartbeat() const { return heartbeat_.load(std::memory_order_relaxed); }
   // For tests / diagnostics: the image most recently sent to the panel.
   const Framebuffer &shown() const { return shown_; }
 
  private:
-  enum class State : uint8_t { Idle, Refreshing };
+  enum class State : uint8_t { Idle, Refreshing, PanelFault };
   void emit(DisplayEventKind k, const FrameJob &j, RefreshMode m, uint32_t dur);
   void begin(const FrameJob &j, uint32_t now_ms);
+  void panel_failed(uint32_t now_ms);
+  void poll_fault(uint32_t now_ms);
 
   Panel &panel_;
   Framebuffer *buffers_;
@@ -106,7 +121,11 @@ class DisplayService {
   uint32_t started_ms_ = 0;
   uint8_t partials_since_full_ = 0;
   uint8_t base_speed_ = 1;
+  bool retry_armed_ = false;
+  uint32_t retry_at_ms_ = 0, retry_backoff_ms_ = kPanelRetryMinMs;
   DisplayStats stats_;
+  std::atomic<uint32_t> heartbeat_{0};
+  std::atomic<bool> panel_ok_{true};  // mirrors state_ != PanelFault for other cores
 };
 
 // Renders the newest desired view once the previous frame has finished on

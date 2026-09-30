@@ -59,6 +59,7 @@ RenderScheduler g_sched(g_bufs, 2, g_jobs, g_events);
 bool g_single_core = false;
 volatile bool g_core1_ready = false;
 uint8_t g_core1_speed = 1;  // written before core 1 launches, read-only after
+volatile uint8_t g_core1_crash = 0;  // crashtest request from core 0: 1 = hang, 2 = hard fault
 
 SpscQueue<ButtonEvent, 16> g_buttons;  // timer ISR -> main loop
 ButtonTracker g_tracker;               // owned by the timer ISR after start
@@ -99,6 +100,8 @@ void core1_main() {
   g_display.start(g_core1_speed);
   g_core1_ready = true;
   while (true) {
+    if (g_core1_crash == 1) while (true) tight_loop_contents();  // crashtest hang1: heartbeat stops
+    if (g_core1_crash == 2) __asm volatile("udf #1");            // crashtest fault1: HardFault on core 1
     const bool busy = g_display.poll(now_ms());
     __sev();  // wake core 0 for any events just queued
     sleep_ms(busy ? 10 : 5);
@@ -188,9 +191,9 @@ void build_info_lines() {
         (unsigned long)st.sequence, st.recovered ? " | recovered" : "", g_staged_dirty ? " | UNSAVED" : "");
   L.add("Assets    %s: %s", g_asset_source, asset_status_str(g_asset_info.status));
   const DisplayStats &ds = g_display.stats();
-  L.add("Display   %s | full %lu part %lu skip %lu", g_single_core ? "single-core" : "dual-core",
+  L.add("Display   %s | full %lu part %lu skip %lu%s", g_single_core ? "single-core" : "dual-core",
         (unsigned long)ds.full + ds.clean, (unsigned long)ds.partial,
-        (unsigned long)(ds.suppressed + g_sched.suppressed()));
+        (unsigned long)(ds.suppressed + g_sched.suppressed()), ds.timeouts ? " | TIMEOUTS" : "");
   L.add("Memory    flash %lu K | stack free %lu/%lu B", (unsigned long)(m.flash_used / 1024),
         (unsigned long)m.stack0_min_free, (unsigned long)m.stack1_min_free);
 }
@@ -339,6 +342,8 @@ class UsbCliHost : public CliHost {
                   g_single_core ? "single-core" : "dual-core", display_busy() ? "busy" : "idle",
                   (unsigned long)d.full, (unsigned long)d.clean, (unsigned long)d.partial,
                   (unsigned long)d.suppressed, (unsigned long)d.dropped, (unsigned long)d.timeouts);
+      std::printf("display: panel %s, init failures %lu\r\n",
+                  g_display.panel_ok() ? "ok" : "NOT RESPONDING (BUSY held low; retrying)", (unsigned long)d.panel_faults);
       std::printf("display: last %lu ms, max %lu ms; renders suppressed %lu, coalesced %lu, event overflow %lu\r\n",
                   (unsigned long)d.last_ms, (unsigned long)d.max_ms, (unsigned long)g_sched.suppressed(),
                   (unsigned long)g_sched.coalesced(), (unsigned long)d.event_overflows);
@@ -404,6 +409,8 @@ class UsbCliHost : public CliHost {
     ok &= sv;
     std::printf("display event overflows %lu\r\n", (unsigned long)g_display.stats().event_overflows);
     ok &= g_display.stats().event_overflows == 0;
+    std::printf("display panel %s\r\n", g_display.panel_ok() ? "ok" : "NOT RESPONDING");
+    ok &= g_display.panel_ok();
     return ok;
   }
   void request_sleep() override {
@@ -421,6 +428,23 @@ class UsbCliHost : public CliHost {
     sleep_ms(50);
     diag::reboot(diag::ResetKind::SoftReboot, bootsel);
   }
+  // Real failures through the real handlers: nothing here records a reason
+  // itself, so `diag reset` after the reboot shows what the handlers caught.
+  bool crash_test(CrashTest k) override {
+    const bool on_core1 = k == CrashTest::HangCore1 || k == CrashTest::FaultCore1;
+    if (on_core1 && g_single_core) return false;
+    std::printf("crashtest: failing on purpose; expect a watchdog reboot within ~%s s\r\n", on_core1 ? "8" : "5");
+    stdio_flush();
+    sleep_ms(50);
+    switch (k) {
+      case CrashTest::HangCore0: while (true) tight_loop_contents();  // main loop stops feeding
+      case CrashTest::HangCore1: g_core1_crash = 1; return true;     // core 0 notes the stall, then stops feeding
+      case CrashTest::Panic: panic("crashtest panic");
+      case CrashTest::FaultCore0: __asm volatile("udf #0"); break;
+      case CrashTest::FaultCore1: g_core1_crash = 2; return true;
+    }
+    return true;
+  }
 };
 
 UsbCliHost g_cli_host;
@@ -432,8 +456,9 @@ void poll_cli() {
   int c;
   while (n < sizeof buf && (c = getchar_timeout_us(0)) != PICO_ERROR_TIMEOUT) buf[n++] = char(c);
   if (n) {
-    g_cli.feed(buf, n);
-    g_app.on_activity(now_ms());
+    const uint32_t t = now_ms();
+    g_cli.feed(buf, n, t);
+    g_app.on_activity(t);
   }
 }
 
@@ -540,7 +565,7 @@ int main() {
   g_sched.invalidate(false);
 
   uint32_t last_hb = 0, last_hb_change = now_ms(), last_sample = 0, last_info = 0;
-  bool healthy = false;
+  bool healthy = false, hang_noted = false;
   while (true) {
     const uint32_t t = now_ms();
 
@@ -585,9 +610,18 @@ int main() {
     // Watchdog: feed only while the display context is alive (its heartbeat
     // advances every poll, including during long refreshes). In safe mode
     // keep USB alive regardless so the device can be repaired.
-    const uint32_t hb = g_display.stats().heartbeat;
+    // A stalled core 1 is recorded before the watchdog fires, so the next
+    // boot reports which core hung (a hang on core 0 stops this loop and
+    // shows up as an unannounced watchdog timeout).
+    const uint32_t hb = g_display.heartbeat();
     if (hb != last_hb) { last_hb = hb; last_hb_change = t; }
-    if (g_single_core || boot.safe_mode || t - last_hb_change < 3000) diag::feed_watchdog();
+    const bool stalled = !g_single_core && !boot.safe_mode && t - last_hb_change >= 3000;
+    if (!stalled) diag::feed_watchdog();
+    if (stalled != hang_noted) {
+      if (stalled) diag::note_hang("core1 display heartbeat stalled");
+      else diag::clear_pending();
+      hang_noted = stalled;
+    }
     if (!healthy && t > diag::kHealthyUptimeMs) { healthy = true; diag::mark_healthy(); }
 
     poll_sleep();

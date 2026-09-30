@@ -31,6 +31,10 @@ def open_port(port: str | None):
         port = cands[0]
     s = serial.Serial(port, 115200, timeout=0.2)
     time.sleep(0.1)
+    # Ctrl-C discards any partial line left by an earlier session, so the
+    # first command is not glued onto stale input.
+    s.write(b"\x03")
+    time.sleep(0.1)
     s.reset_input_buffer()
     return s
 

@@ -1,4 +1,5 @@
 #include <atomic>
+#include <initializer_list>
 #include <thread>
 
 #include "check.hpp"
@@ -180,4 +181,92 @@ TEST(pipeline_dual_thread_ownership) {
   static Framebuffer want;
   draw_scene(want, &scene);
   CHECK(panel.image.equals(want));
+}
+
+// BUSY held low for good (controller dead or shorted): the busy timeout's
+// re-init fails in bounded time, the display context keeps polling (watchdog
+// heartbeat), the app side never waits on a refresh that cannot happen, and
+// re-init is retried with backoff instead of hammering the panel.
+TEST(pipeline_dead_panel_never_blocks_and_recovers_with_one_clean_redraw) {
+  // Speed 0 matters: its clean redraw needs no speed change, so only the
+  // busy-timeout path itself can notice that re-init failed.
+  for (uint8_t speed : {uint8_t(0), uint8_t(1)}) {
+  Rig r;
+  r.speed = speed;
+  r.display.start(speed);
+  r.sched.invalidate();
+  r.step(20);
+  r.panel.dead = true;
+  const uint32_t hb0 = r.display.heartbeat();
+  r.step(DisplayService::kBusyTimeoutMs + 500);
+  CHECK(!r.display.panel_ok());
+  CHECK_EQ(r.display.stats().timeouts, 1u);
+  CHECK(r.display.heartbeat() - hb0 >= (DisplayService::kBusyTimeoutMs + 500) / 10);
+  r.settle();
+  CHECK(r.sched.settled());  // redraw request consumed without the panel
+  CHECK_EQ(r.sched.free_count(), 2);
+  // Navigation while the panel is dead: views are rendered and released at
+  // once; nothing is sent to the panel.
+  const int full_before = r.count('F') + r.count('P');
+  for (int v = 1; v <= 10; ++v) {
+    r.scene.value = v;
+    r.sched.invalidate();
+    r.settle();
+    CHECK(r.sched.settled());
+  }
+  CHECK_EQ(r.count('F') + r.count('P'), full_before);
+  // Five minutes dead: re-init attempts back off (2, 4, 8 ... 60 s).
+  const int inits_before = r.count('I');
+  r.step(300000);
+  const int retries = r.count('I') - inits_before;
+  CHECK(retries >= 4 && retries <= 12);
+  CHECK_EQ(r.display.stats().timeouts, 1u);  // no refresh is ever started on the dead panel
+  CHECK_EQ(r.display.stats().event_overflows, 0u);
+  // The controller answers again: exactly one clean full refresh of the
+  // newest view, although that frame was already "submitted" while dead.
+  r.panel.dead = false;
+  r.step(DisplayService::kPanelRetryMaxMs + 100);
+  r.settle();
+  CHECK(r.display.panel_ok());
+  CHECK_EQ(r.count('F') + r.count('P'), full_before + 1);
+  CHECK_EQ(r.display.stats().clean, 1u);
+  static Framebuffer want;
+  draw_scene(want, &r.scene);
+  CHECK(r.panel.image.equals(want));
+  CHECK_EQ(r.panel.violations, 0);
+  }
+}
+
+TEST(pipeline_panel_unresponsive_at_boot_does_not_wait_for_timeouts) {
+  Rig r;
+  r.panel.dead = true;
+  r.display.start(1);  // bounded reset fails
+  CHECK(!r.display.panel_ok());
+  r.sched.invalidate();
+  r.step(100);  // far below the 15 s busy timeout
+  CHECK(r.sched.settled());
+  CHECK_EQ(r.count('F') + r.count('P'), 0);
+  r.panel.dead = false;
+  r.step(DisplayService::kPanelRetryMinMs + 100);
+  r.settle();
+  CHECK(r.display.panel_ok());
+  CHECK_EQ(r.count('F'), 1);
+  static Framebuffer want;
+  draw_scene(want, &r.scene);
+  CHECK(r.panel.image.equals(want));
+}
+
+// A speed change resets the controller; if that reset fails the job is
+// completed without a refresh instead of driving a controller in reset.
+TEST(pipeline_failed_speed_change_is_a_panel_fault_not_a_hang) {
+  Rig r;
+  r.sched.invalidate();
+  r.settle();
+  r.panel.dead = true;
+  r.sched.invalidate(true);  // clean refresh needs speed 0 -> set_speed
+  r.step(50);
+  CHECK(!r.display.panel_ok());
+  CHECK(r.sched.settled());
+  CHECK_EQ(r.count('F'), 1);
+  CHECK_EQ(r.panel.violations, 0);
 }

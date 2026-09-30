@@ -1,3 +1,4 @@
+#include <initializer_list>
 #include <string>
 
 #include "check.hpp"
@@ -25,6 +26,8 @@ class FakeHost : public CliHost {
   bool set_gesture(bool on) override { gesture = on ? 1 : 0; return false; }
   void request_sleep() override { slept = true; }
   void request_reboot(bool b) override { rebooted = b ? 2 : 1; }
+  bool crash_test(CrashTest k) override { crashed = int(k); return k != CrashTest::HangCore1; }
+  int crashed = -1;
 
   std::string out;
   Settings staged_, committed_;
@@ -131,4 +134,63 @@ TEST(cli_screen_and_control_commands) {
   CHECK_EQ(h.gesture, 0);
   CHECK(ends_ok(run(cli, h, "sleep\n")));
   CHECK(h.slept);
+}
+
+// Raw control bytes must never reach the parser: a NUL used to cut the line
+// short, so "set name Ada<NUL>X" silently stored "Ada".
+TEST(cli_rejects_control_bytes_without_side_effects) {
+  FakeHost h;
+  Cli cli(h);
+  cli.set_echo(false);
+  const std::string nul = std::string("set name Ada") + '\0' + "Lovelace\n";
+  std::string out = run(cli, h, nul);
+  CHECK(has_err(out));
+  CHECK(out.find("0x00") != std::string::npos);
+  CHECK_EQ(h.changes, 0);
+  CHECK(has_err(run(cli, h, "set name \x1b[AAda\n")));  // arrow-key escape sequence
+  CHECK_EQ(h.changes, 0);
+  CHECK(ends_ok(run(cli, h, "set name\tAda\n")));  // tab still separates tokens
+  CHECK_STR(h.staged_.profile.name, "Ada");
+  CHECK(ends_ok(run(cli, h, "status\n")));  // next line is unaffected
+}
+
+TEST(cli_stale_partial_line_is_dropped_after_idle) {
+  FakeHost h;
+  Cli cli(h);
+  cli.set_echo(false);
+  h.out.clear();
+  cli.feed("set name Garb", 13, 1000);  // an earlier session died mid-line
+  cli.feed("status\n", 7, 1000 + Cli::kIdleDiscardMs + 1);
+  CHECK(ends_ok(h.out));
+  CHECK(!has_err(h.out));
+  CHECK_EQ(cli.stale_discards(), 1u);
+  CHECK_EQ(h.changes, 0);
+  // A slow typist within the window keeps the line.
+  h.out.clear();
+  cli.feed("set name Ad", 11, 50000);
+  cli.feed("a\n", 2, 50000 + Cli::kIdleDiscardMs - 1);
+  CHECK(ends_ok(h.out));
+  CHECK_STR(h.staged_.profile.name, "Ada");
+  // Timer wraparound does not discard a fresh line.
+  h.out.clear();
+  cli.feed("stat", 4, 0xFFFFFF00u);
+  cli.feed("us\n", 3, 0x00000010u);
+  CHECK(ends_ok(h.out));
+  CHECK_EQ(cli.stale_discards(), 1u);
+}
+
+// Deliberate crashes need the exact kind plus "confirm"; anything else
+// (typos, missing or extra words) must not crash the badge.
+TEST(cli_crashtest_requires_exact_confirmation) {
+  FakeHost h;
+  Cli cli(h);
+  cli.set_echo(false);
+  for (const char *bad : {"crashtest\n", "crashtest panic\n", "crashtest panic yes\n", "crashtest boom confirm\n",
+                          "crashtest panic confirm now\n", "crashtest Panic confirm\n"}) {
+    CHECK(has_err(run(cli, h, bad)));
+    CHECK_EQ(h.crashed, -1);
+  }
+  run(cli, h, "crashtest fault1 confirm\n");
+  CHECK_EQ(h.crashed, int(CrashTest::FaultCore1));
+  CHECK(has_err(run(cli, h, "crashtest hang1 confirm\n")));  // host says: not available
 }

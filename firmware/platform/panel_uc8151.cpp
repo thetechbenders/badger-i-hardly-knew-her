@@ -3,6 +3,8 @@
 #include <cstring>
 
 #include "drivers/uc8151_legacy/uc8151_legacy.hpp"
+#include "hardware/gpio.h"
+#include "pico/stdlib.h"
 
 namespace badge {
 
@@ -14,15 +16,39 @@ pimoroni::UC8151_Legacy g_uc(Framebuffer::kWidth, Framebuffer::kHeight, g_panel_
                              BADGER2040_INKY_MOSI_PIN, BADGER2040_INKY_BUSY_PIN, BADGER2040_INKY_RESET_PIN);
 }  // namespace
 
-void Uc8151Panel::init(uint8_t speed) {
-  g_uc.init();  // SPI + pins, reset, setup(0)
-  speed_ = 0;
-  if (speed) set_speed(speed);
+// Same pin setup and reset pulse as UC8151_Legacy::init()/reset(), but the
+// wait for BUSY (low = busy) is bounded.
+bool Uc8151Panel::reset_responds() {
+  gpio_init(BADGER2040_INKY_RESET_PIN);
+  gpio_put(BADGER2040_INKY_RESET_PIN, 1);
+  gpio_set_dir(BADGER2040_INKY_RESET_PIN, GPIO_OUT);
+  gpio_init(BADGER2040_INKY_BUSY_PIN);
+  gpio_set_dir(BADGER2040_INKY_BUSY_PIN, GPIO_IN);
+  gpio_set_pulls(BADGER2040_INKY_BUSY_PIN, true, false);
+  gpio_put(BADGER2040_INKY_RESET_PIN, 0);
+  sleep_ms(10);
+  gpio_put(BADGER2040_INKY_RESET_PIN, 1);
+  sleep_ms(10);
+  const absolute_time_t deadline = make_timeout_time_ms(kResetTimeoutMs);
+  while (!gpio_get(BADGER2040_INKY_BUSY_PIN)) {
+    if (time_reached(deadline)) return false;
+    sleep_us(200);
+  }
+  return true;
 }
 
-void Uc8151Panel::set_speed(uint8_t speed) {
+bool Uc8151Panel::init(uint8_t speed) {
+  speed_ = 0;
+  if (!reset_responds()) return false;
+  g_uc.init();  // SPI + pins, reset, setup(0)
+  return speed ? set_speed(speed) : true;
+}
+
+bool Uc8151Panel::set_speed(uint8_t speed) {
+  if (!reset_responds()) return false;
   g_uc.update_speed(speed);  // reset + LUT upload; blocks for a few ms
   speed_ = speed;
+  return true;
 }
 
 bool Uc8151Panel::busy() { return g_uc.is_busy(); }

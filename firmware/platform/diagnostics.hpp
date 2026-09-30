@@ -5,31 +5,10 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "crash_record.hpp"  // ResetKind, BootInfo, classification rules
+
 namespace badge::diag {
 
-enum class ResetKind : uint8_t {
-  PowerOn = 0,   // POR / brown-out / battery wake (RAM contents lost)
-  ResetPin,      // RESET button (RUN pin)
-  Debugger,      // PSM restart via SWD
-  WatchdogHang,  // watchdog expired: something stopped feeding it
-  Panic,         // SDK panic() / failed assert()
-  HardFault,
-  SoftReboot,    // `reboot` command
-  SleepWake,     // emulated sleep on USB power, woken by a button
-  Unknown,
-};
-const char *reset_kind_str(ResetKind k);
-
-struct BootInfo {
-  ResetKind kind;
-  uint32_t boot_count;       // since last power-on
-  uint32_t crash_streak;     // consecutive abnormal resets
-  bool safe_mode;            // crash_streak >= kSafeModeStreak or forced
-  char message[64];          // panic / fault detail from the previous run
-  uint32_t fault_pc;
-};
-
-constexpr uint32_t kSafeModeStreak = 3;
 constexpr uint32_t kWatchdogMs = 5000;
 constexpr uint32_t kHealthyUptimeMs = 60000;  // clears the crash streak
 
@@ -39,6 +18,11 @@ const BootInfo &info();
 void start_watchdog();
 void feed_watchdog();
 void mark_healthy();  // after kHealthyUptimeMs without faults
+// A watchdog reset is expected soon (the caller stopped feeding it on
+// purpose): leave `msg` for the next boot. clear_pending() withdraws it if
+// the condition goes away before the watchdog fires.
+void note_hang(const char *msg);
+void clear_pending();
 // Intentional reboots record their reason first.
 [[noreturn]] void reboot(ResetKind why, bool to_bootsel = false);
 

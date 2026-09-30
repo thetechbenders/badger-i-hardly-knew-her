@@ -12,6 +12,11 @@
 //   any      --3 consecutive I2C errors--> Fault (best-effort power-down,
 //            bus recovery, re-probe with backoff 1 s .. 30 s while wanted)
 //
+// The backoff only resets after kStableMs without a fault, not on the next
+// successful probe: a flaky cable that probes fine but fails once active
+// would otherwise cycle every second, and every ok/fault flip of the status
+// indicator costs an e-paper refresh.
+//
 // A missing sensor or bus fault only affects gestures; callers keep working.
 #pragma once
 
@@ -37,6 +42,9 @@ class Apds9960 {
  public:
   static constexpr uint8_t kAddr = 0x39;
   static constexpr uint32_t kPollMs = 10;
+  static constexpr uint32_t kRetryMinMs = 1000;
+  static constexpr uint32_t kRetryMaxMs = 30000;
+  static constexpr uint32_t kStableMs = 60000;
 
   explicit Apds9960(I2cBus &bus) : bus_(bus) {}
   void set_params(const GestureParams &p);
@@ -61,6 +69,7 @@ class Apds9960 {
   bool power(bool on);
   void io_error(uint32_t now_ms);
   void schedule_retry(uint32_t now_ms);
+  void became_ready(uint32_t now_ms);
 
   I2cBus &bus_;
   GestureParams params_;
@@ -69,7 +78,8 @@ class Apds9960 {
   SensorState state_ = SensorState::Unprobed;
   bool wanted_ = false;
   uint8_t consec_errors_ = 0;
-  uint32_t next_poll_ms_ = 0, next_retry_ms_ = 0, backoff_ms_ = 1000;
+  uint32_t next_poll_ms_ = 0, next_retry_ms_ = 0, backoff_ms_ = kRetryMinMs;
+  uint32_t ready_since_ms_ = 0;  // entered Standby/Active without a fault since
   SensorStats stats_;
 };
 

@@ -266,3 +266,43 @@ TEST(gesture_burst_produces_single_refresh) {
   CHECK_EQ(refreshes, 2);  // initial frame + final view only
   CHECK_EQ(panel.violations, 0);
 }
+
+// A marginal Qwiic connection: every probe succeeds, but the sensor drops off
+// the bus shortly after the engine is enabled. Each ok <-> fault flip changes
+// the status indicator and so costs a panel refresh; the flip rate must stay
+// bounded by the backoff instead of cycling every second.
+TEST(apds_flapping_sensor_is_rate_limited) {
+  FakeApds bus;
+  Apds9960 s(bus);
+  s.set_wanted(true);
+  s.start(0);
+  uint32_t t = 0;
+  auto ok = [&] { return s.state() == SensorState::Standby || s.state() == SensorState::Active; };
+  bool was_ok = ok();
+  int flips_first = 0, flips_last = 0;
+  for (int i = 0; i < 60000; ++i) {  // 10 minutes of 10 ms main-loop polls
+    if (s.state() == SensorState::Active && bus.fail_after < 0) bus.fail_after = 3;
+    if (s.state() == SensorState::Fault) bus.fail_after = -1;  // answers the next probe
+    s.poll(t += 10);
+    if (ok() != was_ok) {
+      was_ok = !was_ok;
+      (i < 30000 ? flips_first : flips_last) += 1;
+    }
+  }
+  CHECK(flips_first > 4);        // it really is flapping
+  CHECK(flips_last <= 2 * 10 + 2);  // at most one fault cycle per 30 s backoff
+  CHECK(s.stats().faults < 40u);
+  // Once the connection is good, a minute of stable operation restores fast
+  // retries: the next glitch recovers within about a second.
+  bus.fail_after = -1;
+  for (int i = 0; i < 7000; ++i) s.poll(t += 10);
+  CHECK(s.state() == SensorState::Active);
+  bus.fail_after = 0;
+  for (int i = 0; i < 5 && s.state() != SensorState::Fault; ++i) s.poll(t += 10);
+  CHECK(s.state() == SensorState::Fault);
+  bus.fail_after = -1;
+  int ms = 0;
+  while (s.state() != SensorState::Active && ms < 5000) { s.poll(t += 10); ms += 10; }
+  CHECK(s.state() == SensorState::Active);
+  CHECK(ms <= 1100);
+}

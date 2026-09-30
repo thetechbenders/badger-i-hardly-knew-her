@@ -7,19 +7,23 @@ uint32_t SimPanel::expected_ms() const {
   return t[speed_ & 3];
 }
 
-bool SimPanel::busy() { return stuck || int32_t(busy_until_ - now()) > 0; }
+bool SimPanel::busy() { return dead || stuck || int32_t(busy_until_ - now()) > 0; }
 
-void SimPanel::init(uint8_t speed) {
+bool SimPanel::init(uint8_t speed) {
+  ops.push_back({'I', speed, {}});
+  if (dead) return false;  // the bounded reset timed out
   stuck = false;
   speed_ = speed;
   busy_until_ = now();
-  ops.push_back({'I', speed, {}});
+  return true;
 }
 
-void SimPanel::set_speed(uint8_t speed) {
+bool SimPanel::set_speed(uint8_t speed) {
+  ops.push_back({'S', speed, {}});
+  if (dead) return false;
   if (busy()) ++violations;
   speed_ = speed;
-  ops.push_back({'S', speed, {}});
+  return true;
 }
 
 void SimPanel::start_full(const Framebuffer &fb) {

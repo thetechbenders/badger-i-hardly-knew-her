@@ -12,6 +12,7 @@ set(BADGER_CORE_SOURCES
   ${_BADGER_ROOT}/firmware/core/app.cpp
   ${_BADGER_ROOT}/firmware/core/assetpack.cpp
   ${_BADGER_ROOT}/firmware/core/battery.cpp
+  ${_BADGER_ROOT}/firmware/core/crash_record.cpp
   ${_BADGER_ROOT}/firmware/core/crc32.cpp
   ${_BADGER_ROOT}/firmware/core/display_pipeline.cpp
   ${_BADGER_ROOT}/firmware/core/framebuffer.cpp
