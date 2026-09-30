@@ -1,0 +1,7 @@
+# Keep LF everywhere: shell scripts must run from a Windows checkout too, and
+# build inputs must be byte-identical on every checkout for reproducible
+# firmware builds.
+* text=auto eol=lf
+*.png binary
+*.uf2 binary
+*.bin binary

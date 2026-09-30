@@ -66,6 +66,21 @@ jobs:
             -DBADGER_PORTRAIT=$PWD/assets/sample/portrait_placeholder.png
       - name: Memory report
         run: cat build/fw/memory-report.txt | head -12
+      - name: Verify artifacts (UF2 regions, linker placement, metadata, checksums)
+        run: '"$BADGER_PYTHON" scripts/verify_artifacts.py build/fw --require-clean'
+      - name: Reproducible from a different checkout path
+        run: |
+          repro="$RUNNER_TEMP/repro"
+          git clone -q "$PWD" "$repro"
+          git -C "$repro" checkout -q "$GITHUB_SHA"
+          ln -s "$PWD/deps" "$repro/deps"
+          (cd "$repro" && scripts/build-firmware.sh -DPython3_EXECUTABLE="$BADGER_PYTHON" \
+            -DBADGER_PROFILE="$repro/config/sample-profile.json" \
+            -DBADGER_PORTRAIT="$repro/assets/sample/portrait_placeholder.png" > /dev/null)
+          for f in badger_badge.uf2 badger_badge.bin badger_badge.elf badger_badge-assets.uf2; do
+            cmp "build/fw/$f" "$repro/build/fw/$f"
+            echo "identical: $f"
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: firmware-sample

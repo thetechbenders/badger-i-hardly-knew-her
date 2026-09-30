@@ -38,7 +38,9 @@ find_package(Git QUIET)
 set(BADGER_GIT_VERSION "unknown")
 set(BADGER_BUILD_DATE "unknown")
 if(GIT_FOUND)
-  execute_process(COMMAND ${GIT_EXECUTABLE} describe --always --dirty --tags
+  # Fixed abbreviation: the default grows with the object count, so a fresh
+  # clone (or a restored bundle) could embed a different string.
+  execute_process(COMMAND ${GIT_EXECUTABLE} describe --always --dirty --tags --abbrev=12
                   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} OUTPUT_VARIABLE BADGER_GIT_VERSION
                   OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
   execute_process(COMMAND ${GIT_EXECUTABLE} log -1 --format=%cI
@@ -71,7 +73,10 @@ add_executable(${FW}
 target_include_directories(${FW} PRIVATE
   firmware/core firmware/cli firmware/platform third_party/qrcodegen ${PIMORONI_PICO_PATH})
 target_compile_options(${FW} PRIVATE
-  $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti>)
+  $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti>
+  # Reproducible across checkout locations: no absolute source paths in
+  # __FILE__ strings or debug info (applies to the SDK sources built here too).
+  -ffile-prefix-map=${CMAKE_CURRENT_SOURCE_DIR}=.)
 set_source_files_properties(${PIMORONI_PICO_PATH}/drivers/uc8151_legacy/uc8151_legacy.cpp
                             third_party/qrcodegen/qrcodegen.c PROPERTIES COMPILE_OPTIONS "-w")
 target_compile_definitions(${FW} PRIVATE
