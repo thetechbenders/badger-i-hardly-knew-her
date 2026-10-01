@@ -55,7 +55,7 @@ before running `fetch-deps.sh`.
 
 | CMake option | Default |
 |---|---|
-| `-DBADGER_PROFILE=<json>` | `local/profile.json` if present, else `config/sample-profile.json` (a `.toml` form is accepted too) |
+| `-DBADGER_PROFILE=<json>` | `local/profile.json` if present, else `config/sample-profile.json` (a `.toml` form needs `-DBADGER_PORTRAIT` too: configuring fails without it) |
 | `-DBADGER_PORTRAIT=<png>` | `local/portrait.png` if present, else `assets/sample/portrait_placeholder.png`; `none` = no built-in portrait |
 
 CMake prints which files were used. For a filled-in form, use

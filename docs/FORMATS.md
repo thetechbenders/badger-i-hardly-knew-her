@@ -154,4 +154,8 @@ above; it is not a second schema. `description` becomes `body`, a list of
 identity key is always present (empty = not shown). `badge_profile.load()`
 accepts a `.toml` path, so `profilegen.py`, `render_previews.py` and
 `badgerctl.py push` read forms too. The generated `profile.json` carries a
-`_generated_by` marker. The tool replaces only files with that marker.
+`_generated_by` marker. Its output directory carries a `.badge-form-output`
+manifest (JSON: the paths it wrote); only those are replaced. A
+`[[contacts]]` block with `hidden = true` keeps its slot with an empty value
+(never drawn), so label-only contacts of a JSON profile survive `export`.
+Form backups record the form and output paths in `INPUTS.json`.

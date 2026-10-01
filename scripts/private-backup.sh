@@ -13,6 +13,7 @@
 #
 # The archive holds private data (portrait, contact details) and is written
 # under local/, which Git ignores. It contains:
+#   INPUTS.json    for a form backup: the form and output paths (structured; spaces allowed)
 #   local/         the private inputs (profile or form, portrait, originals, settings), minus
 #                  backups/ and the previews/firmware under out/
 #   artifacts/     the personalised firmware built from the recorded commit
@@ -47,15 +48,11 @@ create() {
     form=local/badge.toml
   fi
   if [ -n "$form" ]; then
-    form="$(realpath --relative-to="$root" "$form")"
-    case "$form" in local/*) ;; *) echo "error: keep the form in local/ so the backup holds it ($form)" >&2; exit 1 ;; esac
     [ -f "$form" ] || { echo "error: form not found: $form" >&2; exit 1; }
-    "$py" tools/badge_form.py check "$form" >/dev/null || { "$py" tools/badge_form.py check "$form"; exit 1; }
-    while read -r f; do
-      case "$(realpath --relative-to="$root" "$f")" in
-        local/*) ;; *) echo "error: $f is outside local/; copy it into local/ so the backup holds it" >&2; exit 1 ;;
-      esac
-    done < <("$py" tools/badge_form.py inputs "$form")
+    form="$(realpath --relative-to="$root" "$form")"
+    # Every file the form reads must be archived and referenced relative to
+    # the form (in local/, outside the excluded directories below).
+    "$py" tools/badge_form.py backup-check "$form" || exit 1
   else
     local missing=()
     for f in local/profile.json local/portrait.png; do [ -f "$f" ] || missing+=("$f"); done
@@ -71,7 +68,7 @@ create() {
   if [ -n "$form" ]; then
     mkdir -p build
     local out; out="$(prepare_form "$root" "$form")"
-    inputs="form $form $out"
+    inputs="form"
     profile="$out/profile.json"; portrait="$out/portrait.png"
   else
     "$py" -c "import sys, pathlib; sys.path.insert(0, 'tools'); import badge_profile as p; p.load(pathlib.Path('local/profile.json'))"
@@ -106,6 +103,8 @@ create() {
     echo "python $("$py" --version 2>&1) pillow $("$py" -c 'import PIL; print(PIL.__version__)')"
     grep -E '^[A-Z_]+=' deps.lock
   } >"$stage/BUILDINFO"
+  # Structured record of the form inputs (paths may contain spaces).
+  if [ "$inputs" = form ]; then "$py" tools/badge_form.py backup-meta --write "$stage/INPUTS.json" "$form" "$out"; fi
   cat >"$stage/RESTORE.md" <<'EOF'
 # Restoring the personalised badge
 
@@ -161,10 +160,15 @@ verify() {
   cp -r "$dir/local" "$tmp/src/local"
   if [ -d "$root/deps/pico-sdk" ]; then ln -s "$root/deps" "$tmp/src/deps"; else (cd "$tmp/src" && scripts/fetch-deps.sh); fi
   local inputs profile portrait
-  inputs="$(sed -n 's/^inputs //p' "$dir/BUILDINFO")"
-  if [ "${inputs%% *}" = form ]; then
+  # INPUTS.json, or an older archive's unambiguous BUILDINFO "inputs" line.
+  inputs="$("$py" "$root/tools/badge_form.py" backup-meta "$dir" mode)" || { echo "FAIL  backup metadata"; return 1; }
+  if [ "$inputs" = form ]; then
     local form out
-    read -r _ form out <<<"$inputs"
+    form="$("$py" "$root/tools/badge_form.py" backup-meta "$dir" form)"
+    out="$("$py" "$root/tools/badge_form.py" backup-meta "$dir" out)"
+    # Everything the restored form reads must come from the restored archive.
+    "$py" "$root/tools/badge_form.py" backup-check --root "$tmp/src" "$tmp/src/$form" ||
+      { echo "FAIL  the restored form $form reads files outside the restored archive"; return 1; }
     mkdir -p "$tmp/archived" "$tmp/src/build"
     cp "$tmp/src/$out/profile.json" "$tmp/src/$out/portrait.png" "$tmp/archived/"
     prepare_form "$tmp/src" "$form" >/dev/null

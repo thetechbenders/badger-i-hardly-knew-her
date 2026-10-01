@@ -50,9 +50,15 @@ must pass before the next one starts:
 3. **Generate the profile** (`local/out/badge/profile.json`). It is the same
    profile model a hand-written JSON profile uses, validated by
    `tools/badge_profile.py` with the firmware's limits. Never edit it; edit
-   the form. If a `profile.json` that the tool did not write is already in
-   the output directory, the tool stops rather than overwrite it.
-   `local/profile.json` is never touched.
+   the form. `local/profile.json` is never touched.
+
+   The output directory is checked before anything is written or deleted.
+   It must be new, empty, or one this tool created: a `.badge-form-output`
+   manifest lists what it wrote there, and only those paths are replaced.
+   It stops, leaving every file as it was, if a directory holds other
+   files (so `--out docs` cannot replace committed previews), if an output
+   path is a symbolic link, or if an output path is one of the form's own
+   inputs (e.g. `processed = "out/portrait.png"`).
 4. **Check that everything shows.** The firmware renderer (host build)
    reports whether every supplied field was drawn completely: on the photo
    badge in both layouts (USR switches between them), the card, the
@@ -161,12 +167,17 @@ python3 tools/badge_form.py export local/profile.json --form local/badge.toml \
 scripts/build-badge.sh --preview local/badge.toml
 ```
 
-`export` never overwrites a file. The form it writes gives exactly the same
-profile as the JSON, and therefore the same screens and the same firmware.
-Untyped contacts become `type = "text"`, which is drawn the same way. A QR
-caption without a QR code (never shown) is kept as a comment, because the
-form refuses a caption with nothing to describe. Your
-JSON and portrait are left as they were.
+`export` never overwrites a file, and your JSON and portrait are left as
+they were. A contact with a label but no value keeps its slot as
+`hidden = true` (never drawn, as before). The form then gives the same
+profile as the JSON, and so the same screens and firmware, except for
+these normalisations, each reported when it happens:
+
+- an untyped contact becomes `type = "text"` (drawn the same way);
+- a QR caption without a QR code (never shown) is kept as a comment,
+  because the form refuses a caption with nothing to describe;
+- empty project entries between projects are left out, so later projects
+  move up a slot (the same pages are shown, in the same order).
 
 `badgerctl.py push local/badge.toml` pushes the form's profile over USB
 like a JSON profile (contacts, QR, projects and preferences; the portrait
@@ -177,10 +188,18 @@ is built into the firmware).
 `scripts/private-backup.sh create local/badge.toml` builds from the form
 (with all of the checks above) and archives the form, the files it refers
 to, the generated profile and portrait, the firmware, a source bundle and
-build information. Every file the form refers to must be inside `local/`.
+build information. Every file the form reads must be in `local/` but not in
+a directory the archive leaves out (`local/backups/`, and `fw/`, `fw-*` and
+`previews/` under `local/out/<name>/`), must be the real file rather than a
+symbolic link, and must be referred to relative to the form (no absolute
+or `~` paths), so a restored copy reads only its own files. The form and
+output paths are recorded in `INPUTS.json`; names with spaces are fine.
 `scripts/private-backup.sh verify <archive>` restores into a temporary
-directory, regenerates the profile and portrait from the form, checks they
+directory, checks that the restored form reads only restored files,
+regenerates the profile and portrait from the form, checks they
 are identical to the archived ones, rebuilds and compares the firmware byte
 for byte. Without an argument, `create` keeps using `local/profile.json` and
-`local/portrait.png` when both exist, as before. Existing archives are
+`local/portrait.png` when both exist, as before; older JSON and form
+archives still verify (a form archive without `INPUTS.json` is accepted
+when its recorded paths are unambiguous). Existing archives are
 never replaced: a second backup of the same commit gets a `-2` suffix.

@@ -68,6 +68,8 @@ interests = ["3D printing", "electronics", "embedded systems"]
 #   label = up to 15 bytes, shown in bold before the value. Optional;
 #           github and discord lines show their icon instead.
 #   value = required, up to 71 bytes
+#   hidden = optional, true keeps the line's slot with an empty value; it
+#           is never drawn (e.g. a label to fill in over USB later)
 #  Delete a whole block to remove a line. Blocks with every field empty
 #  are left out.
 

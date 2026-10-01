@@ -17,8 +17,9 @@ scripts/build-badge.sh wraps `build` (and `preview` with --preview).
 
 Outputs go to local/out/<form name>/ (git-ignored) unless --out is given:
 profile.json (generated; never edit it), portrait.png, assets.bin, previews/
-and fw/. An existing profile.json there that this tool did not write is
-never overwritten, and nothing outside the output directory is written.
+and fw/. The directory must be new, empty or this tool's own (manifest
+.badge-form-output); every output path is checked before anything is
+written or deleted, and nothing outside the output directory is written.
 
 Paths in the form (photo, vCard file) are relative to the form file. The
 original photo is only read: crop, scale and global tone operations are
@@ -64,7 +65,7 @@ INTERESTS_SEPARATOR = " \u00b7 "
 
 SECTIONS = {
     "form": None, "person": ("name", "title", "affiliation", "event", "interests"),
-    "contacts": ("type", "label", "value"), "qr": ("show", "link", "vcard", "vcard_file", "caption"),
+    "contacts": ("type", "label", "value", "hidden"), "qr": ("show", "link", "vcard", "vcard_file", "caption"),
     "portrait": ("photo", "processed", "settings", "crop", "size", "method", "gamma", "black_pct",
                  "white_pct", "sharpen"),
     "projects": ("title", "tagline", "description", "status", "banner", "link"),
@@ -97,6 +98,8 @@ class Form:
     portrait: Portrait | None
     notes: list[str] = field(default_factory=list)
     inputs: list[Path] = field(default_factory=list)   # every file the form reads
+    refs: list[tuple[str, str]] = field(default_factory=list)  # (form field, path as written)
+    blocks: dict = field(default_factory=dict)  # "contact"/"project" -> form block number of each kept entry
 
 
 # ------------------------------------------------------------------ parsing
@@ -205,6 +208,8 @@ def load_form(path: Path, text: str | None = None) -> Form:
     problems: list[str] = []
     notes: list[str] = []
     inputs: list[Path] = [path]
+    refs: list[tuple[str, str]] = []
+    blocks: dict[str, list[int]] = {"contact": [], "project": []}
     _Reader(problems, "top level", data, tuple(SECTIONS))
     if data.get("form") != FORM_VERSION:
         problems.append(f"form: expected `form = {FORM_VERSION}` at the top (got {data.get('form')!r})")
@@ -258,21 +263,31 @@ def load_form(path: Path, text: str | None = None) -> Form:
         ctype = r.table.get("type", "")
         label = r.text("label", lim["contact1.label"][1])
         value = r.text("value", lim["contact1.value"][1])
-        if not label and not value and (not ctype or isinstance(ctype, str)):
+        hidden = r.table.get("hidden", False)
+        if not isinstance(hidden, bool):
+            problems.append(f"contacts #{i}.hidden: expected true or false, got {hidden!r}")
+            hidden = False
+        if not label and not value and not hidden and (not ctype or isinstance(ctype, str)):
             notes.append(f"contacts #{i} is blank and was left out")
             continue
-        where = f"contacts #{i} ({label or ctype or value})"
+        where = f"contacts #{i} ({label or ctype or value or 'hidden'})"
         if not isinstance(ctype, str) or ctype not in CONTACT_TYPES:
             problems.append(f"{where}.type: {ctype!r} is not a contact type; use one of "
                             + ", ".join(f'"{t}"' for t in CONTACT_TYPES))
             ctype = "text"
-        if not value:
-            problems.append(f"{where}.value: empty; fill it in or delete this [[contacts]] block")
+        if hidden:  # kept in its slot but never drawn (e.g. filled in over USB later)
+            if value:
+                problems.append(f"{where}: hidden = true needs an empty value (a value is always drawn); "
+                                "clear the value or remove hidden")
+        elif not value:
+            problems.append(f"{where}.value: empty; fill it in, set hidden = true to keep the line "
+                            "without showing it, or delete this [[contacts]] block")
         elif msg := _contact_value_problem(ctype, value):
             problems.append(f"{where}.value: {msg}")
-        if not label and ctype in ("email", "phone", "web", "text"):
+        if not label and value and ctype in ("email", "phone", "web", "text"):
             notes.append(f"{where} has no label: the value is shown on its own")
         contacts.append({"label": label, "value": value, "type": ctype})
+        blocks["contact"].append(i)
 
     # QR code shown on the card.
     qr_doc = {"payload": "", "caption": ""}
@@ -304,6 +319,7 @@ def load_form(path: Path, text: str | None = None) -> Form:
             else:
                 vpath = _resolve(form_dir, fname)
                 inputs.append(vpath)
+                refs.append(("qr.vcard_file", fname))
                 try:
                     payload = _clean(vpath.read_text(encoding="utf-8-sig"), True)
                 except FileNotFoundError:
@@ -354,6 +370,7 @@ def load_form(path: Path, text: str | None = None) -> Form:
             problems.append(f"{r.where}.link: {entry['link']!r} must be an https:// address without spaces, "
                             "e.g. \"https://github.com/you/project\"")
         projects.append(entry)
+        blocks["project"].append(i)
 
     # Preferences (optional; same names as the USB settings keys).
     prefs = {}
@@ -380,8 +397,10 @@ def load_form(path: Path, text: str | None = None) -> Form:
     portrait = _portrait(problems, notes, form_dir, data.get("portrait"))
     if portrait:
         inputs.append(portrait.path)
+        refs.append((f"portrait.{portrait.kind}", data["portrait"][portrait.kind].strip()))
         if isinstance(data["portrait"].get("settings"), str):
             inputs.append(_resolve(form_dir, data["portrait"]["settings"]))
+            refs.append(("portrait.settings", data["portrait"]["settings"]))
     doc = {"format": 1, "profile": {**person, "contacts": contacts, "qr": qr_doc, "projects": projects},
            "prefs": prefs}
     if problems:
@@ -391,7 +410,7 @@ def load_form(path: Path, text: str | None = None) -> Form:
         prof.flatten(doc)
     except prof.ProfileError as e:
         raise FormError([f"profile: {e}"]) from None
-    return Form(path=path, doc=doc, portrait=portrait, notes=notes, inputs=inputs)
+    return Form(path=path, doc=doc, portrait=portrait, notes=notes, inputs=inputs, refs=refs, blocks=blocks)
 
 
 def load_doc(path: Path) -> dict:
@@ -576,8 +595,8 @@ def _check_processed(problems, path: Path):
     if im.mode != "1":
         rgba = im.convert("RGBA")
         lo, hi = rgba.getchannel("A").getextrema()
-        values = set(rgba.convert("L").getdata())
-        if lo < 255 or not values <= {0, 255}:
+        grey = any(rgba.convert("L").histogram()[1:255])
+        if lo < 255 or grey:
             problems.append(f"portrait.processed: {path.name} has grey or transparent pixels; a processed "
                             "portrait is pure black and white. Use photo = \"...\" to convert a picture")
 
@@ -705,27 +724,123 @@ FIELD_NAMES = {"name": "person.name", "title": "person.title", "affiliation": "p
                "qr.payload": "qr"}
 
 
-def form_field(key: str, doc: dict) -> str:
-    """Settings key -> the form field a user edits."""
+def form_field(key: str, doc: dict, blocks: dict | None = None) -> str:
+    """Settings key -> the form field a user edits. `blocks` maps each kept
+    contact/project to its [[block]] number in the form (blank blocks are
+    left out of the profile, so the slot number can be smaller)."""
     if key in FIELD_NAMES:
         return FIELD_NAMES[key]
     m = re.fullmatch(r"(contact|project)(\d+)\.(\w+)", key)
     if not m:
         return key
     n = int(m[2])
+    shown = (blocks or {}).get(m[1], [])
+    num = shown[n - 1] if n - 1 < len(shown) else n
     if m[1] == "contact":
         c = doc["profile"]["contacts"][n - 1]
-        return f"contacts #{n} ({c['label'] or c['type']}).{m[3]}"
+        return f"contacts #{num} ({c['label'] or c['type']}).{m[3]}"
     title = doc["profile"]["projects"][n - 1].get("title", "")
     field_ = {v: k for k, v in PROJECT_KEYS.items()}[m[3]]
-    return f"projects #{n} ({title}).{field_}"
+    return f"projects #{num} ({title}).{field_}"
+
+
+OUT_MARK = ".badge-form-output"   # JSON manifest: which outputs this tool wrote here
+OUTPUTS = ("profile.json", "portrait.png", "portrait-methods_x3.png", "assets.bin", "previews", "fw",
+           "fw-build.log", "fw-verify.txt")
+
+
+def _legacy_output(out: Path) -> bool:
+    """A directory written by the first version of this tool (no manifest yet):
+    its profile.json carries the generated marker."""
+    p = out / "profile.json"
+    if p.is_symlink() or not p.is_file():
+        return False
+    try:
+        return GENERATED_MARK in json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, TypeError):
+        return False
+
+
+def _manifest(out: Path) -> dict | None:
+    mark = out / OUT_MARK
+    if mark.is_symlink() or not mark.is_file():
+        return None
+    try:
+        m = json.loads(mark.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return None
+    return m if isinstance(m, dict) and m.get("tool") == "tools/badge_form.py" else None
+
+
+def preflight_out(out: Path, form: Form) -> None:
+    """Check every path this tool would write or delete in `out` before
+    touching any of them. Refused: an `out` that is a symlink or a file; a
+    non-empty directory without this tool's manifest; an output path that is a
+    symlink (it would redirect the write) or exists without being listed in
+    the manifest; and an output path that is, or contains, one of the form's
+    own input files. On refusal nothing has been written."""
+    problems = []
+    if out.is_symlink():
+        problems.append(f"--out {out} is a symbolic link; give the real directory")
+    elif out.exists() and not out.is_dir():
+        problems.append(f"--out {out} is a file, not a directory")
+    else:
+        owned: set = set()
+        if out.is_dir() and any(out.iterdir()):
+            m = _manifest(out)
+            if m is None and not (out / OUT_MARK).exists() and _legacy_output(out):
+                m = {"owned": [n for n in OUTPUTS if (out / n).exists()]}  # adopt the earlier output
+            if m is None:
+                problems.append(f"{out} already holds files this tool did not write; they are left alone. "
+                                "Choose an empty or new directory with --out")
+            else:
+                owned = set(m.get("owned", []))
+        if not problems:
+            if (out / OUT_MARK).is_symlink():
+                problems.append(f"{out / OUT_MARK} is a symbolic link")
+            for name in OUTPUTS:
+                p = out / name
+                if p.is_symlink():
+                    problems.append(f"{p} is a symbolic link; writing there would change another file")
+                elif p.exists() and name not in owned:
+                    problems.append(f"{p} exists and was not written by this tool; it is left alone")
+    out_r = out.resolve()
+    for f in form.inputs:
+        fr = f.resolve()
+        for name in OUTPUTS + (OUT_MARK,):
+            target = out_r / name
+            if fr == target or target in fr.parents:
+                problems.append(f"{f} is one of the form's inputs but also an output path of --out "
+                                f"({target}); move it, or choose another --out")
+    if problems:
+        raise FormError(problems)
+
+
+def _own(out: Path, name: str) -> None:
+    """Record `name` in the manifest before writing it."""
+    m = _manifest(out) or {"tool": "tools/badge_form.py", "owned": []}
+    if name not in m["owned"]:
+        m["owned"].append(name)
+    (out / OUT_MARK).write_text(json.dumps(m, indent=1) + "\n", encoding="utf-8")
+
+
+def claim_out(out: Path, form: Form) -> None:
+    preflight_out(out, form)
+    out.mkdir(parents=True, exist_ok=True)
+    if _manifest(out) is None:
+        legacy = [n for n in OUTPUTS if (out / n).exists()] if _legacy_output(out) else []
+        _own(out, OUT_MARK)
+        for n in legacy:
+            _own(out, n)
 
 
 def preview(form: Form, out: Path) -> dict:
     """Portrait, profile, asset pack and previews, with the text-fit and QR
     gates. Raises FormError with field names when something would not show."""
     import render_previews as rp
-    out.mkdir(parents=True, exist_ok=True)
+    claim_out(out, form)
+    for name in ("portrait.png", "portrait-methods_x3.png", "profile.json", "assets.bin", "previews"):
+        _own(out, name)
     portrait = prepare_portrait(form, out)
     profile = write_profile(form, out)
     pack = out / "assets.bin"
@@ -734,11 +849,11 @@ def preview(form: Form, out: Path) -> dict:
     if res.returncode:
         raise FormError([f"portrait: asset pack: {res.stderr.strip() or res.stdout.strip()}"])
     pairs = prof.flatten(form.doc)
-    problems = [f"{form_field(k, form.doc)}: {why}" for k, why in prof.text_problems(pairs)]
+    problems = [f"{form_field(k, form.doc, form.blocks)}: {why}" for k, why in prof.text_problems(pairs)]
     exe = host_preview_binary()
     screens, projects = rp.fit_reports(exe, pairs, pack)
     for key, where in rp.fit_problems(screens, projects, pairs):
-        problems.append(f"{form_field(key, form.doc)}: does not fit on the {where} (it would be cut "
+        problems.append(f"{form_field(key, form.doc, form.blocks)}: does not fit on the {where} (it would be cut "
                         "or left out); shorten it")
     if problems:
         raise FormError(problems)
@@ -752,20 +867,33 @@ def preview(form: Form, out: Path) -> dict:
     report = json.loads(report_path.read_text()) if report_path.exists() else {"screens": {}}
     bad = [s for s, r in report["screens"].items() if r["ok"] is False]
     if res.returncode or bad:
-        msgs = []
-        for s in bad:
-            if s.startswith("project-qr"):
-                n = int(s.split("_")[1]) if "_" in s else 1
-                msgs.append(f"projects #{n}.link: its QR code did not decode back to the link")
-            else:
-                msgs.append(f"qr: the {s} QR code did not decode back to its content (too long to draw?); "
-                            "shorten the link or vCard")
-        raise FormError(msgs or [f"previews failed:\n{res.stdout[-2000:]}{res.stderr[-2000:]}"])
+        raise FormError(qr_failures(form, bad) or [f"previews failed:\n{res.stdout[-2000:]}{res.stderr[-2000:]}"])
     return {"profile": profile, "portrait": portrait, "pack": pack, "previews": previews,
             "sheet": previews / "contact_sheet.png", "report": report}
 
 
+def qr_failures(form: Form, screens: list[str]) -> list[str]:
+    """Messages for QR screens that did not decode, naming the form block.
+    `project-qr_N` is the N-th configured project (blank blocks left out)."""
+    msgs = []
+    for name in screens:
+        if name.startswith("project-qr"):
+            n = int(name.split("_")[1]) if "_" in name else 1
+            shown = form.blocks.get("project", [])
+            num = shown[n - 1] if n - 1 < len(shown) else n
+            title = form.doc["profile"]["projects"][n - 1].get("title", "")
+            msgs.append(f"projects #{num} ({title}).link: its QR code did not decode back to the link")
+        else:
+            msgs.append(f"qr: the {name} QR code did not decode back to its content (too long to draw?); "
+                        "shorten the link or vCard")
+    return msgs
+
+
 def build_firmware(prepared: dict, out: Path) -> Path:
+    for name in ("fw", "fw-build.log", "fw-verify.txt"):
+        if (out / name).is_symlink():
+            raise FormError([f"{out / name} is a symbolic link; writing there would change another file"])
+        _own(out, name)
     fw = out / "fw"
     log = out / "fw-build.log"
     env = {**os.environ, "BUILD_DIR": str(fw)}
@@ -781,6 +909,92 @@ def build_firmware(prepared: dict, out: Path) -> Path:
     if res.returncode:
         raise SystemExit(f"artifact checks failed:\n{res.stdout}{res.stderr}")
     return fw
+
+
+# ------------------------------------------------------------------ backup
+
+# rsync --exclude patterns of scripts/private-backup.sh, relative to local/
+# (a test keeps the two equal). Files there are not archived.
+BACKUP_EXCLUDES = ("/backups/", "/out/*/fw/", "/out/*/fw-*", "/out/*/previews/")
+
+
+def _excluded(rel: str) -> str | None:
+    """The BACKUP_EXCLUDES pattern that leaves `rel` (a path inside local/) out."""
+    import fnmatch
+    parts = rel.split("/")
+    for pat in BACKUP_EXCLUDES:
+        pp = pat.strip("/").split("/")
+        is_dir = pat.endswith("/")
+        if len(parts) >= len(pp) + is_dir and all(fnmatch.fnmatchcase(a, b) for a, b in zip(parts, pp)):
+            return pat
+    return None
+
+
+def backup_problems(form: Form, root: Path = ROOT) -> list[str]:
+    """Why scripts/private-backup.sh could not restore this form exactly:
+    every file it reads must be archived (inside local/, outside the excluded
+    directories) and referenced relative to the form, so a restored copy reads
+    the archived files rather than the original ones."""
+    local = (root / "local").resolve()
+    out = []
+    for field_, raw in form.refs:
+        if Path(raw).expanduser().is_absolute() or raw.startswith("~") or re.match(r"^[A-Za-z]:[\\/]", raw):
+            out.append(f"{field_}: {raw!r} is an absolute path; write it relative to the form "
+                       "(e.g. \"photo.jpg\") so a restored backup uses its own copy")
+    local_lex = Path(os.path.abspath(root / "local"))
+    for f in [form.path] + form.inputs[1:]:
+        try:
+            rel = f.resolve().relative_to(local).as_posix()
+        except ValueError:
+            out.append(f"{f}: outside local/; copy it into local/ so the backup holds it")
+            continue
+        try:
+            lex = Path(os.path.abspath(f)).relative_to(local_lex).as_posix()
+        except ValueError:
+            lex = None
+        if lex != rel:  # a symlink on the way: the archive would hold the link, not the file
+            out.append(f"{f}: reached through a symbolic link ({lex or f} -> {rel}); backups copy links, "
+                       "not their targets. Refer to the real file in local/ instead")
+            continue
+        if "\n" in rel:
+            out.append(f"{f}: line break in the path")
+        elif pat := _excluded(rel):
+            out.append(f"{f}: inside local{pat.rstrip('*')}, which backups leave out; move it elsewhere in local/")
+    return out
+
+
+def write_backup_inputs(path: Path, form: str, out: str) -> None:
+    """INPUTS.json of a form backup: the form and its output directory, as
+    paths relative to the repository (any characters, including spaces)."""
+    path.write_text(json.dumps({"mode": "form", "form": form, "out": out}, indent=1) + "\n", encoding="utf-8")
+
+
+def read_backup_inputs(archive_dir: Path) -> dict:
+    """{"mode": "json"} or {"mode": "form", "form": ..., "out": ...} for an
+    extracted backup: INPUTS.json when present; otherwise BUILDINFO's
+    "inputs" line (absent or "json": the JSON workflow; "form <form> <out>"
+    from the first form backups, accepted only when exactly one split gives
+    a .toml form and its default output directory local/out/<form name>)."""
+    meta = archive_dir / "INPUTS.json"
+    if meta.is_file():
+        m = json.loads(meta.read_text(encoding="utf-8"))
+        if m.get("mode") == "form" and isinstance(m.get("form"), str) and isinstance(m.get("out"), str):
+            return m
+        if m.get("mode") == "json":
+            return {"mode": "json"}
+        raise ValueError(f"{meta}: unknown backup metadata {m!r}")
+    line = next((l for l in (archive_dir / "BUILDINFO").read_text(encoding="utf-8").splitlines()
+                 if l.startswith("inputs ")), "inputs json")
+    rest = line[len("inputs "):]
+    if rest == "json":
+        return {"mode": "json"}
+    if rest.startswith("form "):
+        words = rest[len("form "):].split(" ")
+        splits = [(" ".join(words[:k]), " ".join(words[k:])) for k in range(1, len(words))]
+        good = [(f, o) for f, o in splits if f.endswith(".toml") and o == f"local/out/{Path(f).stem}"]
+        if len(good) == 1:
+            return {"mode": "form", "form": good[0][0], "out": good[0][1]}
+    raise ValueError(f"BUILDINFO: cannot tell the form and output paths apart in {line!r}")
 
 
 # ------------------------------------------------------------------ export
@@ -802,11 +1016,14 @@ def export_form(doc: dict, portrait_lines: list[str], source: str) -> str:
            "#   scripts/build-badge.sh <this file>", "", f"form = {FORM_VERSION}", "", "[person]"]
     for k in ("name", "title", "affiliation", "event", "interests"):
         out.append(f"{k} = {_toml_str(p.get(k, ''))}")
-    for c in p.get("contacts", []):
-        if not (c.get("label") or c.get("value")):
-            continue
+    contacts = list(p.get("contacts", []))
+    while contacts and not any(contacts[-1].get(k) for k in ("label", "value", "type")):
+        contacts.pop()  # trailing empty slots: the same as no entry
+    for c in contacts:
         out += ["", "[[contacts]]", f"type = {_toml_str(c.get('type') or 'text')}",
                 f"label = {_toml_str(c.get('label', ''))}", f"value = {_toml_str(c.get('value', ''))}"]
+        if not c.get("value"):  # kept in its slot, never drawn (as in the JSON)
+            out.append("hidden = true")
     qr = p.get("qr", {})
     payload = qr.get("payload", "")
     out += ["", "[qr]"]
@@ -848,8 +1065,14 @@ def main(argv=None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     n = sub.add_parser("new", help="copy the template to a new form (never overwrites)")
     n.add_argument("form", type=Path, nargs="?", default=DEFAULT_FORM)
-    i = sub.add_parser("inputs", help="list every file the form reads (for scripts/private-backup.sh)")
+    i = sub.add_parser("inputs", help="list every file the form reads (for CMake)")
     i.add_argument("form", type=Path)
+    b = sub.add_parser("backup-check", help="can scripts/private-backup.sh archive and restore this form?")
+    b.add_argument("form", type=Path)
+    b.add_argument("--root", type=Path, default=ROOT, help="repository holding local/ (e.g. a restored backup)")
+    bm = sub.add_parser("backup-meta", help="read (DIR KEY) or write (--write FILE FORM OUT) backup metadata")
+    bm.add_argument("args", nargs="+")
+    bm.add_argument("--write", action="store_true")
     for name in ("check", "preview", "build"):
         s = sub.add_parser(name)
         s.add_argument("form", type=Path)
@@ -875,6 +1098,19 @@ def main(argv=None) -> int:
               f"  scripts/build-badge.sh --preview {shown}\n  scripts/build-badge.sh {shown}")
         return 0
 
+    if args.cmd == "backup-meta":
+        if args.write:
+            dest, form_rel, out_rel = args.args
+            write_backup_inputs(Path(dest), form_rel, out_rel)
+            return 0
+        archive_dir, key = args.args
+        try:
+            print(read_backup_inputs(Path(archive_dir)).get(key, ""))
+        except ValueError as e:
+            print(f"error: {e}", file=sys.stderr)
+            return 1
+        return 0
+
     if args.cmd == "export":
         if args.form.exists():
             print(f"{args.form} already exists; not overwritten.", file=sys.stderr)
@@ -892,13 +1128,21 @@ def main(argv=None) -> int:
                 lines.append(f"settings = {_toml_str(rel(args.settings))}")
         else:
             lines = ['photo = ""   # fill in: your picture, relative to this file']
-        untyped = [c.get("label") or c.get("value") for c in doc.get("profile", {}).get("contacts", [])
-                   if (c.get("label") or c.get("value")) and not c.get("type")]
+        contacts = doc.get("profile", {}).get("contacts", [])
+        untyped = [c.get("label") or c.get("value") for c in contacts if c.get("value") and not c.get("type")]
+        unshown = [c.get("label") or "(empty)" for c in contacts if not c.get("value")
+                   and any(c.get(k) for k in ("label", "value", "type"))]
+        gaps = [i for i, pr in enumerate(doc.get("profile", {}).get("projects", []), 1) if not any(pr.values())]
         args.form.parent.mkdir(parents=True, exist_ok=True)
         args.form.write_text(export_form(doc, lines, args.profile.name), encoding="utf-8")
         print(f"wrote {args.form}")
         if untyped:
             print(f"note: untyped contacts {untyped} became type = \"text\" (drawn the same way)")
+        if unshown:
+            print(f"note: contacts {unshown} have no value: kept as hidden = true (never drawn, as before)")
+        if gaps:
+            print(f"note: empty project entries {gaps} were left out; later projects move up a slot "
+                  "(the badge shows the same pages)")
         qr = doc.get("profile", {}).get("qr", {})
         if qr.get("caption") and not qr.get("payload"):
             print("note: the QR caption is commented out: without a QR code it is never shown")
@@ -913,6 +1157,11 @@ def main(argv=None) -> int:
         for f in form.inputs:
             print(f.resolve())
         return 0
+    if args.cmd == "backup-check":
+        problems = backup_problems(form, args.root)
+        if problems:
+            _report(FormError(problems), args.form)
+        return 1 if problems else 0
     print(f"form OK: {args.form}")
     p = form.doc["profile"]
     print(f"  {p['name']} - {p['title']}; {len(p['contacts'])} contact(s), "
