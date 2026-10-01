@@ -3,8 +3,8 @@
 ![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/thetechbenders/badger-i-hardly-knew-her?utm_source=oss&utm_medium=github&utm_campaign=thetechbenders%2Fbadger-i-hardly-knew-her&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
 
 **Badger? I hardly knew her! (BHIHKH!)**, occasionally BadgHer, is a photo badge,
-digital business card and project portfolio for **Formnext 2026**, written as native
-C/C++ firmware for the **original Pimoroni Badger 2040** (RP2040, 296 × 128
+digital business card and project portfolio for conferences, trade shows and
+meetups, written as native C/C++ firmware for the **original Pimoroni Badger 2040** (RP2040, 296 × 128
 monochrome e-paper, five front buttons, USB-C, battery connector). It uses the
 Raspberry Pi Pico SDK and Pimoroni's C++ UC8151 driver. No MicroPython, no
 Arduino.
@@ -13,9 +13,11 @@ Arduino.
 |---|---|
 | ![badge](docs/previews/x3/badge_layoutA.png) | ![card](docs/previews/x3/card_example_qr.png) |
 
-The previews above use the public sample content: a placeholder silhouette
-instead of a photo, and an `example.com` QR destination. The real portrait and
-contact details are kept out of Git (see [Private content](#private-content)).
+The previews above use the public sample content: a fictional person, a
+placeholder silhouette instead of a photo, fictional projects and
+`example.com` destinations. Your name, portrait, event label, contacts and
+portfolio are your own configuration ([Make it yours](#make-it-yours)), kept
+out of Git (see [Private content](#private-content)).
 
 ## Screens and controls
 
@@ -152,6 +154,7 @@ the photo.
 - [docs/BATTERY.md](docs/BATTERY.md): battery circuit, thresholds, sampling, multimeter validation
 - [docs/REFRESH.md](docs/REFRESH.md): why a full refresh flashes, refresh timing and `diag refresh`
 - [docs/HARDWARE_SMOKE_TEST.md](docs/HARDWARE_SMOKE_TEST.md): checks to run on a physical badge
-- [docs/USB_HARDWARE_CHECKLIST.md](docs/USB_HARDWARE_CHECKLIST.md): USB-only checklist (no battery / sensor), with pending items
+- [docs/USB_HARDWARE_CHECKLIST.md](docs/USB_HARDWARE_CHECKLIST.md): blank USB-only checklist (no battery / sensor) for any badge
+- [docs/test-records/](docs/test-records/README.md): dated hardware test results, each with its firmware commit, provenance and limits
 - [docs/REVIEW.md](docs/REVIEW.md): code-review findings, fixes and remaining limitations
 - [docs/LICENSES.md](docs/LICENSES.md): dependency, font and asset licence inventory

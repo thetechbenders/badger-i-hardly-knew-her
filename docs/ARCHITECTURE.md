@@ -146,7 +146,7 @@ Three layers, all pure logic in `core/` and host-tested:
 ### Project index and quiet browsing
 
 `Screen::Index` lists the configured project names in configured order
-(BHIHKH! last in the sample), seven rows at a time, with `n/N`, a scrollbar
+seven rows at a time, with `n/N`, a scrollbar
 when it does not fit, and UP/DOWN triangles. All index state is
 session-only RAM; nothing about browsing is ever written to flash, and the
 settings format is unchanged.

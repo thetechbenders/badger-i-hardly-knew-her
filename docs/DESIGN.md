@@ -25,7 +25,7 @@ left to right from face to name, which puts the most recognisable element
 first. The name is the first text line, with nothing competing above it,
 and the strong black element (the event strip) stays at the bottom, away
 from the face. B remains available as
-`layout 1`, and a long press on UP swaps layouts for the session, so both
+`layout 1`, and a long press on USR swaps layouts for the session, so both
 can be compared on the real panel.
 
 Every screen reserves a 56 × 8 px status area at the top right of its main
@@ -50,45 +50,38 @@ diagnostics. It checks layout limits; it is not content.
 
 ## Portrait conversion
 
-Source: the owner's current studio headshot (1254 × 1254, light background),
-kept byte-identical in `local/private/`. The previous portrait and its
-settings are kept in `local/private/previous-portrait-v1/`. Nothing here is
-committed: Git ignores `local/`.
+`tools/portrait.py` (used by the fill-in form for `photo = "..."`) turns an
+ordinary photo into the 1-bit portrait. The original file is only read.
+The pipeline: crop at the target's 104:128 aspect, downscale in linear
+light (so thin dark lines such as glasses frames keep their weight), apply
+a mild unsharp mask, apply global levels (`black_pct` / `white_pct` percent
+clipped), apply `gamma`, then convert to 1 bit. Only global tone and
+geometric operations are used; nothing is painted, retouched or
+synthesised, and a crop that would stretch the face or enlarge the photo
+is refused.
 
-Settings (`local/private/portrait.json`, crop is x, y, width, height):
+Choosing settings for your photo, with `portrait-methods_x3.png` and the
+badge previews open ([PERSONALIZE.md](PERSONALIZE.md)):
 
-```json
-{"crop": [250, 10, 800, 985], "size": [104, 128], "white_pct": 14, "black_pct": 2,
- "gamma": 0.6, "sharpen": 1.0, "method": "atkinson"}
-```
+- **Crop.** Head and shoulders with a little margin above the hair reads
+  best at 104 × 128. A closer crop pushes the hair against the top edge; a
+  wider one leaves fewer pixels for the eyes. The default is the largest
+  centred area; set `crop = [x, y, width, height]` to move it.
+- **Gamma.** Below 1 lightens mid-tones (hair and shadowed skin lose
+  weight), above 1 darkens them. Light backgrounds usually need about
+  0.6–0.8; go lower only while the face keeps its shape.
+- **Levels.** A larger `white_pct` turns more of a light background pure
+  white; `black_pct` does the same for the darkest pixels.
 
-The pipeline is unchanged: crop at the target's 104:128 aspect, downscale in
-linear light (so the thin glasses frames keep their weight), apply a mild
-unsharp mask, apply global levels (2 % / 14 % clip), apply gamma, then
-convert to 1 bit. Only global tone and geometric operations are used;
-nothing is painted, retouched or synthesised.
-
-Choices, compared at native resolution and 3×
-(`local/previews/portrait-v2/crop_comparison_x3.png`,
-`tone_comparison_x3.png`):
-
-- **Crop.** Three framings were compared: a closer crop, head and shoulders
-  (chosen) and a wider one. The closer crop pushes the hair against the top
-  edge. The wider one makes the face and glasses smaller, leaving fewer
-  pixels for the eyes. The chosen crop shows the whole head of longer hair
-  with a little margin, the glasses at full width, and the jacket collar at
-  the bottom.
-- **Gamma.** 0.6 instead of the previous 0.7. On this photo, 0.7 makes the
-  hair and the shadow side of the face noticeably heavier. 0.5 lightens the
-  skin stipple until the face starts to lose shape. A 20 % white clip
-  differed little from 14 %, so 14 % was kept.
-
-| Method | Result on this photo |
+| Method | Typical result on a headshot |
 |---|---|
-| Otsu threshold | Glasses very clear, but the hair becomes a solid helmet and the face flattens into an outline. |
-| Bayer 8×8 ordered | Visible cross-hatch over the face and hair; the glasses break up. |
-| Floyd–Steinberg | Most tonal detail, but worm-like texture in the hair and dense speckle on the skin at 1:1. |
-| **Atkinson** (chosen) | Highlights stay clean, the skin is lightly stippled, the hair keeps strands and volume, and the glasses, eyes and mouth stay distinct. |
+| Otsu threshold | Strong outlines, but dark hair becomes a solid shape and the face flattens. |
+| Bayer 8×8 ordered | Visible cross-hatch over face and hair; thin lines break up. |
+| Floyd–Steinberg | Most tonal detail, but worm-like texture and dense speckle at 1:1. |
+| **Atkinson** (default) | Clean highlights, light stipple on skin, hair keeps some structure, eyes and mouth stay distinct. |
+
+Your portrait and its settings are private configuration: keep the photo,
+any `portrait.json` and the generated portrait in `local/` (git-ignored).
 
 ## Contact icons
 
@@ -108,9 +101,8 @@ keeps `firmware/generated/icons.cpp` reproducible.
 - At 12 px the GitHub mark reduces to its round silhouette with the
   Octocat's tail at the lower left, and Discord's to the rounded "controller"
   face with two eyes. Both read as their platforms on the native-resolution
-  previews. On 2026-10-01 the owner reported both icons checked on the
-  physical panel, on local build `023b3c6` (USB_HARDWARE_CHECKLIST.md,
-  test record).
+  previews. Checks on a physical panel are recorded, per firmware build, in
+  [test-records/](test-records/README.md).
 
 ## Project portfolio
 
@@ -120,9 +112,9 @@ UP/DOWN there returns to that same project. Each page has:
 
 - a header with `PROJECT n/N`, left of the reserved status area;
 - the title (bold, auto-sized);
-- an optional teaser **banner**, white on a black band. The CatScan-MS
-  entry uses it ("TOP SECRET - COMING SOON") and deliberately has no link
-  and no QR;
+- an optional teaser **banner**, white on a black band, e.g.
+  "TOP SECRET - COMING SOON" on a project that deliberately has no link and
+  no QR (the sample's "Secret Project");
 - the tagline, always bold 10 so the hierarchy does not shift while
   browsing, up to 2 lines;
 - an optional outlined **status** tag: a readiness note or the fork's
@@ -154,27 +146,21 @@ Only the labelled HOST DIAGNOSTIC SAMPLE is allowed to overflow, because
 that is what it tests. With a status tag, about 80 characters of
 description fit at 11 px.
 
-### Portfolio sources
+### Your portfolio
 
-Text, links and status labels come from each selected repository's public
-README and history; nothing beyond them is claimed. Destinations were
-checked to resolve (`git ls-remote`) and every QR is decoded and compared
-with its link.
+The portfolio is your own configuration: any 0–12 projects, in the order
+you list them (none are required, and the sample's entries are fictional).
+Suggestions for a public badge:
 
-| Entry | Destination | Notes |
-|---|---|---|
-| Jump Jet | thetechbenders/JumpJet | Co-developed by Dan and Mauker; redesign of Philip Sørensen's original Jetpack; PCBWay-sponsored (README). README states "cold-safe foundation", shown as "Work in progress". |
-| DragonBreath | danielbrownjr/DragonBreath (Dan's fork) | Upstream **plastikman/DragonBreath** (maintainer plastikman, Zak Peirce; contributors include Justin Hayes). The badge says "Fork of plastikman/DragonBreath". Dan's contributions, merged upstream via PRs #89, #91, #97 and #98: opt-in Bambu external-chamber regulation, chamber control ported to dragon-core's `dc_pid`, PID duty telemetry, plus related fixes, tests and a build requirement. |
-| DragonSniff | thetechbenders/DragonSniff | Read-only observability tooling (README). |
-| DragonBench | thetechbenders/DragonBench | Characterization image, no actuator support (README). |
-| dragon-core | danielbrownjr/dragon-core (Dan's fork) | Upstream **justinh-rahb/dragon-core** (maintainer justinh-rahb, Justin Hayes; contributors include Zak Peirce). The badge says "Fork of justinh-rahb/dragon-core". Dan's contributions, merged upstream via PRs #47, #49, #51, #54 and #55: the actuator-agnostic `dc_pid` PID primitive, expiry of stale Bambu/Prusa status data, redaction of Bambu device identifiers from logs, lower console-endpoint peak memory. |
-| CatScan-MS | none | Teaser only: no link, no QR, no QR hint. |
-| BHIHKH! | thetechbenders/badger-i-hardly-knew-her | This firmware; always the last entry. |
-
-As checked on 2026-10-01, the forks' default branches trail upstream (DragonBreath's fork
-`main` is at the #91 merge of 2026-09-04; dragon-core's at v0.28.2 while
-upstream is at v0.35.2). The badge links the forks because the portfolio
-shows Dan's own work; syncing the forks is up to their owner.
+- Describe only what the linked page itself supports, and credit
+  co-authors, sponsors and upstream projects in the description.
+- For a fork, a status such as "Fork of owner/project" says whose project it
+  is; link the fork when the portfolio shows your own changes there.
+- Use a status for readiness ("Work in progress"), not a version number:
+  versions go stale on a badge that is not reflashed.
+- Check that every link resolves before an event. Every project QR is
+  decoded from the rendered screen and compared with its link on each
+  build, but the build cannot know whether the page exists.
 
 The font generator measures advances in FreeType's monochrome mode
 (`mode="1"`), matching the 1-bit glyphs it stores. Antialiased advances had
@@ -185,7 +171,7 @@ left visible gaps inside words ("Instrum entation").
 Double C opens a list of the project names. It is a way to jump to a
 project without paging through the others.
 
-| Sample portfolio, 3/7 highlighted | 12 entries (labelled placeholders), scrolled to 10/12 |
+| Sample portfolio (fictional), 3/7 highlighted | 12 entries (labelled placeholders), scrolled to 10/12 |
 |---|---|
 | ![index](previews/x3/index_3.png) | ![index-12](previews/x3/index-12_10.png) |
 
@@ -210,11 +196,11 @@ sample is in `previews/*/index_N.png`, and the 12-entry example's first,
 - **Hints.** One line: `C open · A back · hold UP/DOWN to scroll`, shortened
   for one entry (`C open · A back`) and for none (`A back`, with "No
   projects configured" in the middle).
-- **Order.** The configured order. BHIHKH! is last, and the teaser
-  (CatScan-MS) is listed by name only; opening it shows its banner page.
-  Names never ellipsize in the sample (host test
-  `render_index_sample_portfolio`); a too-long name in another profile is
-  ellipsized within its row.
+- **Order.** The configured order. A teaser (the sample's "Secret
+  Project") is listed by name only; opening it shows its banner page. Names
+  never ellipsize in the sample (host test `render_index_sample_portfolio`);
+  for any profile, the fit gate refuses a name too long for its row, so it
+  is shortened before the build rather than cut on the badge.
 - The 12-entry previews come from `render_previews.py --example-projects 12`.
   It inserts "Example project k" placeholders before the last entry. These
   are host previews of the layout, never content.
@@ -238,9 +224,8 @@ sample is in `previews/*/index_N.png`, and the 12-entry example's first,
   card's text column then spans the full width, and the full-screen QR is
   not offered. An over-long payload (a configuration error) shows a dashed
   **QR PAYLOAD TOO LONG** box.
-- Provisional local default: a trimmed offline vCard. A GitHub-link
-  alternative is kept for side-by-side phone scanning; the final choice is
-  pending that test (USB_HARDWARE_CHECKLIST.md §8).
+- Which to use is your choice (`[qr] show` in the form). Compare both on
+  your phones before an event (USB_HARDWARE_CHECKLIST.md §8).
 - Verification: `tools/render_previews.py` and `tests_py/` decode the final
   296 × 128 card and full-screen QR bitmaps with zbar, at native size and
   enlarged, and require an exact payload match.

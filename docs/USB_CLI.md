@@ -59,7 +59,7 @@ Text limits are in UTF-8 bytes (one less than the storage size).
 | `title` | text 55 | Role / subtitle, e.g. "Engineer + Maker" |
 | `affiliation` | text 55 | Optional |
 | `interests` | text 111 | Optional, wraps to 3 lines on the badge |
-| `event` | text 31 | Optional event strip, e.g. "Formnext 2026" |
+| `event` | text 31 | Optional event strip, e.g. "Example Expo 2026" |
 | `contact1..6.label` | text 15 | e.g. Work, Email, Phone, GitHub |
 | `contact1..6.value` | text 71 | Empty value hides the whole line (label included); lines that do not fit the card are omitted, caption first |
 | `contact1..6.type` | `email`, `phone`, `web`, `github`, `discord`, `text` or empty | Explicit, never guessed from the label. `github`/`discord` lines show the icon instead of the label. Empty = text label (older profiles) |
@@ -97,7 +97,7 @@ Text limits are in UTF-8 bytes (one less than the storage size).
 > set title Embedded Engineer
 staged (not saved; run 'commit')
 OK
-> set qr.payload https://example.com/dan
+> set qr.payload https://example.com/alex
 staged (not saved; run 'commit')
 OK
 > diag qr

@@ -86,6 +86,31 @@ or too light, change `gamma` (below 1 lightens). If the framing is off, set
 `crop = [x, y, width, height]` in photo pixels, keeping width:height at
 13:16. Compare `portrait-methods_x3.png` to choose a `method`.
 
+## Your content, your choices
+
+Nothing on the badge is fixed except the BHIHKH! firmware itself. The
+sample and template use a fictional person ("Alex Example") and
+`example.com` destinations; replace all of it.
+
+- **Portrait.** Any head-and-shoulders photo works; see
+  [DESIGN.md](DESIGN.md#portrait-conversion) for how the crop, gamma and
+  method change the result. No photo yet? Leave the sample silhouette
+  (`processed = "../assets/sample/portrait_placeholder.png"`): the build
+  notes it.
+- **Event label.** `[person] event` is the strip along the bottom of the
+  photo badge (and the kicker in layout B), e.g. the conference you are
+  attending, your company, or nothing at all. Leave it empty to drop the
+  strip; change it per event and rebuild, or over USB with
+  `> set event Example Expo 2027` and `> commit`.
+- **Portfolio.** 0 to 12 projects, in your order. None are required: no
+  project has to come first or last, a teaser (title plus `banner`, no
+  `link`) is optional, and an empty portfolio is valid. See
+  [DESIGN.md](DESIGN.md#your-portfolio) for suggestions on crediting
+  co-authors and upstream projects.
+- **QR code.** A link, a vCard, a vCard built from your contacts, or none.
+- **Layout and timing.** `[preferences]`: portrait left or right, refresh
+  speed, battery sleep timeout.
+
 ## Fields at a glance
 
 | Section | Fields | Notes |
@@ -138,7 +163,9 @@ scripts/build-badge.sh --preview local/badge.toml
 
 `export` never overwrites a file. The form it writes gives exactly the same
 profile as the JSON, and therefore the same screens and the same firmware.
-Untyped contacts become `type = "text"`, which is drawn the same way. Your
+Untyped contacts become `type = "text"`, which is drawn the same way. A QR
+caption without a QR code (never shown) is kept as a comment, because the
+form refuses a caption with nothing to describe. Your
 JSON and portrait are left as they were.
 
 `badgerctl.py push local/badge.toml` pushes the form's profile over USB
