@@ -25,3 +25,6 @@ python3 "$root/tools/render_previews.py" --preview "$build/badger_preview" --out
 # status/fault state, and the fault-state diagnostics screens.
 python3 "$root/tools/render_previews.py" --preview "$build/badger_preview" --out "$root/build/previews/diagnostic-max" \
   --diagnostic-max --preview-arg=--faults --preview-arg=--battery --preview-arg=low --preview-arg=--gesture --preview-arg=fault
+# The public fill-in form template, through the same pipeline a user runs
+# (validation, portrait, fit and QR gates, previews); generic content only.
+python3 "$root/tools/badge_form.py" preview "$root/config/badge-form.toml" --out "$root/build/previews/form-template"

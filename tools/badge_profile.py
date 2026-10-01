@@ -165,4 +165,10 @@ def flatten(doc: dict) -> list[tuple[str, str]]:
 
 
 def load(path: Path) -> list[tuple[str, str]]:
+    """Validated pairs from a profile JSON, or from a fill-in form (.toml,
+    tools/badge_form.py), which produces the same profile document."""
+    path = Path(path)
+    if path.suffix.lower() == ".toml":
+        import badge_form  # noqa: PLC0415 (needs tomllib; JSON users never import it)
+        return flatten(badge_form.load_doc(path))
     return flatten(json.loads(path.read_text(encoding="utf-8")))

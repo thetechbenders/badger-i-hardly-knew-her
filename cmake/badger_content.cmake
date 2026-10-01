@@ -3,6 +3,7 @@
 #
 # Content selection (first match wins):
 #   -DBADGER_PROFILE=<json>      else local/profile.json if present, else config/sample-profile.json
+#                                (a .toml form also works; scripts/build-badge.sh is the usual way)
 #   -DBADGER_PORTRAIT=<png>      else local/portrait.png if present, else assets/sample/portrait_placeholder.png
 #   -DBADGER_PORTRAIT=none       build without a compiled-in portrait
 get_filename_component(_BADGER_ROOT ${CMAKE_CURRENT_LIST_DIR}/.. ABSOLUTE)
@@ -56,6 +57,7 @@ function(badger_generate_content OUT_DIR)
     OUTPUT ${OUT_DIR}/profile_defaults.cpp
     COMMAND ${Python3_EXECUTABLE} ${_BADGER_ROOT}/tools/profilegen.py ${BADGER_PROFILE} --out ${OUT_DIR}/profile_defaults.cpp
     DEPENDS ${BADGER_PROFILE} ${_BADGER_ROOT}/tools/profilegen.py ${_BADGER_ROOT}/tools/badge_profile.py
+            ${_BADGER_ROOT}/tools/badge_form.py
     COMMENT "Generating profile defaults from ${BADGER_PROFILE}")
   set(_portrait_args)
   set(_portrait_deps)

@@ -5,8 +5,10 @@ __pycache__/
 *.pyc
 
 # Private, never committed: original photos, personal profile/contact
-# details, processed personal portrait and previews made from them.
+# details, processed personal portrait and previews made from them, and
+# vCards (.vcf) wherever they are saved.
 /local/
 *.jpeg
 *.jpg
 !docs/**/*.jpg
+*.vcf
