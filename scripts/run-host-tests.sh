@@ -10,7 +10,7 @@ cmake -S "$root/host" -B "$build" -G Ninja -DCMAKE_BUILD_TYPE=Debug \
   -DBADGER_PORTRAIT="$root/assets/sample/portrait_placeholder.png"
 cmake --build "$build"
 "$build/badger_tests"
-[ -f "$root/build/fonts/dejavu/DejaVuSans.ttf" ] || python3 "$root/tools/fontgen.py" --fetch --fonts-dir "$root/build/fonts/dejavu" --check --out "$root/firmware/generated/fonts.cpp"
+python3 "$root/tools/fontgen.py" --fetch --fonts-dir "$root/build/fonts/dejavu" --check --out "$root/firmware/generated/fonts.cpp"
 python3 "$root/tools/iconsgen.py" --out "$root/firmware/generated/icons.cpp" --check
 BADGER_PREVIEW="$build/badger_preview" python3 -m unittest discover -s "$root/tests_py" -v
 python3 "$root/tools/render_previews.py" --preview "$build/badger_preview" --out "$root/build/previews/sample" \

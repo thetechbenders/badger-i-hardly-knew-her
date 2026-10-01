@@ -195,6 +195,9 @@ class Profile(unittest.TestCase):
             ("prefs", "battery.low_mv", 3700),      # above one bar
             ("prefs", "gesture.rotation", 4),
             ("prefs", "gesture.cooldown_ms", 50),
+            ("prefs", "refresh.speed", 1.9),     # not truncated to 1
+            ("prefs", "refresh.speed", "abc"),   # ProfileError, not ValueError
+            ("prefs", "refresh.speed", None),
         ]
         for section, key, value in bad:
             doc = json.loads(json.dumps(base))

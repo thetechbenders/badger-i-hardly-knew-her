@@ -250,6 +250,7 @@ class UsbCliHost : public CliHost {
     configure_from_prefs();
     apply(g_app.on_config_changed(app_config(diag::info().safe_mode)));
   }
+  bool safe_mode() const override { return diag::info().safe_mode; }
   bool commit(char *err, size_t errlen) override {
     const FieldDesc *bad = nullptr;
     if (!settings_validate(g_staged, &bad)) {
@@ -431,7 +432,7 @@ class UsbCliHost : public CliHost {
     ok &= bi.status == AssetStatus::Ok;
     const FieldDesc *bad = nullptr;
     const bool sv = settings_validate(g_staged, &bad);
-    std::printf("settings %s%s\r\n", sv ? "ok" : "INVALID ", sv ? "" : bad->key);
+    std::printf("settings %s%s\r\n", sv ? "ok" : "INVALID ", sv ? "" : (bad ? bad->key : "?"));
     ok &= sv;
     std::printf("display event overflows %lu\r\n", (unsigned long)g_display.stats().event_overflows);
     ok &= g_display.stats().event_overflows == 0;

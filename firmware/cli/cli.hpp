@@ -30,6 +30,10 @@ class CliHost {
   virtual const Settings &committed() const = 0;
   virtual void staged_changed() = 0;            // re-evaluate + redraw with staged content
   virtual bool commit(char *err, size_t errlen) = 0;
+  // Safe mode stages factory defaults instead of the stored record, so a
+  // commit there would silently replace the stored profile. The CLI then
+  // refuses `commit` unless `defaults` was run on purpose.
+  virtual bool safe_mode() const { return false; }
   virtual void revert() = 0;
   virtual bool select_screen(Screen s, int project) = 0;
   virtual bool project_step(int delta) = 0;
@@ -81,6 +85,7 @@ class Cli {
   uint32_t stale_discards_ = 0;
   bool last_cr_ = false;
   uint32_t commands_ = 0, errors_ = 0;
+  bool defaults_staged_ = false;  // `defaults` run since the last commit/revert
 };
 
 // Decode the value syntax (quotes/escapes) in place. Returns false on a bad escape.

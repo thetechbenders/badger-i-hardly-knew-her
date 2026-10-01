@@ -291,12 +291,28 @@ void Cli::execute(char *line) {
     return;
   }
   if (!std::strcmp(cmd, "commit")) {
+    if (host_.safe_mode() && !defaults_staged_) {
+      err("safe mode: the stored settings are not loaded, so commit would replace them with defaults; "
+          "reboot normally to edit them, or run 'defaults' first to save defaults on purpose");
+      return;
+    }
     char e[80] = "";
-    if (host_.commit(e, sizeof e)) ok(); else err("commit failed: %s", e);
+    if (host_.commit(e, sizeof e)) {
+      defaults_staged_ = false;
+      ok();
+    } else {
+      err("commit failed: %s", e);
+    }
     return;
   }
-  if (!std::strcmp(cmd, "revert")) { host_.revert(); ok(); return; }
+  if (!std::strcmp(cmd, "revert")) {
+    host_.revert();
+    defaults_staged_ = false;
+    ok();
+    return;
+  }
   if (!std::strcmp(cmd, "defaults")) {
+    defaults_staged_ = true;
     settings_defaults(&host_.staged());
     host_.staged_changed();
     host_.write("factory defaults staged (not saved; run 'commit')\r\n");

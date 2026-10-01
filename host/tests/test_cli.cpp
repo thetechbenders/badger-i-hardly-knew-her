@@ -15,6 +15,8 @@ class FakeHost : public CliHost {
   const Settings &committed() const override { return committed_; }
   void staged_changed() override { ++changes; }
   bool commit(char *, size_t) override { committed_ = staged_; ++commits; return true; }
+  bool safe_mode() const override { return safe; }
+  bool safe = false;
   void revert() override { staged_ = committed_; }
   bool select_screen(Screen s, int p) override { screen = s; project = p; return s != Screen::QrFull; }
   bool project_step(int d) override { step += d; return true; }
@@ -219,4 +221,30 @@ TEST(cli_portfolio_keys_and_project_qr) {
   const std::string ex = run(cli, h, "export\n");
   for (const char *k : {"set contact6.type", "set project1.status", "set project12.banner", "set project12.link"})
     CHECK(ex.find(k) != std::string::npos);
+}
+
+// Safe mode stages defaults instead of the stored record: a bare commit there
+// would silently replace the stored profile, so only an explicit `defaults`
+// lets it through.
+TEST(cli_safe_mode_commit_requires_explicit_defaults) {
+  FakeHost h;
+  Cli cli(h);
+  cli.set_echo(false);
+  h.safe = true;
+  CHECK(ends_ok(run(cli, h, "set diag.single_core true\n")));
+  CHECK(has_err(run(cli, h, "commit\n")));
+  CHECK_EQ(h.commits, 0);
+  CHECK(ends_ok(run(cli, h, "defaults\n")));
+  CHECK(ends_ok(run(cli, h, "revert\n")));  // revert withdraws the explicit choice
+  CHECK(has_err(run(cli, h, "commit\n")));
+  CHECK_EQ(h.commits, 0);
+  CHECK(ends_ok(run(cli, h, "defaults\n")));
+  CHECK(ends_ok(run(cli, h, "set diag.single_core true\n")));
+  CHECK(ends_ok(run(cli, h, "commit\n")));
+  CHECK_EQ(h.commits, 1);
+  CHECK(has_err(run(cli, h, "commit\n")));  // one explicit defaults, one commit
+  CHECK_EQ(h.commits, 1);
+  h.safe = false;  // normal mode: commits are unrestricted
+  CHECK(ends_ok(run(cli, h, "commit\n")));
+  CHECK_EQ(h.commits, 2);
 }

@@ -36,7 +36,7 @@ BOOTSEL (Pico SDK convention).
 | `get [key]` | Staged value(s), quoted and escaped |
 | `set <key> <value>` | Validate and stage a change; the display updates immediately |
 | `clear <key>` | Stage an empty text value (hides the optional line) |
-| `commit` | Write staged settings to flash (A/B slot, read back and verified) |
+| `commit` | Write staged settings to flash (A/B slot, read back and verified). In safe mode the stored record is not loaded, so `commit` is refused unless `defaults` was run first (explicitly saving defaults); otherwise reboot normally to edit the stored settings. |
 | `revert` | Discard staged changes |
 | `defaults` | Stage the factory defaults (compiled-in profile); needs `commit` |
 | `export` | Print `set ...` lines that recreate the staged settings |

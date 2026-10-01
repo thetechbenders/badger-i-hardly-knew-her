@@ -102,7 +102,12 @@ def flatten(doc: dict) -> list[tuple[str, str]]:
         for f in PROJECT_FIELDS:
             out[f"project{i + 1}.{f}"] = pr.get(f, "")
     for k, v in doc.get("prefs", {}).items():
-        out[k] = str(int(v)) if not isinstance(v, bool) else ("true" if v else "false")
+        if isinstance(v, bool):
+            out[k] = "true" if v else "false"
+        elif isinstance(v, int):
+            out[k] = str(v)
+        else:  # no silent truncation of 1.9, and "abc" is a ProfileError, not a traceback
+            raise ProfileError(f"prefs.{k}: expected an integer or boolean, got {v!r}")
     pairs = []
     for k, v in out.items():
         if k not in FIELD_LIMITS:

@@ -62,8 +62,8 @@ jobs:
         run: |
           scripts/build-firmware.sh \
             -DPython3_EXECUTABLE="$BADGER_PYTHON" \
-            -DBADGER_PROFILE=$PWD/config/sample-profile.json \
-            -DBADGER_PORTRAIT=$PWD/assets/sample/portrait_placeholder.png
+            -DBADGER_PROFILE="$PWD/config/sample-profile.json" \
+            -DBADGER_PORTRAIT="$PWD/assets/sample/portrait_placeholder.png"
       - name: Memory report
         run: cat build/fw/memory-report.txt | head -12
       - name: Verify artifacts (UF2 regions, linker placement, metadata, checksums)

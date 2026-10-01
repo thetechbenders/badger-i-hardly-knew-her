@@ -9,7 +9,7 @@ each run. Keep a serial terminal open on USB where noted (`status`, `diag all`).
 1. Flash `badger_badge.uf2` (see INSTALL.md). **Expect**: one full refresh to
    the photo badge within about 3 s (estimate; record the measured time). The LED glows during the refresh.
 2. `version`, `diag all`, `selftest`. **Expect**: `reset: power-on` or
-   `reset button`, flash image ~164 KiB, settings `erased` (first boot), and
+   `reset button`, flash image as in the build's `memory-report.txt`, settings `erased` (first boot), and
    `selftest` OK.
 3. Serial port enumerates as `2E8A:000A`. `help` answers; `echo off` then
    `status` returns `OK`.
