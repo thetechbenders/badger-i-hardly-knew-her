@@ -54,7 +54,7 @@ def main(argv=None) -> int:
         f"Heap available   {heap:8d} B  ({heap / 1024:.1f} KiB)",
         f"Stacks           core0 {syms['__StackTop'] - syms['__StackBottom']} B, core1 {syms['__StackOneTop'] - syms['__StackOneBottom']} B",
         "",
-        "Flash layout: firmware 0x000000.., assets 0x1E0000 (64 KiB), settings 0x1FE000 (2 x 4 KiB)",
+        "Flash layout: firmware 0x000000.., assets 0x1E0000 (64 KiB), settings 0x1FC000 (2 x 8 KiB)",
         "",
         "Sections:",
         sections.strip(),

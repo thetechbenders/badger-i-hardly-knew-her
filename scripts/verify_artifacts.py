@@ -166,6 +166,8 @@ def main(argv=None) -> int:
     rep = (d / "memory-report.txt").read_text()
     m = re.search(r"Flash image\s+(\d+) B", rep)
     check(bool(m) and XIP + int(m.group(1)) <= XIP + ASSET_OFF, "memory report present, image below the asset region")
+    check(f"settings 0x{SETTINGS_OFF:X} (2 x {SETTINGS_SIZE // 2048} KiB)" in rep,
+          "memory report states the current settings layout")
     check("core0 4096 B, core1 4096 B" in rep, "memory report: 4 KiB stack per core")
     sums = (d / "SHA256SUMS").read_text().split("\n")
     listed = 0
