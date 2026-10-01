@@ -119,7 +119,7 @@ UF2/BIN/ELF/asset UF2 byte for byte. The `.elf.map` lists absolute object
 paths and is not expected to match; it is a size-analysis aid, not a
 release artifact.
 
-Current sample build: 191.6 KiB flash (of 1920 KiB available before the
+Current sample build: 192.6 KiB flash (of 1920 KiB available before the
 asset region), 86.7 KiB static RAM of 264 KiB, 4 KiB stack per core. Each
 copy of the settings (staged, committed, store work buffers) holds the
 12-entry portfolio, which accounts for most of the RAM growth.

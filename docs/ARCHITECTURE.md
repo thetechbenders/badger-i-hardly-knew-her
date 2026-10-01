@@ -282,7 +282,7 @@ milliseconds, well inside the 5 s watchdog.
 
 ## Memory
 
-Sample build: 191.6 KiB flash; 86.7 KiB static RAM (the project index added
+Sample build: 192.6 KiB flash; 86.7 KiB static RAM (the project index added
 3.7 KiB of flash and 320 B of RAM, mostly the larger button queue). The two render buffers,
 the shown image, the driver buffer (4.6 KiB each) and three Settings copies
 (2.6 KiB each) dominate. There are 4 KiB stacks per core; large objects are
