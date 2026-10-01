@@ -75,9 +75,14 @@ Nothing in 0.1–0.3 writes to the badge.
       `python -m mpremote connect COM19 fs cp :badge.txt :main.py badger-backup/` and
       `python -m mpremote connect COM19 fs cp -r :state badger-backup/` (read-only copy).
       Record the file list (`python -m mpremote connect COM19 fs ls -r` if supported).
-- [ ] 0.3 **Whole-flash image**: BOOTSEL (hold BOOT/USR, tap RST), then
+- [x] 0.3 **Whole-flash image**: BOOTSEL (hold BOOT/USR, tap RST), then
       `picotool save -a badger-2040-full-backup.bin` and
       `picotool info -a > badger-2040-info.txt`. Keep the image with its SHA-256.
+      *Done before the first flash (owner): original BadgerOS full-flash
+      backup, 2,097,152 bytes, SHA-256
+      `22404407fadf23eb97984afb2db98251c5ed8912bc85583619a91d6034ba6943`
+      (verified). Kept privately, outside this repository. Restoring it to
+      the badge has not been tested.*
 - [ ] 0.4 Verify the artifacts about to be flashed: `scripts/verify_artifacts.py build/fw --require-clean`
       (or check `SHA256SUMS` of the CI artifact). Record the commit.
 
