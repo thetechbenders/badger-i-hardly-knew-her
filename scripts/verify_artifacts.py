@@ -161,6 +161,8 @@ def main(argv=None) -> int:
     except (subprocess.CalledProcessError, FileNotFoundError):
         print("skip  git describe (no git)")
     check(str(ROOT).encode() not in blob, "no absolute checkout path in the ELF (reproducible across locations)")
+    check(str(d.resolve()).encode() not in blob and (d.name == "fw" or f"/{d.name}/".encode() not in blob),
+          "no build-directory path in the ELF (reproducible across build-directory names)")
 
     # --- memory report + checksums ----------------------------------------------------
     rep = (d / "memory-report.txt").read_text()

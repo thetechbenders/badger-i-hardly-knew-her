@@ -86,9 +86,14 @@ flashing, offline:
 Builds are **reproducible across checkout locations and build-directory
 names** (`-ffile-prefix-map` for the source tree, the dependencies and the
 build tree, plus a fixed `--abbrev=12` in the version string). Debug
-information is kept in full: the source tree reads as `.` and the build tree
-as `./build/fw`, so `arm-none-eabi-gdb` started at the repository root finds
-the sources (and a default build's generated files). CI rebuilds from a
+information is kept in full. The compile directory reads as `.`, sources as
+`./firmware/...` and `./deps/...`, and generated sources as
+`./build/fw/generated/...`. From the repository root, `arm-none-eabi-gdb` and
+`addr2line` therefore resolve every source file, and a default build's
+generated files too (checked: `repo_label`, `stdio_init_all` and the three
+generated `.cpp` files map to existing paths). A build in another directory
+keeps its generated files elsewhere; point the debugger there with
+`set substitute-path ./build/fw <dir>`. CI rebuilds from a
 second clone into a differently named build directory and compares
 UF2/BIN/ELF/asset UF2 byte for byte. The `.elf.map` lists absolute object
 paths and is not expected to match; it is a size-analysis aid, not a
