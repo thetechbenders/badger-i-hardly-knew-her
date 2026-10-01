@@ -88,8 +88,10 @@ fixed `--abbrev=12` in the version string). CI rebuilds from a second clone
 and compares UF2/BIN/ELF byte for byte. The `.elf.map` lists absolute object
 paths and is not expected to match.
 
-Current sample build: 177.6 KiB flash (of 1920 KiB available before the
-asset region), 59.7 KiB static RAM of 264 KiB, 4 KiB stack per core.
+Current sample build: 187.6 KiB flash (of 1920 KiB available before the
+asset region), 86.3 KiB static RAM of 264 KiB, 4 KiB stack per core. Each
+copy of the settings (staged, committed, store work buffers) holds the
+12-entry portfolio, which accounts for most of the RAM growth.
 
 ## CI
 
