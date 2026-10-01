@@ -60,7 +60,7 @@ def render(preview: Path, out: Path, pairs, pack: Path | None, screens: str, ext
         raise SystemExit(f"badger_preview failed: {res.stderr}")
     if res.stderr:
         print(res.stderr.strip(), file=sys.stderr)
-    return [Path(line) for line in res.stdout.split()]
+    return [Path(line) for line in res.stdout.splitlines() if line]  # one path per line; spaces allowed
 
 
 def _set_args(pairs) -> list[str]:

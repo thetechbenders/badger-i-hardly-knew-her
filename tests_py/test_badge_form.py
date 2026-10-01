@@ -533,6 +533,14 @@ class Review(FormCase):
         (other / "profile.json").write_text('{"format": 1}')  # a hand-written profile: not adopted
         self.assertRefusedUnchanged(form, other, "already holds files this tool did not write")
 
+    def test_output_directory_with_spaces(self):
+        if not PREVIEW.exists():
+            self.skipTest("build host/ first")
+        out = self.dir / "out dir" / "my badge"
+        res = bf.preview(self.load(BASE, name="my badge.toml"), out)
+        self.assertTrue((out / "previews/native/card.png").is_file())
+        self.assertFalse([s for s, r in res["report"]["screens"].items() if r["ok"] is False])
+
     def test_owned_directory_is_reused_and_manifest_lists_outputs(self):
         if not PREVIEW.exists():
             self.skipTest("build host/ first")
