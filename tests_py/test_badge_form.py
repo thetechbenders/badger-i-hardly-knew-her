@@ -282,6 +282,8 @@ class Rejections(FormCase):
                            "person.name: the badge font cannot draw 'Ł' (U+0141), '\U0001f642' (U+1F642)")
         self.assertProblem(BASE.replace('"Engineer"', '"""Engi\nneer"""'), "person.title: must be one line")
         self.assertProblem(BASE.replace('"Engineer"', '"Engi\\tneer"'), "control character U+0009")
+        self.assertProblem(BASE.replace('title = "Engineer"', 'title = "Engineer"\ninterests = ["ok", "Łódź"]'),
+                           "person.interests.item 2: the badge font cannot draw 'Ł' (U+0141)")
 
     def test_problems_are_reported_together(self):
         msg = self.problems(BASE.replace('name = "Alex Example"', 'name = ""')

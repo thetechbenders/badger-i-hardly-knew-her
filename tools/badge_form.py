@@ -233,8 +233,8 @@ def load_form(path: Path, text: str | None = None) -> Form:
             if not isinstance(item, str):
                 problems.append(f"person.interests item {i}: expected text in quotes, got {_typename(item)}")
                 continue
-            r = _Reader(problems, f"person.interests item {i}", {"v": item}, None)
-            v = r.text("v", None)
+            r = _Reader(problems, "person.interests", {f"item {i}": item}, None)
+            v = r.text(f"item {i}", None)
             if v:
                 items.append(v)
             elif item.strip() == "":
