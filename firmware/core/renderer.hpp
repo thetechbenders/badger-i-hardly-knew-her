@@ -79,10 +79,32 @@ size_t repo_label(const char *url, char *out, size_t cap);
 // Whether each part of a project page was drawn completely (no ellipsis, no
 // line dropped for lack of room), and the description's font size. Renders
 // the page into `scratch` (for tests and the preview tool).
+// banner, qr_title (the title beside the repository QR, linked projects only)
+// and index_title (the project's row in the index) cover the other places
+// the project's text appears.
 struct ProjectFit {
   bool title = true, tagline = true, status = true, body = true, link = true;
+  bool banner = true, qr_title = true, index_title = true;
   int body_px = 0;  // line height of the description font (0: no description)
 };
 ProjectFit project_fit(Framebuffer &scratch, const RenderContext &ctx, int project);
+
+// The same check for the identity screens: whether each configured field
+// was drawn completely on the badge (in the given layout), the card or the
+// full-screen contact QR. Fields a screen does not show, and empty fields,
+// count as complete. A contact line dropped for lack of room marks both its
+// label and value. The card's QR caption is optional by design (contact
+// lines win): left off for room it clears `caption_shown` only, and it is
+// still shown in full on the full-screen QR.
+struct ScreenFit {
+  bool name = true, title = true, affiliation = true, interests = true, event = true, caption = true;
+  bool caption_shown = true;
+  bool contact_label[kMaxContacts], contact_value[kMaxContacts];
+  ScreenFit() {
+    for (int i = 0; i < kMaxContacts; ++i) contact_label[i] = contact_value[i] = true;
+  }
+};
+// screen: Badge, Card or QrFull; layout only applies to the badge.
+ScreenFit screen_fit(Framebuffer &scratch, const RenderContext &ctx, Screen screen, uint8_t layout);
 
 }  // namespace badge

@@ -564,7 +564,7 @@ TEST(render_sample_portfolio_fits_without_ellipsis) {
   CHECK(n >= 7);
   for (int i = 0; i < n; ++i) {
     const ProjectFit f = project_fit(g_fb, c, i);
-    CHECK(f.title && f.tagline && f.status && f.body && f.link);
+    CHECK(f.title && f.tagline && f.status && f.body && f.link && f.banner && f.qr_title && f.index_title);
     const Project &p = g_s.profile.projects[nth_configured_project(g_s.profile, i)];
     if (!str_empty(p.body)) CHECK_EQ(f.body_px, int(fonts::sans_11.line_height));
     if (!str_empty(p.status)) CHECK(std::strpbrk(p.status, "0123456789") == nullptr);  // no version boxes
@@ -588,4 +588,124 @@ TEST(render_teaser_has_no_qr_hint) {
   set("project1.link", "https://github.com/a/b");
   render(g_fb, v, c);
   CHECK(!region_white(g_fb, {8, 128 - 14, 296 - 30, 14}));
+}
+
+// ------------------------------------------------- identity-screen fit report
+// screen_fit() feeds the personalisation gate (badger_preview --fit): every
+// supplied field must be drawn whole, or the build stops before flashing.
+
+namespace {
+bool all_complete(const ScreenFit &f) {
+  bool ok = f.name && f.title && f.affiliation && f.interests && f.event && f.caption && f.caption_shown;
+  for (int i = 0; i < kMaxContacts; ++i) ok = ok && f.contact_label[i] && f.contact_value[i];
+  return ok;
+}
+}  // namespace
+
+TEST(screen_fit_sample_is_complete_and_draws_like_render) {
+  settings_defaults(&g_s);
+  set("qr.payload", "https://example.com/dan");
+  RenderContext c = ctx_with();
+  const struct { Screen s; uint8_t layout; } cases[] = {
+      {Screen::Badge, 0}, {Screen::Badge, 1}, {Screen::Card, 0}, {Screen::QrFull, 0}};
+  for (const auto &k : cases) {
+    CHECK(all_complete(screen_fit(g_fb2, c, k.s, k.layout)));
+    // The report only observes: its scratch render equals the real screen.
+    View v;
+    v.screen = k.s;
+    v.layout = k.layout;
+    render(g_fb, v, c);
+    screen_fit(g_fb2, c, k.s, k.layout);
+    CHECK(region_white(g_fb2, status_rect(v, c)));  // no status area in the scratch render
+    Framebuffer a;
+    a.copy_from(g_fb);
+    a.fill_rect(status_rect(v, c), Ink::White);
+    CHECK(a.equals(g_fb2));
+  }
+}
+
+TEST(screen_fit_reports_cut_identity_fields) {
+  settings_defaults(&g_s);
+  RenderContext c = ctx_with();
+  set("name", "Wilhelmina Featherstonehaugh-Cholmondeley");
+  ScreenFit f = screen_fit(g_fb, c, Screen::Badge, 0);
+  CHECK(!f.name);
+  CHECK(f.title && f.interests && f.event);
+  CHECK(!screen_fit(g_fb, c, Screen::Card, 0).name);
+  settings_defaults(&g_s);
+  set("event", "International WWWWWWWWWWWWWWWW");
+  CHECK(!screen_fit(g_fb, c, Screen::Badge, 0).event);
+  CHECK(!screen_fit(g_fb, c, Screen::Badge, 1).event);
+  CHECK(screen_fit(g_fb, c, Screen::Card, 0).event);  // the card does not show the event
+  // Interests need four lines: layout A has three, layout B's band two.
+  settings_defaults(&g_s);
+  set("interests", "printing, electronics, embedded systems, sensors, firmware, e-paper displays, robotics, metrology");
+  CHECK(!screen_fit(g_fb, c, Screen::Badge, 0).interests);
+  CHECK(!screen_fit(g_fb, c, Screen::Badge, 1).interests);
+}
+
+TEST(screen_fit_reports_cut_and_dropped_contacts) {
+  settings_defaults(&g_s);
+  clear_contacts();
+  RenderContext c = ctx_with();
+  set("contact1.label", "Email");
+  set("contact1.value", "a.very.long.address.that.cannot.fit@subdomain.example.com");
+  set("contact2.label", "Mobile phone");  // wider than the 52 px label column
+  set("contact2.value", "+1 555 0100");
+  ScreenFit f = screen_fit(g_fb, c, Screen::Card, 0);
+  CHECK(!f.contact_value[0] && f.contact_label[0]);
+  CHECK(!f.contact_label[1] && f.contact_value[1]);
+  // Typed GitHub lines show the icon, never the label: nothing to cut there.
+  set("contact2.label", "Mobile phone");
+  set("contact2.type", "github");
+  CHECK(screen_fit(g_fb, c, Screen::Card, 0).contact_label[1]);
+  // Six lines under a two-line title and an affiliation: the last are dropped.
+  clear_contacts();
+  set("title", "Principal Instrumentation Engineer");
+  set("affiliation", "Example Laboratories");
+  for (int i = 1; i <= kMaxContacts; ++i) {
+    set(("contact" + std::to_string(i) + ".label").c_str(), "Web");
+    set(("contact" + std::to_string(i) + ".value").c_str(), "example.com");
+  }
+  f = screen_fit(g_fb, c, Screen::Card, 0);
+  CHECK(f.contact_value[0]);
+  CHECK(!f.contact_value[kMaxContacts - 1] && !f.contact_label[kMaxContacts - 1]);
+}
+
+TEST(screen_fit_card_caption_gives_way_but_is_not_cut) {
+  settings_defaults(&g_s);
+  RenderContext c = ctx_with();
+  set("qr.payload", "https://example.com/dan");
+  set("qr.caption", "Scan to save my contact");
+  CHECK(all_complete(screen_fit(g_fb, c, Screen::Card, 0)));  // two contacts: room for it
+  for (int i = 1; i <= 5; ++i) {
+    set(("contact" + std::to_string(i) + ".label").c_str(), "Web");
+    set(("contact" + std::to_string(i) + ".value").c_str(), "example.com");
+  }
+  ScreenFit f = screen_fit(g_fb, c, Screen::Card, 0);
+  CHECK(!f.caption_shown);  // contact lines win, by design
+  CHECK(f.caption);
+  CHECK(screen_fit(g_fb, c, Screen::QrFull, 0).caption);  // shown in full there
+  set("qr.caption", "");
+  CHECK(screen_fit(g_fb, c, Screen::Card, 0).caption_shown);  // nothing configured, nothing missing
+}
+
+TEST(project_fit_covers_banner_qr_title_and_index_row) {
+  settings_defaults(&g_s);
+  clear_projects();
+  RenderContext c = ctx_with();
+  set("project1.title", "Teaser");
+  set("project1.banner", "TOP SECRET - COMING SOON");
+  set("project2.title", "Linked");
+  set("project2.link", "https://github.com/a/b");
+  ProjectFit f = project_fit(g_fb, c, 0);
+  CHECK(f.banner && f.qr_title && f.index_title);
+  f = project_fit(g_fb, c, 1);
+  CHECK(f.qr_title && f.index_title);
+  set("project1.banner", "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWW");
+  CHECK(!project_fit(g_fb, c, 0).banner);
+  // 20 px wide glyphs: fits the page at 14 px, not the column beside the QR.
+  set("project2.title", "WWWWWWWWWWWWWWWWW");
+  f = project_fit(g_fb, c, 1);
+  CHECK(!f.qr_title);
 }
