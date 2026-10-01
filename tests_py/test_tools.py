@@ -345,6 +345,79 @@ class FirmwarePackage(unittest.TestCase):
             self.pf.package(self.build, out, "p")
         self.assertFalse(out.exists())
 
+    def make_zip(self, entries):
+        import io
+        import warnings
+        import zipfile
+        buf = io.BytesIO()
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", UserWarning)
+            with zipfile.ZipFile(buf, "w") as z:
+                for name, data in entries:
+                    z.writestr(name, data)
+        return buf.getvalue()
+
+    def test_duplicate_artifact_rejected_before_read(self):
+        from unittest.mock import patch
+        import zipfile
+        line = f"{self.pf.sha256(b'valid')}  firmware.uf2\n"
+        data = self.make_zip([("pkg/firmware.uf2", b"incorrect"),
+                              ("pkg/firmware.uf2", b"valid"), ("pkg/SHA256SUMS", line)])
+        with self.assertRaises(self.pf.PackageError):
+            self.pf.verify_zip(data)
+        with patch.object(zipfile.ZipFile, "read", side_effect=AssertionError("read before validation")):
+            with self.assertRaises(self.pf.PackageError):
+                self.pf.verify_zip(data)
+
+    def test_duplicate_manifest_rejected_before_read(self):
+        from unittest.mock import patch
+        import zipfile
+        line = f"{self.pf.sha256(b'valid')}  firmware.uf2\n"
+        data = self.make_zip([("pkg/firmware.uf2", b"valid"),
+                              ("pkg/SHA256SUMS", "invalid"), ("pkg/SHA256SUMS", line)])
+        with self.assertRaises(self.pf.PackageError):
+            self.pf.verify_zip(data)
+        with patch.object(zipfile.ZipFile, "read", side_effect=AssertionError("read before validation")):
+            with self.assertRaises(self.pf.PackageError):
+                self.pf.verify_zip(data)
+
+    def test_portable_namespace_in_creation_and_verification(self):
+        unsafe = ("", ".", "..", "../x", "x/y", "x\\y", "/x", "C:x", "C:\\x",
+                  "x.", "x ", "CON", "nul.bin", "LPT1.txt", "x\n", "é")
+        out = Path(self.tmp.name) / "unsafe.zip"
+        for name in unsafe:
+            with self.subTest(name=name):
+                with self.assertRaises(self.pf.PackageError):
+                    self.pf.package(self.build, out, name)
+                with self.assertRaises(self.pf.PackageError):
+                    self.pf.package(self.build, out, "pkg", [name])
+                line = f"{self.pf.sha256(b'x')}  firmware.uf2\n"
+                with self.assertRaises(self.pf.PackageError):
+                    self.pf.verify_zip(self.make_zip([(f"{name}/firmware.uf2", b"x"),
+                                                     (f"{name}/SHA256SUMS", line)]))
+                line = f"{self.pf.sha256(b'x')}  {name}\n"
+                if "\n" not in name:  # newline terminates a manifest record
+                    with self.assertRaises(self.pf.PackageError):
+                        self.pf.parse_manifest(line, "test")
+                with self.assertRaises(self.pf.PackageError):
+                    self.pf.verify_zip(self.make_zip([(f"pkg/{name}", b"x"),
+                                                     ("pkg/SHA256SUMS", line)]))
+        self.assertFalse(out.exists())
+
+    def test_directory_entries_and_case_aliases(self):
+        line = f"{self.pf.sha256(b'x')}  firmware.uf2\n"
+        entries = [("pkg/firmware.uf2", b"x"), ("pkg/SHA256SUMS", line)]
+        self.pf.verify_zip(self.make_zip([("pkg/", b"")] + entries))
+        for extra in ([('pkg/', b''), ('pkg/', b'')], [('other/', b'')],
+                      [('pkg/../', b'')], [('pkg/FIRMWARE.uf2', b'x')]):
+            with self.subTest(extra=extra), self.assertRaises(self.pf.PackageError):
+                self.pf.verify_zip(self.make_zip(entries + extra))
+        with self.assertRaises(self.pf.PackageError):
+            self.pf.parse_manifest(line + line.replace('firmware', 'FIRMWARE'), "test")
+        with self.assertRaises(self.pf.PackageError):
+            self.pf.package(self.build, Path(self.tmp.name) / "dup.zip", "pkg",
+                            ["badger_badge.uf2", "badger_badge.uf2"])
+
     def test_verify_rejects_mismatched_packages(self):
         import hashlib
         import zipfile

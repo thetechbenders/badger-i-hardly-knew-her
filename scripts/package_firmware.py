@@ -14,12 +14,18 @@ inputs give a byte-identical ZIP.
 
 --verify checks an existing ZIP: one top-level directory, a SHA256SUMS in
 it, every listed file present with a matching hash, and no unlisted file.
+Names use ASCII letters, digits, underscores, hyphens and dots, start with
+an alphanumeric, underscore or hyphen, and cannot end in a dot. Windows
+reserved device names and case-insensitive aliases are forbidden. Artifacts
+are single filenames; the only directory entry allowed is the package root.
+Duplicate members are rejected before any member content is read.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import io
+import re
 import sys
 import zipfile
 from pathlib import Path
@@ -30,6 +36,20 @@ _EPOCH = (1980, 1, 1, 0, 0, 0)
 
 class PackageError(Exception):
     pass
+
+
+def validate_name(name: str) -> None:
+    if (not re.fullmatch(r"[A-Za-z0-9_-][A-Za-z0-9._-]*", name)
+            or name.endswith(".")
+            or name.split(".", 1)[0].upper() in
+            {"CON", "PRN", "AUX", "NUL", "CLOCK$", "CONIN$", "CONOUT$",
+             *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}):
+        raise PackageError(f"unsafe portable archive name {name!r}")
+
+
+def reject_aliases(names: list[str]) -> None:
+    if len(names) != len({name.lower() for name in names}):
+        raise PackageError("duplicate or case-aliased archive names")
 
 
 def sha256(data: bytes) -> str:
@@ -44,12 +64,14 @@ def parse_manifest(text: str, where: str) -> dict[str, str]:
         parts = line.split(None, 1)
         if len(parts) != 2 or len(parts[0]) != 64:
             raise PackageError(f"{where}:{n}: malformed line {line!r}")
-        name = parts[1].lstrip("*").strip()
-        if "/" in name or name in ("", ".", "..") or name == MANIFEST:
+        name = parts[1].removeprefix("*")
+        validate_name(name)
+        if name.upper() == MANIFEST:
             raise PackageError(f"{where}:{n}: unexpected file name {name!r}")
         if name in out:
             raise PackageError(f"{where}:{n}: {name} listed twice")
         out[name] = parts[0].lower()
+    reject_aliases(list(out))
     if not out:
         raise PackageError(f"{where}: empty manifest")
     return out
@@ -73,11 +95,29 @@ def check_build(build: Path) -> dict[str, str]:
 def verify_zip(data: bytes) -> dict[str, str]:
     """Returns {artifact: sha256} after checking manifest <-> contents both ways."""
     with zipfile.ZipFile(io.BytesIO(data)) as z:
-        names = [i.filename for i in z.infolist() if not i.is_dir()]
-        tops = {n.split("/", 1)[0] for n in names}
-        if len(tops) != 1 or any(n.count("/") != 1 for n in names):
-            raise PackageError(f"expected one flat top-level directory, got {sorted(names)}")
-        top = tops.pop()
+        entries = z.infolist()
+        # Use original names too: ZipInfo truncates filenames at a NUL byte.
+        reject_aliases([i.orig_filename for i in entries])
+        names = []
+        roots = set()
+        for entry in entries:
+            raw = entry.orig_filename
+            if raw != entry.filename:
+                raise PackageError(f"unsafe ZIP member {raw!r}")
+            parts = raw.split("/")
+            if len(parts) != 2:
+                raise PackageError(f"expected one flat top-level directory: {raw!r}")
+            validate_name(parts[0])
+            roots.add(parts[0])
+            if entry.is_dir():
+                if parts[1] != "":
+                    raise PackageError(f"unexpected directory {raw!r}")
+            else:
+                validate_name(parts[1])
+                names.append(raw)
+        if len(roots) != 1:
+            raise PackageError("expected one flat top-level directory")
+        top = roots.pop()
         if f"{top}/{MANIFEST}" not in names:
             raise PackageError(f"{top}/{MANIFEST} missing")
         listed = parse_manifest(z.read(f"{top}/{MANIFEST}").decode(), f"{top}/{MANIFEST}")
@@ -95,6 +135,11 @@ def verify_zip(data: bytes) -> dict[str, str]:
 
 
 def package(build: Path, out: Path, name: str, only: list[str] | None = None) -> dict[str, str]:
+    validate_name(name)
+    if only:
+        for artifact in only:
+            validate_name(artifact)
+        reject_aliases(only)
     listed = check_build(build)
     files = sorted(only) if only else sorted(listed)
     for f in files:

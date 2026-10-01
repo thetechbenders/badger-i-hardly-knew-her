@@ -91,7 +91,11 @@ files (`--only FILE …` packages a subset with its own manifest) and
 re-verifies the result. The ZIP is deterministic (sorted entries, fixed
 times and modes). `scripts/package_firmware.py --verify <zip>` checks a
 package both ways: every listed file is present and matches, and every
-packaged file is listed.
+packaged file is listed. Duplicate ZIP members (including manifests and directory
+entries) are refused before reading content. Creation and verification use the
+same portable namespace: one flat directory, ASCII letters/digits/underscores/
+hyphens/dots, no leading or trailing dot, Windows device names, or names differing
+only by case. Paths, backslashes, drive prefixes and whitespace are refused.
 
 Builds are **reproducible across checkout locations and build-directory
 names** (`-ffile-prefix-map` for the source tree, the dependencies and the
