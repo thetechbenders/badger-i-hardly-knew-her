@@ -93,7 +93,8 @@ core 1 ─ DisplayService: the only owner of the UC8151 driver, SPI0 and the
    **coalesced**: only the newest view is ever rendered.
 2. The scheduler renders only when the previous frame is completely done on
    the panel (rendering takes milliseconds, a refresh takes seconds). A burst
-   of presses or swipes during a 4.5 s refresh therefore produces exactly one
+   of presses or swipes during a slow refresh (speed 0, an estimated 4.5 s)
+   therefore produces exactly one
    more refresh, showing the final state.
 3. The frame hash is compared with the last submitted frame; **unchanged
    screens are suppressed** without touching the panel.

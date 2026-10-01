@@ -84,7 +84,13 @@ target_compile_options(${FW} PRIVATE
   # the tree (a deps symlink, PICO_SDK_PATH in the environment) must map to
   # the same names an in-tree deps/ gets from the rule above.
   -ffile-prefix-map=${BADGER_SDK_REAL}=./deps/pico-sdk
-  -ffile-prefix-map=${BADGER_PIMORONI_REAL}=./deps/pimoroni-pico)
+  -ffile-prefix-map=${BADGER_PIMORONI_REAL}=./deps/pimoroni-pico
+  # Reproducible across build-directory names too: the build tree (generated
+  # sources, SDK autogen headers, DW_AT_comp_dir) always reads as the default
+  # ./build/fw, so a debugger started at the repository root still resolves
+  # generated files of a default build. Listed last: GCC applies the last
+  # matching map, and the build tree usually lies inside the source tree.
+  -ffile-prefix-map=${CMAKE_BINARY_DIR}=./build/fw)
 set_source_files_properties(${PIMORONI_PICO_PATH}/drivers/uc8151_legacy/uc8151_legacy.cpp
                             third_party/qrcodegen/qrcodegen.c PROPERTIES COMPILE_OPTIONS "-w")
 target_compile_definitions(${FW} PRIVATE

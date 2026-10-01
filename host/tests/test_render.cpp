@@ -531,3 +531,61 @@ TEST(render_twelve_projects_distinct_pages_and_qrs) {
   v.project = 200;
   render(g_fb, v, c);
 }
+
+TEST(repo_label_is_compact_and_exact) {
+  char b[80];
+  const struct { const char *in, *out; } cases[] = {
+      {"https://github.com/thetechbenders/JumpJet", "thetechbenders/JumpJet"},
+      {"https://github.com/danielbrownjr/DragonBreath/", "danielbrownjr/DragonBreath"},
+      {"https://www.github.com/a/b.git", "a/b"},
+      {"https://github.com/a/b/tree/main/docs", "a/b"},
+      {"https://github.com/a/b?tab=readme", "a/b"},
+      {"https://github.com/onlyowner", "github.com/onlyowner"},  // not a repo: keep as is
+      {"https://github.com/", "github.com"},
+      {"https://example.com/x/", "example.com/x"},
+      {"https://gitlab.com/group/proj", "gitlab.com/group/proj"},
+      {"", ""},
+  };
+  for (const auto &t : cases) {
+    CHECK_EQ(repo_label(t.in, b, sizeof b), std::strlen(t.out));
+    CHECK_STR(b, t.out);
+  }
+  CHECK_EQ(repo_label("https://github.com/thetechbenders/JumpJet", b, 6), 5u);  // bounded
+  CHECK_STR(b, "thete");
+}
+
+// The configured (sample) portfolio is shown completely: no ellipsis in any
+// title, tagline, status, description or link label, and descriptions stay
+// at 11 px. Personal profiles get the same check from badger_preview --fit.
+TEST(render_sample_portfolio_fits_without_ellipsis) {
+  settings_defaults(&g_s);
+  RenderContext c = ctx_with();
+  const int n = configured_project_count(g_s.profile);
+  CHECK(n >= 7);
+  for (int i = 0; i < n; ++i) {
+    const ProjectFit f = project_fit(g_fb, c, i);
+    CHECK(f.title && f.tagline && f.status && f.body && f.link);
+    const Project &p = g_s.profile.projects[nth_configured_project(g_s.profile, i)];
+    if (!str_empty(p.body)) CHECK_EQ(f.body_px, int(fonts::sans_11.line_height));
+    if (!str_empty(p.status)) CHECK(std::strpbrk(p.status, "0123456789") == nullptr);  // no version boxes
+  }
+  // The badge project is last, under its short name.
+  CHECK_STR(g_s.profile.projects[nth_configured_project(g_s.profile, n - 1)].title, "BHIHKH!");
+}
+
+// A teaser without a link shows no footer: no URL, no QR glyph, no "hold B".
+TEST(render_teaser_has_no_qr_hint) {
+  settings_defaults(&g_s);
+  clear_projects();
+  set("project1.title", "Secret");
+  set("project1.banner", "TOP SECRET - COMING SOON");
+  set("project2.title", "Other");
+  RenderContext c = ctx_with();
+  View v;
+  v.screen = Screen::Projects;
+  render(g_fb, v, c);
+  CHECK(region_white(g_fb, {8, 128 - 14, 296 - 30, 14}));
+  set("project1.link", "https://github.com/a/b");
+  render(g_fb, v, c);
+  CHECK(!region_white(g_fb, {8, 128 - 14, 296 - 30, 14}));
+}

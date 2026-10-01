@@ -5,6 +5,7 @@
 //                  [--set key=value ...] [--screens badge,card,...]
 //                  [--battery none|usb|invalid|low|0..4] [--gesture off|on|fault]
 //                  [--faults]   diagnostics show fault states (host diagnostic sample)
+//   badger_preview --fit [--set ...]   per-project report: text drawn without ellipsis?
 //   badger_preview --dump-fields     (key type size min max, for tests)
 #include <cstdio>
 #include <cstdlib>
@@ -56,7 +57,7 @@ int main(int argc, char **argv) {
   settings_defaults(&s);
   std::string out = ".";
   std::vector<uint8_t> pack(kBuiltinAssetPack, kBuiltinAssetPack + kBuiltinAssetPack_size);
-  bool no_portrait = false, faults = false;
+  bool no_portrait = false, faults = false, fit_report = false;
   int layout = -1;
   std::string screens = "badge,card,projects,project-qr,qr,info";
   std::string suffix;
@@ -97,6 +98,8 @@ int main(int argc, char **argv) {
       status.gesture = g == "on" ? GestureIndicator::On : g == "fault" ? GestureIndicator::Fault : GestureIndicator::Off;
     } else if (a == "--faults") {
       faults = true;
+    } else if (a == "--fit") {
+      fit_report = true;
     } else if (a == "--suffix") {
       suffix = next();
     } else if (a == "--dump-fields") {
@@ -145,6 +148,17 @@ int main(int argc, char **argv) {
   ctx.info = &info;
 
   static Framebuffer fb;
+  if (fit_report) {
+    // One line per configured project: which parts were drawn completely.
+    const int n = configured_project_count(s.profile);
+    for (int i = 0; i < n; ++i) {
+      const ProjectFit f = project_fit(fb, ctx, i);
+      std::printf("project %d title=%d tagline=%d status=%d body=%d link=%d body_px=%d %s\n", i + 1, f.title,
+                  f.tagline, f.status, f.body, f.link, f.body_px,
+                  s.profile.projects[nth_configured_project(s.profile, i)].title);
+    }
+    return 0;
+  }
   const int layouts[2] = {0, 1};
   size_t start = 0;
   while (start <= screens.size()) {

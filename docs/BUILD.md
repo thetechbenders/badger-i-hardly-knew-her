@@ -83,10 +83,16 @@ flashing, offline:
 - `git describe` is embedded, there are no absolute paths, and the memory
   report and `SHA256SUMS` are consistent.
 
-Builds are **reproducible across checkout locations** (`-ffile-prefix-map`,
-fixed `--abbrev=12` in the version string). CI rebuilds from a second clone
-and compares UF2/BIN/ELF byte for byte. The `.elf.map` lists absolute object
-paths and is not expected to match.
+Builds are **reproducible across checkout locations and build-directory
+names** (`-ffile-prefix-map` for the source tree, the dependencies and the
+build tree, plus a fixed `--abbrev=12` in the version string). Debug
+information is kept in full: the source tree reads as `.` and the build tree
+as `./build/fw`, so `arm-none-eabi-gdb` started at the repository root finds
+the sources (and a default build's generated files). CI rebuilds from a
+second clone into a differently named build directory and compares
+UF2/BIN/ELF/asset UF2 byte for byte. The `.elf.map` lists absolute object
+paths and is not expected to match; it is a size-analysis aid, not a
+release artifact.
 
 Current sample build: 187.6 KiB flash (of 1920 KiB available before the
 asset region), 86.3 KiB static RAM of 264 KiB, 4 KiB stack per core. Each

@@ -7,7 +7,7 @@ each run. Keep a serial terminal open on USB where noted (`status`, `diag all`).
 ## A. USB power
 
 1. Flash `badger_badge.uf2` (see INSTALL.md). **Expect**: one full refresh to
-   the photo badge within about 3 s. The LED glows during the refresh.
+   the photo badge within about 3 s (estimate; record the measured time). The LED glows during the refresh.
 2. `version`, `diag all`, `selftest`. **Expect**: `reset: power-on` or
    `reset button`, flash image ~164 KiB, settings `erased` (first boot), and
    `selftest` OK.
@@ -29,7 +29,7 @@ each run. Keep a serial terminal open on USB where noted (`status`, `diag all`).
 
 ## C. Busy-panel behaviour
 
-1. `set refresh.speed 0` (4.5 s refreshes). Press B, then press C, A, B, C
+1. `set refresh.speed 0` (refreshes estimated at 4.5 s). Press B, then press C, A, B, C
    rapidly during the refresh. **Expect**: at most one further refresh, and
    the final screen is projects (the last press). `diag display` shows
    `dropped/coalesced` counts and `event overflow 0`.

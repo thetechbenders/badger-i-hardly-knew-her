@@ -72,7 +72,7 @@ Text limits are in UTF-8 bytes (one less than the storage size).
 | `project1..12.link` | text 71 | Empty or `https://…` (no spaces). Shown without `https://` in the footer; long B shows it as a QR |
 | `project1..12.banner` | text 39 | Optional black teaser band, e.g. `TOP SECRET - COMING SOON` |
 | `layout` | 0..1 | 0 = portrait left (default), 1 = portrait right |
-| `refresh.speed` | 0..3 | 0 = OTP waveform ~4.5 s, 1 = ~2.5 s (default), 2 = ~0.9 s, 3 = ~0.26 s (more ghosting) |
+| `refresh.speed` | 0..3 | 0 = OTP waveform, 1 = medium (default), 2 = fast, 3 = turbo (more ghosting). Estimated full-refresh times, not yet measured: ~4.5 / ~2.5 / ~0.9 / ~0.26 s ([REFRESH.md](REFRESH.md)) |
 | `refresh.partial` | bool | Allow partial refresh for changes under 40 % of the screen |
 | `refresh.max_partials` | 0..20 | Partial refreshes before a forced full refresh (default 5) |
 | `sleep.timeout_s` | 0, 15..3600 | Battery auto power-off; 0 = never (default 120) |

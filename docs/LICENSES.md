@@ -59,4 +59,4 @@ Notes:
 | `docs/previews/*` | Rendered by this project's renderer from the public sample profile | Public |
 | Owner's portrait photos and processed portrait | Owner's personal photos | **Private**: `local/`, git-ignored; publish only with the owner's explicit approval |
 | `local/profile.json` (real contact details) | Owner | **Private**, git-ignored |
-| Project names, descriptions and repository links in `config/sample-profile.json` | Taken from the public READMEs and tags of the linked repositories | Public; no URL, feature or status beyond what those pages state |
+| Project names, descriptions and repository links in `config/sample-profile.json` | Taken from the public READMEs and history of the linked repositories; upstream projects are credited in `docs/DESIGN.md` (Portfolio sources) | Public; no URL, feature or status beyond what those sources state |

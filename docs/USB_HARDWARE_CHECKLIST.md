@@ -39,7 +39,8 @@ Flashing (step 1) replaces MicroPython and needs the owner's explicit go-ahead.
 ## 1. Flash, startup and identity
 
 - [ ] 1.1 BOOTSEL, copy `badger_badge.uf2` to `RPI-RP2`. **Expect**: one full
-      refresh to the photo badge (layout **A**, portrait left) within ~3 s.
+      refresh to the photo badge (layout **A**, portrait left) within ~3 s
+      (estimate; record the measured time).
 - [ ] 1.2 Port enumerates as `2E8A:000A`. `> version` shows `BHIHKH!`, the commit
       (`git describe`, 12 hex digits) and `pico-sdk 2.2.0`.
 - [ ] 1.3 `> selftest` → fonts ok, built-in assets ok, settings ok, event
@@ -70,7 +71,7 @@ Flashing (step 1) replaces MicroPython and needs the owner's explicit go-ahead.
 
 ## 3. Rapid navigation and refresh behaviour
 
-- [ ] 3.1 `> set refresh.speed 0` (≈4.5 s refreshes). During one refresh press
+- [ ] 3.1 `> set refresh.speed 0` (refreshes estimated at ≈4.5 s). During one refresh press
       B, C, A, B, C quickly. **Expect**: exactly one further refresh, showing
       projects. `> diag display`: `coalesced` grew, `event overflow 0`,
       `panel ok`.
@@ -193,7 +194,8 @@ that only 9.7 reaches the three-in-a-row safe-mode threshold.
 - [ ] 10.8 Icons at arm's length: GitHub and Discord marks recognisable,
       aligned with their usernames; no "GitHub"/"Discord" words beside them.
 - [ ] 10.9 Browse 5 screens, then `> diag refresh`: one entry per press, no
-      unrequested entries, `busy` ≈ 2.5 s at speed 1 (see REFRESH.md). Record a
+      unrequested entries. Record the measured `busy` time at speed 1 (estimated
+      ≈ 2.5 s, see REFRESH.md) and update REFRESH.md with it. Record a
       video alongside and compare the phase timing.
 - [ ] 10.10 Optional: `> set refresh.speed 2`, browse the portfolio, judge
       ghosting versus the shorter flash; `> revert`.

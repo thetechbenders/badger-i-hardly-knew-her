@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -56,6 +57,25 @@ def render(preview: Path, out: Path, pairs, pack: Path | None, screens: str, ext
     if res.stderr:
         print(res.stderr.strip(), file=sys.stderr)
     return [Path(line) for line in res.stdout.split()]
+
+
+def fit_report(preview: Path, pairs) -> list[dict]:
+    """Per configured project: was each text part drawn without ellipsis?"""
+    cmd = [str(preview), "--fit"]
+    for k, v in pairs:
+        cmd += ["--set", f"{k}={v.replace(chr(10), chr(92) + 'n')}"]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    if res.returncode:
+        raise SystemExit(f"badger_preview --fit failed: {res.stderr}")
+    out = []
+    keys = ("title", "tagline", "status", "body", "link", "body_px")
+    pat = re.compile(r"project (\d+) " + " ".join(fr"{k}=(\d+)" for k in keys) + r" (.*)")
+    for line in res.stdout.splitlines():
+        m = pat.fullmatch(line)
+        if not m:
+            raise SystemExit(f"unexpected --fit line: {line!r}")
+        out.append({"project": int(m[1]), **{k: int(m[i + 2]) for i, k in enumerate(keys)}, "name": m[8]})
+    return out
 
 
 def diagnostic_max_pairs() -> list[tuple[str, str]]:
@@ -113,8 +133,14 @@ def main(argv=None) -> int:
     big = args.out / f"x{args.scale}"
     native.mkdir(parents=True, exist_ok=True)
     big.mkdir(parents=True, exist_ok=True)
+    fits = fit_report(args.preview, pairs)
+    cut = [f for f in fits if not all(f[k] for k in ("title", "tagline", "status", "body", "link"))]
+    for f in fits:
+        print(f"FIT project {f['project']}: {'complete' if f not in cut else 'CUT'} (body {f['body_px']} px) {f['name']}")
+    if cut and not args.diagnostic_max:
+        raise SystemExit(f"project text does not fit (ellipsized or dropped): {[f['name'] for f in cut]}")
     pbms = render(args.preview, native, pairs, args.pack, args.screens, args.preview_arg)
-    report = {"payload": payload, "screens": {}}
+    report = {"payload": payload, "screens": {}, "fit": fits}
     pngs = []
     for pbm in pbms:
         im = Image.open(pbm).convert("1")

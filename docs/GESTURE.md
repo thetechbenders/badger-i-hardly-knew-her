@@ -74,7 +74,7 @@
 3. **Refresh coalescing:** the renderer waits until the current e-paper
    refresh finishes. However many screen requests arrive during a refresh,
    only the newest view is drawn next. A host test drives three swipes
-   during one 4.5 s refresh and checks for exactly one further refresh.
+   during one simulated 4.5 s refresh and checks for exactly one further refresh.
 
 ## Mounting orientation
 

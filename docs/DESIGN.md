@@ -124,16 +124,48 @@ UP/DOWN there returns to that same project. Each page has:
   and no QR;
 - the tagline, always bold 10 so the hierarchy does not shift while
   browsing, up to 2 lines;
-- an optional outlined **status** tag (a version or readiness note taken
-  from the repository);
+- an optional outlined **status** tag: a readiness note or the fork's
+  upstream, never a version number (versions go stale on a badge that is
+  not reflashed);
 - the description in 11 px, falling back to 10 px before anything is cut;
-- a footer with the link without `https://`, plus a small QR glyph and
-  "hold B" when a QR is available.
+- a footer with a compact label (`owner/repo` for GitHub links), plus a
+  small QR glyph and "hold B" when a QR is available. Pages without a link
+  have no footer at all.
 
-The QR page re-encodes the project's own link on every render, so it can
-never show a previous project's code. Long URLs wrap after `/` or `-`
-rather than mid-word. Projects, links and status texts were taken from each
-repository's public README and tags; nothing was added beyond them.
+The QR page re-encodes the project's own full `https://` link on every
+render, so it can never show a previous project's code. Next to it, the
+page shows the same compact `owner/repo` label, wrapped after `/`.
+
+**Everything configured must fit.** `tools/render_previews.py` asks the
+renderer (`badger_preview --fit`) whether each title, tagline, status,
+description and link label of every configured project was drawn
+completely, and fails if any was ellipsized or dropped. A host test applies
+the same check to the sample portfolio and requires 11 px descriptions.
+Only the labelled HOST DIAGNOSTIC SAMPLE is allowed to overflow, because
+that is what it tests. With a status tag, about 80 characters of
+description fit at 11 px.
+
+### Portfolio sources
+
+Text, links and status labels come from each selected repository's public
+README and history; nothing beyond them is claimed. Destinations were
+checked to resolve (`git ls-remote`) and every QR is decoded and compared
+with its link.
+
+| Entry | Destination | Notes |
+|---|---|---|
+| Jump Jet | thetechbenders/JumpJet | Co-developed by Dan and Mauker; redesign of Philip Sørensen's original Jetpack; PCBWay-sponsored (README). README states "cold-safe foundation", shown as "Work in progress". |
+| DragonBreath | danielbrownjr/DragonBreath (Dan's fork) | Upstream **plastikman/DragonBreath** (maintainer plastikman, Zak Peirce; contributors include Justin Hayes). The badge says "Fork of plastikman/DragonBreath". Dan's contributions, merged upstream via PRs #89, #91, #97 and #98: opt-in Bambu external-chamber regulation, chamber control ported to dragon-core's `dc_pid`, PID duty telemetry, plus related fixes, tests and a build requirement. |
+| DragonSniff | thetechbenders/DragonSniff | Read-only observability tooling (README). |
+| DragonBench | thetechbenders/DragonBench | Characterization image, no actuator support (README). |
+| dragon-core | danielbrownjr/dragon-core (Dan's fork) | Upstream **justinh-rahb/dragon-core** (maintainer justinh-rahb, Justin Hayes; contributors include Zak Peirce). The badge says "Fork of justinh-rahb/dragon-core". Dan's contributions, merged upstream via PRs #47, #49, #51, #54 and #55: the actuator-agnostic `dc_pid` PID primitive, expiry of stale Bambu/Prusa status data, redaction of Bambu device identifiers from logs, lower console-endpoint peak memory. |
+| CatScan-MS | none | Teaser only: no link, no QR, no QR hint. |
+| BHIHKH! | thetechbenders/badger-i-hardly-knew-her | This firmware; always the last entry. |
+
+As checked on 2026-10-01, the forks' default branches trail upstream (DragonBreath's fork
+`main` is at the #91 merge of 2026-09-04; dragon-core's at v0.28.2 while
+upstream is at v0.35.2). The badge links the forks because the portfolio
+shows Dan's own work; syncing the forks is up to their owner.
 
 The font generator measures advances in FreeType's monochrome mode
 (`mode="1"`), matching the 1-bit glyphs it stores. Antialiased advances had

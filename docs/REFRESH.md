@@ -1,7 +1,12 @@
 # Refresh phases: why the panel flashes
 
 When a screen changes, the panel briefly shows an inverted or near-black
-image before the new screen appears. This note explains where that comes
+image before the new screen appears.
+
+> **All durations here are estimates** derived from the driver's waveform
+> tables (frame counts ÷ the 100 Hz frame rate it configures). None has been
+> measured on the physical badge yet; `diag refresh` (below) is how to
+> measure them, and this page should be updated with the results. This note explains where that comes
 from, what the firmware does and does not add, and how to measure it on a
 badge.
 
@@ -29,7 +34,8 @@ badge.
   the threshold would not help: a partial window that covers 90 % of the
   screen runs the same waveform over almost the same area.
 - **Clean refresh** (A long press, `refresh clean`, recovery after a panel
-  fault) uses the controller's OTP waveform (speed 0, about 4.5 s). It runs
+  fault) uses the controller's OTP waveform (speed 0, estimated at about
+  4.5 s). It runs
   only when asked for, or once after a fault.
 
 ## Where the flash comes from: the waveform
@@ -40,13 +46,13 @@ per second. That includes fast and turbo: their LUT functions set 200 Hz
 first, but `setup()` overrides it. Each LUT row has four phase lengths and a
 repeat count:
 
-| Speed | Row 1 | Row 2 | Row 3 | Frames | Time at 100 Hz |
+| Speed | Row 1 | Row 2 | Row 3 | Frames | Estimated time at 100 Hz |
 |---|---|---|---|---|---|
 | 1 medium (default) | 22+22+13 = 57 × 1 | 35+35 = 70 × 2 | 57 × 1 | 254 | ≈ 2.5 s |
 | 2 fast | 4+4+7 = 15 × 1 | 12+12 = 24 × 2 | 15 × 2 | 93 | ≈ 0.9 s |
 | 3 turbo | 1+1+2 = 4 × 1 | 2+2 = 4 × 2 | 7 × 2 | 26 | ≈ 0.26 s |
 
-For speed 1, the three rows are what you see:
+For speed 1, the three rows are what you see (durations estimated):
 
 1. **Row 1, about 0.57 s.** Each pixel is driven *away* from its target
    colour (`LUT_WW`/`LUT_BW` 0x54, `LUT_WB`/`LUT_BB` 0xA8: opposite
@@ -66,11 +72,12 @@ redraw.
 
 ## Choices that are available without code changes
 
-- `refresh.speed 2` (fast): one full refresh takes about 0.9 s, with
+- `refresh.speed 2` (fast): one full refresh is estimated at about 0.9 s, with
   shorter flash phases. Ghosting is more likely, and a periodic A long press
   (clean refresh) removes it.
-- `refresh.speed 1` (default): about 2.5 s, the best balance on this panel
-  for a mostly static badge.
+- `refresh.speed 1` (default): estimated at about 2.5 s. It is the default
+  because it suits a mostly static badge; whether it is the best balance on
+  this panel is still to be judged on the badge.
 
 The choice should be made on the physical badge, since ghosting depends on
 the panel and the temperature.

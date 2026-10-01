@@ -41,24 +41,32 @@ struct Column {
 // Draw one fitted line into the column if there is room; returns false and
 // draws nothing when the line would overflow the column bottom.
 bool col_line(Framebuffer &fb, Column &c, const Font *const *chain, int n, const char *s, int gap_after,
-              Align a = Align::Left, Ink ink = Ink::Black) {
+              Align a = Align::Left, Ink ink = Ink::Black, bool *cut = nullptr) {
   if (str_empty(s)) return false;
   FitResult r = fit_text(chain, n, s, c.w);
-  if (c.y + r.font->line_height > c.bottom) return false;
+  if (c.y + r.font->line_height > c.bottom) {
+    if (cut) *cut = true;
+    return false;
+  }
+  if (cut && r.ellipsized) *cut = true;
   draw_fitted(fb, r, s, c.x, c.y, c.w, a, ink);
   c.y += r.font->line_height + gap_after;
   return true;
 }
 
 int col_wrapped(Framebuffer &fb, Column &c, const Font &f, const char *s, int max_lines, int gap_after,
-                Ink ink = Ink::Black) {
+                Ink ink = Ink::Black, bool *cut = nullptr) {
   if (str_empty(s)) return 0;
   const int room = (c.bottom - c.y) / f.line_height;
-  if (room <= 0) return 0;
+  if (room <= 0) {
+    if (cut) *cut = true;
+    return 0;
+  }
   WrapLine lines[6];
   int limit = max_lines < room ? max_lines : room;
   if (limit > 6) limit = 6;
   const int n = wrap_text(f, s, c.w, lines, limit);
+  if (cut && (n == 0 || lines[n - 1].ellipsized)) *cut = true;
   for (int i = 0; i < n; ++i) {
     draw_wrapped_line(fb, f, s, lines[i], c.x, c.y, ink);
     c.y += f.line_height;
@@ -381,22 +389,54 @@ void draw_qr_glyph(Framebuffer &fb, int x, int y) {
   fb.fill_rect({int16_t(x + 6), int16_t(y + 6), 2, 2}, Ink::Black);
 }
 
-const char *strip_scheme(const char *url) { return std::strncmp(url, "https://", 8) == 0 ? url + 8 : url; }
+}  // namespace
+
+size_t repo_label(const char *url, char *out, size_t cap) {
+  if (!cap) return 0;
+  const char *s = url;
+  if (std::strncmp(s, "https://", 8) == 0) s += 8;
+  if (std::strncmp(s, "www.", 4) == 0) s += 4;
+  size_t len = cstr_len(s, 512);
+  while (len && s[len - 1] == '/') --len;
+  if (len > 11 && std::strncmp(s, "github.com/", 11) == 0) {
+    // owner/repo: the first two path segments, without a ".git" suffix.
+    const char *p = s + 11;
+    const char *slash = static_cast<const char *>(std::memchr(p, '/', len - 11));
+    if (slash && slash > p && size_t(slash + 1 - s) < len) {
+      const char *end = slash + 1;
+      while (end < s + len && *end != '/' && *end != '?' && *end != '#') ++end;
+      if (end - (slash + 1) > 4 && std::strncmp(end - 4, ".git", 4) == 0) end -= 4;
+      if (end > slash + 1) {
+        s = p;
+        len = size_t(end - p);
+      }
+    }
+  }
+  if (len >= cap) len = cap - 1;
+  std::memcpy(out, s, len);
+  out[len] = '\0';
+  return len;
+}
+
+namespace {
 
 // Wrap a URL, preferring breaks after '/' (then after '-'), never inside a
-// path segment unless the segment alone is wider than the column.
+// path segment unless the segment alone is wider than the column. A '/'
+// anywhere in the line wins over a later '-', so "owner/" stays whole.
 void col_url(Framebuffer &fb, Column &c, const Font &f, const char *url, int max_lines) {
   size_t pos = 0;
   const size_t len = cstr_len(url, 512);
   for (int line = 0; line < max_lines && pos < len; ++line) {
     if (c.y + f.line_height > c.bottom) return;
     const bool last = line == max_lines - 1;
-    size_t best = 0, fit = 0;
+    size_t slash = 0, dash = 0, fit = 0;
     for (size_t i = pos + 1; i <= len; ++i) {
       if (text_width(f, url + pos, i - pos) > c.w) break;
       fit = i;
-      if (i == len || url[i - 1] == '/' || url[i - 1] == '-') best = i;
+      if (url[i - 1] == '/') slash = i;
+      if (url[i - 1] == '-') dash = i;
     }
+    const size_t best = slash > pos ? slash : dash;
     size_t end = (fit == len) ? len : (best > pos ? best : fit);
     if (end <= pos) end = pos + 1;
     if (last && end < len) {  // out of lines: ellipsize the remainder
@@ -414,13 +454,19 @@ void col_url(Framebuffer &fb, Column &c, const Font &f, const char *url, int max
 
 // Description: 11 px while it fits, otherwise 10 px (one more line in the
 // same space) before resorting to an ellipsis.
-void col_body(Framebuffer &fb, Column &c, const char *s) {
+void col_body(Framebuffer &fb, Column &c, const char *s, ProjectFit *fit) {
   if (str_empty(s)) return;
   WrapLine probe[6];
   const int room11 = (c.bottom - c.y) / fonts::sans_11.line_height;
   const int n11 = room11 > 0 ? wrap_text(fonts::sans_11, s, c.w, probe, room11 < 6 ? room11 : 6) : 0;
   const bool fits11 = n11 > 0 && !probe[n11 - 1].ellipsized;
-  col_wrapped(fb, c, fits11 ? fonts::sans_11 : fonts::sans_10, s, 6, 0);
+  const Font &f = fits11 ? fonts::sans_11 : fonts::sans_10;
+  bool cut = false;
+  col_wrapped(fb, c, f, s, 6, 0, Ink::Black, &cut);
+  if (fit) {
+    fit->body = !cut;
+    fit->body_px = f.line_height;
+  }
 }
 
 void project_header(Framebuffer &fb, Column &c, int n, int total) {
@@ -430,7 +476,9 @@ void project_header(Framebuffer &fb, Column &c, int n, int total) {
   col_line(fb, c, hc, 1, hdr, 1);
 }
 
-void render_projects(Framebuffer &fb, const View &v, const RenderContext &ctx) {
+void render_projects(Framebuffer &fb, const View &v, const RenderContext &ctx, ProjectFit *fit = nullptr) {
+  ProjectFit local;
+  ProjectFit &f = fit ? *fit : local;
   const Profile &p = ctx.settings->profile;
   const int total = configured_project_count(p);
   const int n = v.project < total ? v.project : 0;
@@ -440,7 +488,9 @@ void render_projects(Framebuffer &fb, const View &v, const RenderContext &ctx) {
   if (idx < 0) return;  // unreachable: the app never shows an empty portfolio
   const Project &pr = p.projects[idx];
   project_header(fb, c, n, total);
-  col_line(fb, c, kNameChainSmall, 2, pr.title, 1);
+  bool cut = false;
+  col_line(fb, c, kNameChainSmall, 2, pr.title, 1, Align::Left, Ink::Black, &cut);
+  f.title = !cut;
 
   if (!str_empty(pr.banner)) {
     // Prominent teaser banner: white on black across the column.
@@ -455,13 +505,16 @@ void render_projects(Framebuffer &fb, const View &v, const RenderContext &ctx) {
   }
   // Tagline: always bold 10 (same size on every page, so the hierarchy does
   // not shift while browsing), wrapping onto a second line if needed.
-  col_wrapped(fb, c, fonts::sans_bold_10, pr.tagline, 2, 2);
+  cut = false;
+  col_wrapped(fb, c, fonts::sans_bold_10, pr.tagline, 2, 2, Ink::Black, &cut);
+  f.tagline = !cut;
 
   if (!str_empty(pr.status)) {
     // Outlined status tag, sized to its text.
     const Font *sc[] = {&fonts::sans_10};
     FitResult r = fit_text(sc, 1, pr.status, c.w - 8);
     const int th = fonts::sans_10.line_height + 1;
+    f.status = !r.ellipsized && c.y + th <= c.bottom;
     if (c.y + th <= c.bottom) {
       fb.draw_rect({int16_t(c.x), int16_t(c.y), int16_t(r.width + 8), int16_t(th)}, Ink::Black);
       draw_fitted(fb, r, pr.status, c.x + 4, c.y, c.w - 8);
@@ -473,7 +526,7 @@ void render_projects(Framebuffer &fb, const View &v, const RenderContext &ctx) {
   const int footer_h = url ? fonts::sans_10.line_height + 1 : 0;
   Column body = c;
   body.bottom = H - 2 - footer_h;
-  col_body(fb, body, pr.body);
+  col_body(fb, body, pr.body, &f);
 
   if (url) {
     // Footer: where the code points, and how to get it.
@@ -484,8 +537,10 @@ void render_projects(Framebuffer &fb, const View &v, const RenderContext &ctx) {
     draw_qr_glyph(fb, hx, fy + 2);
     draw_text(fb, fonts::sans_10, hx + 12, fy - 1, hint);
     const Font *uc[] = {&fonts::sans_10};
-    const char *shown = strip_scheme(url);
+    char shown[sizeof(Project::link)];
+    repo_label(url, shown, sizeof shown);
     FitResult r = fit_text(uc, 1, shown, hx - c.x - 8);
+    f.link = !r.ellipsized;
     draw_fitted(fb, r, shown, c.x, fy - 1, hx - c.x - 8);
   }
   if (total > 1) {
@@ -518,7 +573,9 @@ void render_project_qr(Framebuffer &fb, const View &v, const RenderContext &ctx)
   col_wrapped(fb, c, fonts::sans_11, "Scan to open the repository", 2, 4);
   Column u = c;
   u.bottom = H - fonts::sans_10.line_height - 3;
-  col_url(fb, u, fonts::sans_10, strip_scheme(url), 3);
+  char label[sizeof(Project::link)];
+  repo_label(url, label, sizeof label);
+  col_url(fb, u, fonts::sans_bold_10, label, 2);
   const Font *hc[] = {&fonts::sans_10};
   const char *back = "hold B: back to project";
   FitResult r = fit_text(hc, 1, back, c.w);
@@ -596,6 +653,16 @@ void render(Framebuffer &fb, const View &v, const RenderContext &ctx) {
   fb.set_clip(sr);  // the status area can never spill into content
   draw_status(fb, ctx.status, sr.right(), 0, v.screen == Screen::Recovery ? Ink::White : Ink::Black);
   fb.reset_clip();
+}
+
+ProjectFit project_fit(Framebuffer &scratch, const RenderContext &ctx, int project) {
+  ProjectFit fit;
+  View v;
+  v.screen = Screen::Projects;
+  v.project = uint8_t(project);
+  scratch.clear(Ink::White);
+  render_projects(scratch, v, ctx, &fit);
+  return fit;
 }
 
 }  // namespace badge

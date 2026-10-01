@@ -40,7 +40,8 @@ Never run a "flash nuke" UF2 unless you intend to wipe everything.
 1. Connect USB-C to the computer.
 2. Hold **BOOT/USR**, tap **RST**, release BOOT/USR. The `RPI-RP2` drive appears.
 3. Copy `badger_badge.uf2` to the drive. The badge reboots and draws the
-   photo badge (a full refresh takes about 2 s at the default speed).
+   photo badge (a full refresh is estimated at about 2.5 s at the default
+   speed; not yet measured on a badge).
 4. Optional: to install the portrait separately from the firmware, enter
    BOOTSEL again and copy `badger_badge-assets.uf2`. It writes only the asset
    region. A valid flashed pack takes precedence over the portrait built into

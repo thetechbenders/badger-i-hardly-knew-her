@@ -116,6 +116,21 @@ class RenderedOutput(unittest.TestCase):
                 self.assertNotIn(key, names)
         self.assertIn("", links)  # the sample keeps one unlinked project
 
+    def test_fit_gate_rejects_cut_portfolio_text(self):
+        import render_previews
+        doc = json.loads((ROOT / "config/sample-profile.json").read_text())
+        fits = render_previews.fit_report(PREVIEW, badge_profile.flatten(doc))
+        self.assertTrue(all(f[k] for f in fits for k in ("title", "tagline", "status", "body", "link")), fits)
+        self.assertEqual(fits[-1]["name"], "BHIHKH!")
+        doc["profile"]["projects"][0]["body"] = "Far too long for the page. " * 7
+        with tempfile.TemporaryDirectory() as d:
+            prof = Path(d) / "p.json"
+            prof.write_text(json.dumps(doc))
+            with self.assertRaises(SystemExit) as cm:
+                render_previews.main(["--preview", str(PREVIEW), "--out", d, "--profile", str(prof),
+                                      "--screens", "projects"])
+            self.assertIn("does not fit", str(cm.exception))
+
     EMPTY = {f"project{i}.{f}": "" for i in range(1, 13) for f in badge_profile.PROJECT_FIELDS}
 
     def test_project_page_without_link_shows_no_qr(self):
