@@ -57,8 +57,8 @@ Configure from the USB serial port (`/dev/ttyACM*`, `COMx`, 115200 baud, any
 terminal), or with `tools/badgerctl.py`:
 
 ```bash
-cp config/sample-profile.json local/profile.json    # edit: name, title, contacts, qr.payload, projects
-python3 tools/badgerctl.py push local/profile.json   # validates locally, stages, commits
+python3 tools/badgerctl.py push local/badge.toml     # a filled-in form (docs/PERSONALIZE.md), or
+python3 tools/badgerctl.py push local/profile.json   # a JSON profile; both are validated locally, staged, committed
 python3 tools/badgerctl.py backup local/settings-backup.txt
 python3 tools/badgerctl.py cmd "diag qr"
 ```

@@ -140,3 +140,18 @@ projects, unknown project fields, a project with content but no title, a
 non-https link and an unknown contact type. `type` is optional, so older
 profiles stay valid. It is compiled into firmware
 defaults (`profilegen.py`) or pushed over USB (`badgerctl.py push`).
+
+## Fill-in form (`config/badge-form.toml`)
+
+A TOML file with `form = 1` and the sections `[person]`, `[[contacts]]`,
+`[qr]`, `[portrait]`, `[[projects]]` and `[preferences]`, documented field
+by field in the template and in [PERSONALIZE.md](PERSONALIZE.md).
+`tools/badge_form.py` validates it strictly (unknown fields, types, choices,
+counts, links, glyphs, portrait files) and turns it into the profile JSON
+above; it is not a second schema. `description` becomes `body`, a list of
+`interests` is joined with " · ", `qr.show` selects the `qr.payload`
+(link, vCard text or file, or a vCard built from the contacts), and every
+identity key is always present (empty = not shown). `badge_profile.load()`
+accepts a `.toml` path, so `profilegen.py`, `render_previews.py` and
+`badgerctl.py push` read forms too. The generated `profile.json` carries a
+`_generated_by` marker. The tool replaces only files with that marker.

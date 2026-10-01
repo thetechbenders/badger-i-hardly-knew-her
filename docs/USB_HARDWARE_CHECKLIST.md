@@ -333,6 +333,26 @@ Run on the first build of `feature/project-index-quiet-browsing`; record its
 - [ ] 11.12 `> sleep` from the index (USB emulated sleep), then a button: the
       wake screen, no delayed index or C action.
 
+## 12. Firmware built from the fill-in form
+
+Run on the first build from `scripts/build-badge.sh local/badge.toml`
+(`feature/fill-in-personalization`); record its `> version` line. The host
+checks (fit, QR decode, artifacts) have passed before this point; these
+confirm the panel.
+
+- [ ] 12.1 Photo badge, layouts A and B (USR long): the converted portrait,
+      name, title and interests as in `local/out/badge/previews/x3/`.
+- [ ] 12.2 Card: every contact line, GitHub/Discord icons, the QR (or no QR
+      when `show = "none"`); scan the card and the full-screen QR with a
+      phone: the configured link or vCard.
+- [ ] 12.3 Projects in form order; a project without `link` shows no footer
+      and long B does nothing; each linked project's QR scans to its link.
+- [ ] 12.4 `> version` shows the build's `git describe`; `> defaults` then
+      `> commit` returns to the form's content.
+- [ ] 12.5 `badgerctl.py push local/badge.toml` on a badge running other
+      content: the form's profile is staged and committed (portrait
+      unchanged: it is in the firmware).
+
 ## Pending: battery (LiPo not yet available)
 
 - [ ] Battery-only cold start from a button tap; power latch holds after release.

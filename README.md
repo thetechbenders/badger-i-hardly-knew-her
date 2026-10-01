@@ -94,28 +94,54 @@ python3 tools/badgerctl.py cmd "set qr.payload https://example.com/you"
 python3 tools/badgerctl.py cmd commit
 ```
 
+## Make it yours
+
+Fill in a form, add your photo, build. No C++ or JSON editing:
+
+```bash
+scripts/build-badge.sh --new                       # 1. copy the template to local/badge.toml (private)
+#   2. fill in local/badge.toml: name, title, contacts, QR, projects (every field is explained there)
+#   3. put your photo next to it (local/photo.jpg) and set: [portrait] photo = "photo.jpg"
+scripts/build-badge.sh --preview local/badge.toml  # 4. check every screen: local/out/badge/previews/contact_sheet.png
+scripts/build-badge.sh local/badge.toml            # 5. firmware: local/out/badge/fw/badger_badge.uf2
+```
+
+The one command validates the form (errors name the field and the fix),
+converts the photo (the original is only read), checks that every field
+is drawn whole on every screen, decodes every QR code from the rendered
+screens, and only then cross-compiles and checks the firmware. On Windows,
+run it in WSL2 and open the form and previews through `\\wsl$\...`. See
+[docs/PERSONALIZE.md](docs/PERSONALIZE.md) for the details, Windows notes and
+moving an existing `local/profile.json` to a form (`badge_form.py export`).
+
 ## Private content
 
 Git ignores `local/`. Put these there:
 
+- `local/badge.toml`: your filled-in form, and your photo next to it.
+  Generated files (profile, portrait, previews, firmware) go to
+  `local/out/<form name>/`.
 - `local/private/`: original photos. Never modified by the tools.
 - `local/portrait.png`: the processed 1-bit portrait
   (`tools/portrait.py`, see [docs/DESIGN.md](docs/DESIGN.md)).
-- `local/profile.json`: your real profile. Copy
-  `config/sample-profile.json` as a starting point.
-- `local/backups/`: `scripts/private-backup.sh create` writes a private
-  archive here. It holds the inputs, the personalised firmware built from a
+- `local/profile.json`: a profile written as JSON (the previous workflow,
+  still supported). Copy `config/sample-profile.json` as a starting point.
+- `local/backups/`: `scripts/private-backup.sh create [local/badge.toml]`
+  writes a private archive here. It holds the inputs, the personalised firmware built from a
   clean commit, a `git bundle` of the source, checksums and RESTORE.md.
   `scripts/private-backup.sh verify <archive>` restores it into a temporary
   directory, rebuilds, and confirms the firmware is byte-identical.
 
-If these files exist, a local build embeds them automatically; CI always
-builds the public sample. The portrait can also be shipped separately as
+If `local/profile.json` and `local/portrait.png` exist, a plain
+`scripts/build-firmware.sh` embeds them automatically; a form is built with
+`scripts/build-badge.sh`. CI always builds the public sample and the
+generic form template. The portrait can also be shipped separately as
 `badger_badge-assets.uf2`, so a public firmware image never needs to contain
 the photo.
 
 ## Documentation
 
+- [docs/PERSONALIZE.md](docs/PERSONALIZE.md): the fill-in form, one-command build, previews, Windows/WSL
 - [docs/BUILD.md](docs/BUILD.md): Linux and Windows/WSL builds, pinned versions, CI
 - [docs/INSTALL.md](docs/INSTALL.md): backup, flashing, BadgerOS impact, configuration, battery, recovery
 - [docs/USB_CLI.md](docs/USB_CLI.md): serial commands and every configurable key

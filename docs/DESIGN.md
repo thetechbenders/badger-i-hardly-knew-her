@@ -139,9 +139,17 @@ page shows the same compact `owner/repo` label, wrapped after `/`.
 
 **Everything configured must fit.** `tools/render_previews.py` asks the
 renderer (`badger_preview --fit`) whether each title, tagline, status,
-description and link label of every configured project was drawn
-completely, and fails if any was ellipsized or dropped. A host test applies
-the same check to the sample portfolio and requires 11 px descriptions.
+banner, description and link label of every configured project was drawn
+completely, on its page, beside its repository QR and in the index, and
+whether the name, title, affiliation, interests, event, contact lines and QR
+caption were drawn completely on the badge (both layouts), the card and the
+full-screen QR. It fails if any was ellipsized or dropped, if text contains
+characters the fonts lack, or if a one-line field contains a line break.
+The one exception is by design: the card's QR caption gives way to contact
+lines and is then shown only on the full-screen QR (reported as a note).
+The fill-in form (`tools/badge_form.py`, [PERSONALIZE.md](PERSONALIZE.md))
+runs the same gate and names the form field to shorten. A host test applies
+the check to the sample portfolio and requires 11 px descriptions.
 Only the labelled HOST DIAGNOSTIC SAMPLE is allowed to overflow, because
 that is what it tests. With a status tag, about 80 characters of
 description fit at 11 px.
