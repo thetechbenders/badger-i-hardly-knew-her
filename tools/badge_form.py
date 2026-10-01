@@ -816,8 +816,10 @@ def export_form(doc: dict, portrait_lines: list[str], source: str) -> str:
         out += ['show = "vcard"', f"vcard = {_toml_str(payload)}"]
     else:
         out += ['show = "link"', f"link = {_toml_str(payload)}"]
-    if qr.get("caption"):
+    if qr.get("caption") and payload:
         out.append(f"caption = {_toml_str(qr['caption'])}")
+    elif qr.get("caption"):  # never shown without a code; keep it for later
+        out.append(f"# caption = {_toml_str(qr['caption'])}   (not shown without a QR code)")
     out += ["", "[portrait]", *portrait_lines]
     for pr in p.get("projects", []):
         if not any(pr.values()):
@@ -867,7 +869,8 @@ def main(argv=None) -> int:
             return 1
         args.form.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(TEMPLATE, args.form)
-        shown = os.path.relpath(args.form)
+        rel = os.path.relpath(args.form)
+        shown = args.form if rel.startswith("..") else rel
         print(f"created {shown}\nnext: fill it in, put your photo next to it, then run\n"
               f"  scripts/build-badge.sh --preview {shown}\n  scripts/build-badge.sh {shown}")
         return 0
@@ -896,6 +899,9 @@ def main(argv=None) -> int:
         print(f"wrote {args.form}")
         if untyped:
             print(f"note: untyped contacts {untyped} became type = \"text\" (drawn the same way)")
+        qr = doc.get("profile", {}).get("qr", {})
+        if qr.get("caption") and not qr.get("payload"):
+            print("note: the QR caption is commented out: without a QR code it is never shown")
         return 0
 
     try:
