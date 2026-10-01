@@ -27,7 +27,9 @@ each run. Keep a serial terminal open on USB where noted (`status`, `diag all`).
    USR long = layout B, then A again; DOWN = power-off sequence (step D).
 4. Tap a button very briefly (< 20 ms, a glancing touch). **Expect**: no action.
 5. Hold A and B together, release A, then B. **Expect**: badge, then card.
-6. USR short: diagnostics screen (moved from C long).
+6. USR short: diagnostics screen (moved from C long). USR long on the badge:
+   the layout toggles, and diagnostics is **not** shown, not even briefly
+   (one refresh, `diag refresh` shows one frame).
 
 ## B2. Project index and quiet browsing
 
@@ -40,10 +42,14 @@ Keep `status` handy: on the index it prints `index highlight n (drawn m)`.
    (~0.3 s after release), with one refresh.
 3. Tap DOWN four times quickly. **Expect**: one refresh at the end showing
    the final highlight, not one per tap.
-4. Hold DOWN for 3 s. **Expect**: no refresh while held, no power-off at 1 s,
-   then one refresh after release with the last entry highlighted (holding
-   stops at the end; tapping wraps). Hold UP: back to the first, gesture mode
-   unchanged.
+4. Hold DOWN for about 2.5 s (not 3). **Expect**: no refresh while held, no
+   power-off at 1 s, then one refresh after release with the last entry
+   highlighted (holding stops at the end; tapping wraps). Hold UP: back to
+   the first, gesture mode unchanged.
+4a. In the index, hold DOWN for 3 s or more. **Expect**: the normal power-off
+   sequence (badge drawn, then off; on USB, emulated sleep). The project
+   page is not opened, the moved highlight is not drawn, and after waking
+   short C opens the previously remembered project.
 5. Short C. **Expect**: the highlighted project opens at once (no extra
    wait), and only that project page is drawn. Then go to the card and press
    C once. **Expect**: the same project (it is now the remembered one).
@@ -56,9 +62,16 @@ Keep `status` handy: on the index it prints `index highlight n (drawn m)`.
    the index refresh tap DOWN several times, then press C. **Expect**: the
    index refresh completes, then one refresh to the final project. No
    intermediate highlight or project appears. `revert` afterwards.
-9. Tap C, then within 0.35 s hold B. **Expect**: the remembered project, then
-   its QR (the C acts first). Tap C and immediately run `screen badge` over
-   USB. **Expect**: the badge stays; no project page appears later.
+9. Pending C (tap C, then the other input within 0.35 s), with
+   `set refresh.speed 0` so an extra refresh would be obvious:
+   - C then hold B: **one** refresh, straight to the remembered project's
+     QR. Scan it: that project's link, not the contact vCard. On CatScan-MS
+     (no link): its teaser page.
+   - C then A: **one** refresh, to the badge. No project page in between.
+   - C then B short: the card; C then USR short: diagnostics.
+   - C then DOWN short: the project after the remembered one, one refresh.
+   - C then `screen badge` over USB: the badge stays; nothing appears later.
+   - `diag refresh` lists one frame per case. `revert` afterwards.
 10. Double-press C, then let the badge power off on battery (or `sleep`).
     Wake with A. **Expect**: the badge; no delayed index or project action.
 11. CatScan-MS in the index opens its teaser page: "TOP SECRET - COMING

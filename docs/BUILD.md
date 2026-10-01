@@ -83,6 +83,16 @@ flashing, offline:
 - `git describe` is embedded, there are no absolute paths, and the memory
   report and `SHA256SUMS` are consistent.
 
+To hand a build over, package it with
+`scripts/package_firmware.py <build-dir> <name>.zip`. It first checks every
+file in the build's `SHA256SUMS` exists and matches. It then writes a ZIP
+of those artifacts with a `SHA256SUMS` generated for exactly the packaged
+files (`--only FILE …` packages a subset with its own manifest) and
+re-verifies the result. The ZIP is deterministic (sorted entries, fixed
+times and modes). `scripts/package_firmware.py --verify <zip>` checks a
+package both ways: every listed file is present and matches, and every
+packaged file is listed.
+
 Builds are **reproducible across checkout locations and build-directory
 names** (`-ffile-prefix-map` for the source tree, the dependencies and the
 build tree, plus a fixed `--abbrev=12` in the version string). Debug
@@ -99,8 +109,8 @@ UF2/BIN/ELF/asset UF2 byte for byte. The `.elf.map` lists absolute object
 paths and is not expected to match; it is a size-analysis aid, not a
 release artifact.
 
-Current sample build: 187.6 KiB flash (of 1920 KiB available before the
-asset region), 86.3 KiB static RAM of 264 KiB, 4 KiB stack per core. Each
+Current sample build: 191.6 KiB flash (of 1920 KiB available before the
+asset region), 86.7 KiB static RAM of 264 KiB, 4 KiB stack per core. Each
 copy of the settings (staged, committed, store work buffers) holds the
 12-entry portfolio, which accounts for most of the RAM growth.
 

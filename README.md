@@ -29,13 +29,17 @@ contact details are kept out of Git (see [Private content](#private-content)).
 
 **Project index** (double C): a list of the project names with the
 last-viewed one highlighted. UP/DOWN move the highlight; hold to scroll
-(it stops at the ends). **C** opens the highlighted project at once; **A**
+(it stops at the ends). Holding DOWN for 3 s powers off from the index (1 s
+is taken by scrolling). **C** opens the highlighted project at once; **A**
 cancels back to where you were, without changing the remembered project;
 long C opens project 1. Browsing is quiet: the highlight moves in memory and
 the panel is refreshed once the buttons pause (about 0.3 s after release),
 not for every step. A highlight change still takes an e-paper refresh. A
 single short C waits about 0.35 s before acting, to tell it apart from a
-double press. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#buttons-c-gestures-and-the-project-index).
+double press. Pressing another button during that wait decides it in one
+step: long B shows the remembered project's QR, while A, B or USR short go
+to their own screen without drawing the project first. See
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#buttons-c-gestures-and-the-project-index).
 
 | Project index (sample) | Index at 12 entries (labelled placeholders) |
 |---|---|

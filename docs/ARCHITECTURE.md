@@ -98,9 +98,10 @@ Three layers, all pure logic in `core/` and host-tested:
    release before 1 s (with the number of repeats the hold produced),
    `Long` once at 1 s while held (the release then emits nothing), and for
    UP/DOWN only `Repeat` after 500 ms and every 150 ms after that, also past
-   the long threshold. A button held at boot (the wake button) emits nothing
-   until it has been released once. One sample produces at most
-   `kMaxEventsPerSample` (12) events; the queue holds 32 (a tap is now two
+   the long threshold. DOWN also emits `Hold` once at `kHoldPowerOffMs`
+   (3 s), which the index uses for power-off. A button held at boot (the
+   wake button) emits nothing until it has been released once. One sample
+   produces at most `kMaxEventsPerSample` (24) events; the queue holds 32 (a tap is now two
    events). A full queue drops events and `diag display` counts the drops.
 2. **ClickRecognizer** (core 0, inside `App`): turns C's raw gestures into
    exactly one `Single`, `Double` or `Long` per interaction.
@@ -115,9 +116,26 @@ Three layers, all pure logic in `core/` and host-tested:
    - **Context changes.** A USB screen or content change, power-off or boot
      cancels a pending single. A press that was already down when that
      happened is ignored on release, so a delayed action never fires on a
-     screen it was not meant for. Another button or swipe while a single
-     waits flushes it first (the C happened first). Tap C then hold B is
-     therefore "open the project, then its QR".
+     screen it was not meant for.
+   - **Other buttons inside the window.** When another button is *pressed*
+     while a single waits, the window freezes (nothing is drawn yet). Its
+     gesture then decides, in the same step, so at most one frame results:
+
+     | Other gesture | Pending single C |
+     |---|---|
+     | B long | applies first: the remembered project's QR (its page if it has no link; never the contact QR) |
+     | UP / DOWN short | applies first: the project after / before the remembered one |
+     | A long | applies first: the project page with a clean refresh |
+     | UP long, USR long | applies first, and gesture mode / layout still toggles |
+     | A short, B short, USR short | dropped: that button's screen, the project page is never requested |
+     | DOWN long | dropped: power-off |
+     | any swipe | dropped: the swipe's screen, from where the visitor was |
+
+     If the deciding gesture never arrives (lost events), the C is dropped
+     after `kLongPressMs` + 250 ms rather than fired late. A press after
+     the window has expired finds the C already acted on. Host tests:
+     `pending_c_*`, `pipeline_rapid_c_then_a_never_submits_a_project_frame`,
+     `pipeline_c_then_long_b_shows_the_remembered_projects_qr`.
    - `App::on_poll()` runs on every main-loop pass (at least every 10 ms)
      and fires an expired single. It uses signed time differences, so a
      clock sample taken just before an event was queued never looks like
@@ -163,10 +181,18 @@ settings format is unchanged.
   newest highlight, or the confirmed project, never an intermediate one
   (host test `pipeline_rapid_index_navigation_during_refresh_shows_only_the_final_project`).
 - **Modal.** In the index only UP/DOWN, C, A short (cancel) and A long
-  (clean refresh) act. B, USR and swipes are ignored. Holding DOWN or UP
-  repeats instead of powering off or toggling gesture mode. Auto power-off
-  still applies; the sleep view is the badge (or the index when
-  `sleep.screen` is "current").
+  (clean refresh) act. B, USR and swipes are ignored. Holding UP or DOWN
+  repeats; the 1 s long press is taken by scrolling, so UP does not toggle
+  gesture mode there.
+- **Power-off from the index.** Holding DOWN for `kHoldPowerOffMs` (3 s,
+  the tracker's `Hold` event) runs the normal power-off sequence:
+  sleep view, wait for the panel, release the latch. Scrolling all 12
+  entries takes 2.15 s, so a scroll to the end alone does not power off.
+  The scrolled highlight is discarded, never confirmed, and nothing queued
+  is drawn: the only frame after it is the sleep view. That is the badge,
+  or the index as last drawn when `sleep.screen` is "current". UP/DOWN
+  holds that began before the index opened are ignored entirely (no scroll,
+  no power-off). Auto power-off still applies.
 
 ## Refresh scheduling
 

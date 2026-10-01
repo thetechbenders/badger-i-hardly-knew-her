@@ -302,8 +302,11 @@ Run on the first build of `feature/project-index-quiet-browsing`; record its
 - [ ] 11.3 Single DOWN taps: one refresh per tap, about 0.3 s after release.
       Four quick taps: one refresh at the end. `> status` during browsing
       shows `index highlight n (drawn m)`.
-- [ ] 11.4 Hold DOWN 3 s: no refresh while held, no power-off; stops at 7/7.
-      Hold UP: back to 1/7, gesture indicator unchanged.
+- [ ] 11.4 Hold DOWN ~2.5 s: no refresh while held, no power-off; stops at
+      7/7. Hold UP: back to 1/7, gesture indicator unchanged.
+- [ ] 11.4a Hold DOWN ≥ 3 s in the index: emulated sleep on USB (badge drawn,
+      `power off` printed); no project opened, no highlight drawn. A button
+      wakes it; short C opens the previously remembered project.
 - [ ] 11.5 C confirms at once and opens only the selected project; C from the
       card then reopens that project. A cancels to the previous screen
       (try from a project QR: back to the same QR) and keeps the remembered
@@ -314,8 +317,13 @@ Run on the first build of `feature/project-index-quiet-browsing`; record its
       index refresh, then C. **Expect**: the index refresh finishes, then one
       refresh to the final project, no intermediate frame. `> diag refresh`
       lists exactly those frames. `> revert`.
-- [ ] 11.8 Tap C, then `> screen badge` within 0.35 s: the badge stays (no late
-      project). Tap C then hold B: the project, then its QR.
+- [ ] 11.8 Pending C, at `> set refresh.speed 0`: tap C, then within 0.35 s
+      hold B → one refresh to the remembered project's QR (scan: that
+      project's link, not the vCard); C then A → one refresh to the badge,
+      no project page; C then `> screen badge` → badge, nothing later.
+      `> diag refresh` shows one frame each. `> revert`.
+- [ ] 11.8a USR long on the badge: layout toggles with one refresh, no
+      diagnostics frame. USR short: diagnostics.
 - [ ] 11.9 No flash writes while browsing: `> diag settings` commit count
       unchanged after a session in the index.
 - [ ] 11.10 `> screen index 5`, `> project next`, `> status`: the index with 6
