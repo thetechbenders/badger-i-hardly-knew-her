@@ -867,8 +867,9 @@ def main(argv=None) -> int:
             return 1
         args.form.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(TEMPLATE, args.form)
-        print(f"created {args.form}\nnext: fill it in, put your photo next to it, then run\n"
-              f"  scripts/build-badge.sh {args.form}")
+        shown = os.path.relpath(args.form)
+        print(f"created {shown}\nnext: fill it in, put your photo next to it, then run\n"
+              f"  scripts/build-badge.sh --preview {shown}\n  scripts/build-badge.sh {shown}")
         return 0
 
     if args.cmd == "export":
