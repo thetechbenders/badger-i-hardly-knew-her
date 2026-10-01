@@ -5,7 +5,17 @@
 namespace badge {
 
 namespace {
-const char *const kScreenNames[] = {"badge", "card", "projects", "qr", "info", "recovery", "project-qr"};
+const char *const kScreenNames[] = {"badge", "card", "projects", "qr", "info", "recovery", "project-qr", "index"};
+}
+
+int index_viewport_top(int top, int sel, int count, int rows) {
+  if (count <= rows || rows <= 0) return 0;
+  if (sel < 0) sel = 0;
+  if (sel >= count) sel = count - 1;
+  if (sel < top) top = sel;
+  if (sel >= top + rows) top = sel - rows + 1;
+  if (top > count - rows) top = count - rows;
+  return top < 0 ? 0 : top;
 }
 
 const char *screen_name(Screen s) {
@@ -30,6 +40,10 @@ void App::boot(const AppConfig &cfg, int wake_button, uint32_t now_ms) {
   sleep_pending_ = false;
   gesture_on_ = cfg.gesture_default_on && !cfg.safe_mode;
   last_activity_ms_ = now_ms;
+  click_.reset();
+  index_sel_ = 0;
+  index_return_ = Screen::Badge;
+  index_dirty_ = false;
   if (cfg.safe_mode) {
     view_.screen = Screen::Recovery;
     return;
@@ -43,56 +57,170 @@ void App::boot(const AppConfig &cfg, int wake_button, uint32_t now_ms) {
 
 uint32_t App::go(Screen s) {
   if (view_.screen == s) return kActNone;
+  if (view_.screen == Screen::Index) index_dirty_ = false;  // leaving: nothing left to draw
   view_.screen = s;
   return kActRedraw;
+}
+
+// A screen restored or kept across a content change must still be valid.
+Screen App::sanitized(Screen s) const {
+  if (s == Screen::Recovery && !cfg_.safe_mode) return Screen::Badge;
+  if (s == Screen::Index) return Screen::Badge;
+  if (s == Screen::QrFull && !cfg_.qr_configured) return Screen::Card;
+  if (s == Screen::ProjectQr && !project_has_url(view_.project)) s = Screen::Projects;
+  if (s == Screen::Projects && cfg_.project_count == 0) return Screen::Badge;
+  return s;
+}
+
+uint32_t App::open_project(int n) {
+  if (cfg_.project_count == 0) return kActNone;
+  if (n < 0 || n >= cfg_.project_count) n = 0;
+  uint32_t a = kActNone;
+  if (view_.project != n) {
+    view_.project = uint8_t(n);
+    a = kActRedraw;
+  }
+  return a | go(Screen::Projects);
+}
+
+uint32_t App::open_index(int sel) {
+  const int n = cfg_.project_count;
+  if (view_.screen != Screen::Index) index_return_ = view_.screen;
+  index_sel_ = uint8_t(n > 0 && sel >= 0 && sel < n ? sel : 0);
+  index_dirty_ = false;
+  view_.index_sel = index_sel_;
+  view_.index_top = uint8_t(index_viewport_top(view_.index_top, index_sel_, n));
+  view_.screen = Screen::Index;
+  return kActRedraw;
+}
+
+void App::index_step(int delta, bool wrap) {
+  const int n = cfg_.project_count;
+  if (n <= 1) return;
+  int s = int(index_sel_) + delta;
+  if (wrap) s = (s % n + n) % n;
+  else s = s < 0 ? 0 : s >= n ? n - 1 : s;
+  index_sel_ = uint8_t(s);
+  index_dirty_ = true;
+}
+
+// Show the live highlight. Unchanged (e.g. DOWN then UP): no frame at all.
+uint32_t App::publish_index() {
+  index_dirty_ = false;
+  if (view_.index_sel == index_sel_) return kActNone;
+  view_.index_sel = index_sel_;
+  view_.index_top = uint8_t(index_viewport_top(view_.index_top, index_sel_, cfg_.project_count));
+  return kActRedraw;
+}
+
+uint32_t App::on_click(Click c) {
+  const Screen cur = view_.screen;
+  if (c == Click::None) return kActNone;
+  if (cur == Screen::Recovery) return c == Click::Long ? go(Screen::Info) : kActNone;
+  switch (c) {
+    case Click::Single:
+      // Inside the index: confirm. Only now does the remembered project change.
+      return open_project(cur == Screen::Index ? index_sel_ : view_.project);
+    case Click::Double:
+      return cur == Screen::Index ? kActNone : open_index(view_.project);
+    case Click::Long:
+      return open_project(0);
+    default: return kActNone;
+  }
+}
+
+uint32_t App::on_index_button(const ButtonEvent &e) {
+  switch (e.button) {
+    case Button::Up:
+    case Button::Down: {
+      // Any UP/DOWN activity (press, repeat, release) postpones the redraw.
+      index_quiet_until_ = e.t_ms + kIndexSettleMs;
+      const int d = e.button == Button::Up ? -1 : 1;
+      if (e.gesture == Gesture::Repeat) index_step(d, false);  // blind hold: stop at the ends
+      else if (e.gesture == Gesture::Short && e.count == 0) index_step(d, true);  // a tap
+      // Long: no gesture toggle / power-off while browsing.
+      return kActNone;
+    }
+    case Button::A:
+      if (e.gesture == Gesture::Short) return go(sanitized(index_return_));  // cancel; project kept
+      if (e.gesture == Gesture::Long) return publish_index() | kActRedraw | kActCleanRefresh;
+      return kActNone;
+    default: return kActNone;
+  }
 }
 
 uint32_t App::on_button(const ButtonEvent &e) {
   last_activity_ms_ = e.t_ms;
   if (sleep_pending_) return kActNone;  // committed to powering off
+  uint32_t a = on_click(click_.poll(e.t_ms));  // an expired single C acts first
+  if (e.button == Button::C) return a | on_click(click_.on_event(e.gesture, e.t_ms, view_.screen == Screen::Index));
+  // Another button while a single C waits for its window: the C happened
+  // first, so it acts now, then this button on the screen it opened.
+  a |= on_click(click_.flush());
   if (view_.screen == Screen::Recovery) {
     // Safe mode stays up until fixed over USB and rebooted; only allow
     // viewing diagnostics.
-    if (e.button == Button::C && e.gesture == Gesture::Long) return go(Screen::Info);
-    return kActNone;
+    if (e.button == Button::User && e.gesture == Gesture::Short) return a | go(Screen::Info);
+    return a;
   }
+  if (view_.screen == Screen::Index) return a | on_index_button(e);
+  if (e.gesture == Gesture::Press || e.gesture == Gesture::Repeat) return a;
   if (e.gesture == Gesture::Short) {
     switch (e.button) {
-      case Button::A: return go(Screen::Badge);
-      case Button::B: return go(Screen::Card);
-      case Button::C: return cfg_.project_count > 0 ? go(Screen::Projects) : kActNone;
+      case Button::A: return a | go(Screen::Badge);
+      case Button::B: return a | go(Screen::Card);
+      case Button::User: return a | go(Screen::Info);
       case Button::Up:
       case Button::Down:
-        if (view_.screen == Screen::Projects) return on_project_step(e.button == Button::Up ? -1 : 1);
-        if (view_.screen == Screen::QrFull) return go(Screen::Card);
-        if (view_.screen == Screen::ProjectQr) return go(Screen::Projects);  // same project
-        return kActNone;
-      default: return kActNone;
+        if (view_.screen == Screen::Projects) return a | on_project_step(e.button == Button::Up ? -1 : 1);
+        if (view_.screen == Screen::QrFull) return a | go(Screen::Card);
+        if (view_.screen == Screen::ProjectQr) return a | go(Screen::Projects);  // same project
+        return a;
+      default: return a;
     }
   }
   switch (e.button) {
-    case Button::A: return kActRedraw | kActCleanRefresh;
+    case Button::A: return a | kActRedraw | kActCleanRefresh;
     case Button::B:
       // Project context: the project's own repository QR, never the contact one.
-      if (view_.screen == Screen::ProjectQr) return go(Screen::Projects);
-      if (view_.screen == Screen::Projects) return project_has_url(view_.project) ? go(Screen::ProjectQr) : kActNone;
-      return cfg_.qr_configured ? go(Screen::QrFull) : go(Screen::Card);
-    case Button::C: return go(Screen::Info);
+      if (view_.screen == Screen::ProjectQr) return a | go(Screen::Projects);
+      if (view_.screen == Screen::Projects) return a | (project_has_url(view_.project) ? go(Screen::ProjectQr) : kActNone);
+      return a | (cfg_.qr_configured ? go(Screen::QrFull) : go(Screen::Card));
     case Button::Up:
-      return set_gesture_mode(!gesture_on_);
+      return a | set_gesture_mode(!gesture_on_);
     case Button::Down:
       sleep_pending_ = true;
-      return kActSleep | (gesture_on_ ? kActGestureMode : kActNone);
+      click_.cancel();
+      return a | kActSleep | (gesture_on_ ? kActGestureMode : kActNone);
     case Button::User:
       layout_toggled_ = !layout_toggled_;
       view_.layout = uint8_t(cfg_.layout ^ (layout_toggled_ ? 1 : 0));
-      return (view_.screen == Screen::Badge) ? kActRedraw : kActNone;
-    default: return kActNone;
+      return a | ((view_.screen == Screen::Badge) ? kActRedraw : kActNone);
+    default: return a;
   }
+}
+
+uint32_t App::on_poll(uint32_t now_ms) {
+  if (sleep_pending_) {
+    click_.cancel();
+    return kActNone;
+  }
+  uint32_t a = on_click(click_.poll(now_ms));
+  if (view_.screen == Screen::Index && index_dirty_ && int32_t(now_ms - index_quiet_until_) >= 0) a |= publish_index();
+  return a;
 }
 
 uint32_t App::on_screen_request(Screen s, int project) {
   if (s == Screen::Recovery && !cfg_.safe_mode) return kActNone;
+  click_.cancel();  // a USB request changes the context: no late C action
+  if (s == Screen::Index) {
+    if (view_.screen != Screen::Index) return open_index(project >= 0 ? project : view_.project);
+    if (project >= 0 && project < cfg_.project_count) {
+      index_sel_ = uint8_t(project);
+      return publish_index();
+    }
+    return kActNone;
+  }
   uint32_t a = kActNone;
   if (s == Screen::Projects) {
     if (cfg_.project_count == 0) return kActNone;
@@ -115,6 +243,11 @@ uint32_t App::on_screen_request(Screen s, int project) {
 uint32_t App::on_project_step(int delta) {
   const int n = cfg_.project_count;
   if (n <= 1) return kActNone;
+  if (view_.screen == Screen::Index) {  // CLI 'project next|prev' in the index: move the highlight
+    click_.cancel();
+    index_step(delta, true);
+    return publish_index();
+  }
   view_.project = uint8_t(((int(view_.project) + delta) % n + n) % n);
   if (view_.screen == Screen::ProjectQr) view_.screen = Screen::Projects;  // never a stale QR
   return (view_.screen == Screen::Projects) ? kActRedraw : kActNone;
@@ -129,6 +262,9 @@ uint32_t App::set_gesture_mode(bool on) {
 uint32_t App::on_swipe(Swipe s, uint32_t now_ms) {
   if (!gesture_on_ || sleep_pending_ || cfg_.safe_mode || view_.screen == Screen::Recovery) return kActNone;
   last_activity_ms_ = now_ms;
+  if (view_.screen == Screen::Index) return kActNone;  // the index is modal: a stray wave never leaves it
+  // A single C still waiting for its window happened first.
+  const uint32_t pre = on_click(click_.flush());
   // Cycle of main screens; a QR screen counts as the page it belongs to.
   Screen cycle[3] = {Screen::Badge, Screen::Card, Screen::Projects};
   const int n = cfg_.project_count > 0 ? 3 : 2;
@@ -138,19 +274,20 @@ uint32_t App::on_swipe(Swipe s, uint32_t now_ms) {
   for (int i = 0; i < n; ++i)
     if (cycle[i] == cur) idx = i;
   switch (s) {
-    case Swipe::Right: return go(cycle[idx < 0 ? 0 : (idx + 1) % n]);
-    case Swipe::Left: return go(cycle[idx < 0 ? 0 : (idx + n - 1) % n]);
+    case Swipe::Right: return pre | go(cycle[idx < 0 ? 0 : (idx + 1) % n]);
+    case Swipe::Left: return pre | go(cycle[idx < 0 ? 0 : (idx + n - 1) % n]);
     case Swipe::Up:
-      if (view_.screen == Screen::Card && cfg_.qr_configured) return go(Screen::QrFull);
-      return go(Screen::Card);
-    case Swipe::Down: return go(Screen::Badge);
-    default: return kActNone;
+      if (view_.screen == Screen::Card && cfg_.qr_configured) return pre | go(Screen::QrFull);
+      return pre | go(Screen::Card);
+    case Swipe::Down: return pre | go(Screen::Badge);
+    default: return pre;
   }
 }
 
 uint32_t App::on_config_changed(const AppConfig &cfg) {
   const bool leaving_safe = cfg_.safe_mode && !cfg.safe_mode;
   cfg_ = cfg;
+  click_.cancel();
   view_.layout = uint8_t(cfg.layout ^ (layout_toggled_ ? 1 : 0));
   if (view_.project >= cfg.project_count) view_.project = 0;
   if (view_.screen == Screen::Projects && cfg.project_count == 0) view_.screen = Screen::Badge;
@@ -158,6 +295,9 @@ uint32_t App::on_config_changed(const AppConfig &cfg) {
   if (view_.screen == Screen::ProjectQr && !project_has_url(view_.project))
     view_.screen = cfg.project_count ? Screen::Projects : Screen::Badge;
   if (leaving_safe && view_.screen == Screen::Recovery) view_.screen = Screen::Badge;
+  if (index_sel_ >= cfg.project_count) index_sel_ = 0;
+  if (view_.index_sel >= cfg.project_count) view_.index_sel = index_sel_;
+  view_.index_top = uint8_t(index_viewport_top(view_.index_top, view_.index_sel, cfg.project_count));
   return kActRedraw;  // content may have changed; unchanged frames are suppressed by hash
 }
 
@@ -180,6 +320,7 @@ uint32_t App::on_tick_power(uint32_t now_ms, bool on_battery, bool display_settl
   if (!display_settled) return kActNone;  // never cut power mid-refresh
   if (now_ms - last_activity_ms_ >= uint32_t(cfg_.sleep_timeout_s) * 1000u) {
     sleep_pending_ = true;
+    click_.cancel();
     return kActSleep;
   }
   return kActNone;

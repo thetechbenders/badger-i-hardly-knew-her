@@ -12,6 +12,39 @@ AppConfig cfg(int projects = 2, bool qr = true) {
   return c;
 }
 ButtonEvent press(Button b, Gesture g = Gesture::Short, uint32_t t = 1000) { return {b, g, t}; }
+
+// A complete debounced interaction as the ButtonTracker reports it. The
+// clock only moves forward, so deferred C actions and the quiet-browsing
+// timer behave as on the device.
+struct Clock {
+  uint32_t t = 1000;
+};
+Clock g_clock;
+uint32_t ev(App &a, Button b, Gesture g, uint8_t count = 0) { return a.on_button({b, g, g_clock.t, count}); }
+uint32_t settle(App &a, uint32_t ms) {
+  g_clock.t += ms;
+  return a.on_poll(g_clock.t);
+}
+// Short press and release; for C, also wait out the double-press window.
+uint32_t tap(App &a, Button b, bool wait = true) {
+  uint32_t r = ev(a, b, Gesture::Press);
+  g_clock.t += 80;
+  r |= ev(a, b, Gesture::Short);
+  if (b == Button::C && wait) r |= settle(a, kDoublePressMs);
+  return r;
+}
+uint32_t hold(App &a, Button b) {
+  uint32_t r = ev(a, b, Gesture::Press);
+  g_clock.t += kLongPressMs;
+  return r | ev(a, b, Gesture::Long);  // the release that follows emits nothing
+}
+uint32_t double_c(App &a) {
+  uint32_t r = tap(a, Button::C, false);
+  g_clock.t += kDoublePressMs - 100;
+  r |= ev(a, Button::C, Gesture::Press);
+  g_clock.t += 80;
+  return r | ev(a, Button::C, Gesture::Short);
+}
 }  // namespace
 
 TEST(app_boots_to_badge_and_wake_button_selects) {
@@ -34,7 +67,7 @@ TEST(app_button_navigation) {
   CHECK_EQ(a.on_button(press(Button::A)), kActNone);  // already there
   CHECK_EQ(a.on_button(press(Button::B)), kActRedraw);
   CHECK(a.view().screen == Screen::Card);
-  CHECK_EQ(a.on_button(press(Button::C)), kActRedraw);
+  CHECK_EQ(tap(a, Button::C), kActRedraw);
   CHECK(a.view().screen == Screen::Projects);
   CHECK_EQ(a.on_button(press(Button::Down)), kActRedraw);
   CHECK_EQ(a.view().project, 1);
@@ -55,8 +88,10 @@ TEST(app_long_presses) {
   CHECK(a.view().screen == Screen::QrFull);
   a.on_button(press(Button::Up));
   CHECK(a.view().screen == Screen::Card);
-  a.on_button(press(Button::C, Gesture::Long));
+  CHECK_EQ(tap(a, Button::User), kActRedraw);  // diagnostics moved to USR short
   CHECK(a.view().screen == Screen::Info);
+  CHECK_EQ(hold(a, Button::C), kActRedraw);  // long C: project 1
+  CHECK(a.view().screen == Screen::Projects && a.view().project == 0);
   a.boot(cfg(2, false), -1, 0);
   a.on_button(press(Button::B, Gesture::Long));
   CHECK(a.view().screen == Screen::Card);  // no QR configured
@@ -122,7 +157,13 @@ TEST(app_safe_mode_is_sticky) {
   CHECK(a.view().screen == Screen::Recovery);
   CHECK_EQ(a.on_button(press(Button::A)), kActNone);
   CHECK_EQ(a.on_tick(1u << 30, true, true), kActNone);  // no auto power-off in safe mode
-  a.on_button(press(Button::C, Gesture::Long));
+  CHECK_EQ(tap(a, Button::C), kActNone);
+  CHECK_EQ(double_c(a), kActNone);  // no index in safe mode
+  CHECK(a.view().screen == Screen::Recovery);
+  hold(a, Button::C);
+  CHECK(a.view().screen == Screen::Info);
+  a.boot(c, -1, 0);
+  tap(a, Button::User);
   CHECK(a.view().screen == Screen::Info);
 }
 
@@ -190,7 +231,7 @@ AppConfig pcfg(int projects, uint16_t url_mask) {
 TEST(app_portfolio_reopens_at_last_project) {
   App a;
   a.boot(pcfg(7, 0x5F), -1, 0);
-  a.on_button(press(Button::C));
+  tap(a, Button::C);
   CHECK(a.view().screen == Screen::Projects);
   CHECK_EQ(a.view().project, 0);
   for (int i = 0; i < 4; ++i) a.on_button(press(Button::Down));
@@ -198,7 +239,7 @@ TEST(app_portfolio_reopens_at_last_project) {
   a.on_button(press(Button::A));
   a.on_button(press(Button::B));
   CHECK(a.view().screen == Screen::Card);
-  CHECK_EQ(a.on_button(press(Button::C)), kActRedraw);
+  CHECK_EQ(tap(a, Button::C), kActRedraw);
   CHECK(a.view().screen == Screen::Projects);
   CHECK_EQ(a.view().project, 4);  // where the visitor left off
   a.on_button(press(Button::Up));
@@ -207,14 +248,14 @@ TEST(app_portfolio_reopens_at_last_project) {
   a.on_button(press(Button::Up));
   a.on_button(press(Button::Up));
   CHECK_EQ(a.view().project, 6);  // wraps backwards to the last entry
-  CHECK_EQ(a.on_button(press(Button::C)), kActNone);  // already on the portfolio
+  CHECK_EQ(tap(a, Button::C), kActNone);  // already on the portfolio
 }
 
 TEST(app_project_qr_enter_and_return) {
   App a;
   // Projects 0..6; project 5 (the teaser) has no URL.
   a.boot(pcfg(7, 0x5F), -1, 0);
-  a.on_button(press(Button::C));
+  tap(a, Button::C);
   a.on_button(press(Button::Down));
   a.on_button(press(Button::Down));
   CHECK_EQ(a.on_button(press(Button::B, Gesture::Long)), kActRedraw);
@@ -238,7 +279,7 @@ TEST(app_project_qr_enter_and_return) {
   a.on_button(press(Button::B, Gesture::Long));
   CHECK(a.view().screen == Screen::QrFull);
   // C from the contact QR reopens the portfolio at the last project, not its QR.
-  a.on_button(press(Button::C));
+  tap(a, Button::C);
   CHECK(a.view().screen == Screen::Projects);
   CHECK_EQ(a.view().project, 2);
 }
@@ -257,7 +298,7 @@ TEST(app_project_without_url_offers_no_qr) {
   // No contact QR configured does not affect project QRs, and vice versa.
   AppConfig c = pcfg(7, 0);
   a.boot(c, -1, 0);
-  a.on_button(press(Button::C));
+  tap(a, Button::C);
   CHECK_EQ(a.on_button(press(Button::B, Gesture::Long)), kActNone);
   a.on_button(press(Button::B));
   a.on_button(press(Button::B, Gesture::Long));
@@ -300,7 +341,7 @@ TEST(app_swipes_from_project_qr) {
 TEST(app_twelve_projects_bound) {
   App a;
   a.boot(pcfg(12, 0xFFF), -1, 0);
-  a.on_button(press(Button::C));
+  tap(a, Button::C);
   for (int i = 0; i < 11; ++i) a.on_button(press(Button::Down));
   CHECK_EQ(a.view().project, 11);
   a.on_button(press(Button::Down));
@@ -308,7 +349,7 @@ TEST(app_twelve_projects_bound) {
   a.on_screen_request(Screen::Projects, 40);  // out-of-range request is clamped
   CHECK(a.view().project < 12);
   a.boot(pcfg(1, 0x1), -1, 0);
-  a.on_button(press(Button::C));
+  tap(a, Button::C);
   CHECK_EQ(a.on_button(press(Button::Down)), kActNone);  // single entry: nothing to scroll
   CHECK_EQ(a.view().project, 0);
 }

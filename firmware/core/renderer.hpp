@@ -58,6 +58,19 @@ CardGeometry card_geometry(const RenderContext &ctx, bool full_screen);
 // Geometry of the n-th configured project's repository QR (Empty if it has no URL).
 CardGeometry project_qr_geometry(const RenderContext &ctx, int project);
 
+// Project index layout (for tests and the preview tool). Rows are
+// kIndexRows tall slots of kIndexRowH pixels starting at list.y; `top` is the
+// first configured project shown, `selected` the highlighted row's bar
+// (empty when the list is empty). The scrollbar only appears when the list
+// does not fit.
+constexpr int kIndexRowH = 14;
+struct IndexGeometry {
+  int count = 0, top = 0, sel = 0, shown = 0;
+  Rect list, selected, track, thumb;
+  bool scrollbar = false;
+};
+IndexGeometry index_geometry(const View &v, const RenderContext &ctx);
+
 // Compact label for a project link: "owner/repo" for github.com URLs, else
 // the URL without "https://", "www." and a trailing '/'. The QR always
 // encodes the full link; this is only what the page shows. Returns length.

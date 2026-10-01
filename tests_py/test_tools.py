@@ -131,6 +131,28 @@ class RenderedOutput(unittest.TestCase):
                                       "--screens", "projects"])
             self.assertIn("does not fit", str(cm.exception))
 
+    def test_index_previews_keep_order_and_scale_to_twelve(self):
+        import render_previews
+        from PIL import Image
+        pairs = badge_profile.load(ROOT / "config/sample-profile.json")
+        sample = [v for k, v in pairs if k.endswith(".title") and k.startswith("project") and v]
+        padded = render_previews.example_projects(pairs, 12)
+        titles = [v for k, v in padded if k.endswith(".title") and k.startswith("project") and v]
+        self.assertEqual(len(titles), 12)
+        self.assertEqual(titles[:len(sample) - 1], sample[:-1])  # configured order kept
+        self.assertEqual(titles[-1], "BHIHKH!")                  # still last
+        self.assertTrue(all(t.startswith("Example project") for t in titles[len(sample) - 1:-1]))
+        with self.assertRaises(SystemExit):
+            render_previews.example_projects(pairs, 13)
+        with tempfile.TemporaryDirectory() as d:
+            rc = render_previews.main(["--preview", str(PREVIEW), "--out", d, "--screens", "index",
+                                       "--profile", str(ROOT / "config/sample-profile.json"),
+                                       "--example-projects", "12"])
+            self.assertEqual(rc, 0)
+            ims = {p.stem: Image.open(p).convert("1").tobytes() for p in (Path(d) / "native").glob("index_*.png")}
+        self.assertEqual(set(ims), {f"index_{n}" for n in range(1, 13)})
+        self.assertEqual(len(set(ims.values())), 12)  # one distinct frame per highlighted entry
+
     EMPTY = {f"project{i}.{f}": "" for i in range(1, 13) for f in badge_profile.PROJECT_FIELDS}
 
     def test_project_page_without_link_shows_no_qr(self):
