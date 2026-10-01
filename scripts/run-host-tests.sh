@@ -17,6 +17,10 @@ python3 "$root/tools/render_previews.py" --preview "$build/badger_preview" --out
   --profile "$root/config/sample-profile.json"
 python3 "$root/tools/render_previews.py" --preview "$build/badger_preview" --out "$root/build/previews/sample-qr" \
   --profile "$root/config/sample-profile.json" --qr "https://example.com/dan" --screens card,qr
+# Project index at its maximum size: the sample portfolio padded to 12 entries
+# with labelled placeholders (BHIHKH! stays last).
+python3 "$root/tools/render_previews.py" --preview "$build/badger_preview" --out "$root/build/previews/index-12" \
+  --profile "$root/config/sample-profile.json" --example-projects 12 --screens index,projects
 # Host diagnostic samples (labelled on screen): worst-case lengths with every
 # status/fault state, and the fault-state diagnostics screens.
 python3 "$root/tools/render_previews.py" --preview "$build/badger_preview" --out "$root/build/previews/diagnostic-max" \

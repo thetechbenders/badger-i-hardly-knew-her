@@ -582,6 +582,84 @@ void render_project_qr(Framebuffer &fb, const View &v, const RenderContext &ctx)
   draw_fitted(fb, r, back, c.x, H - fonts::sans_10.line_height - 1, c.w);
 }
 
+// ------------------------------------------------------------ project index
+
+IndexGeometry index_geometry_impl(const View &v, const RenderContext &ctx) {
+  IndexGeometry g;
+  g.count = configured_project_count(ctx.settings->profile);
+  g.sel = v.index_sel < g.count ? v.index_sel : 0;
+  g.top = index_viewport_top(v.index_top, g.sel, g.count);
+  g.shown = g.count - g.top < kIndexRows ? g.count - g.top : kIndexRows;
+  g.scrollbar = g.count > kIndexRows;
+  // Right edge: UP/DOWN triangles at W-12..W-6 (as on the project pages),
+  // then the scrollbar track when the list scrolls.
+  const int right = g.scrollbar ? W - 24 : W - 16;
+  g.list = {6, 16, int16_t(right - 6), int16_t(kIndexRows * kIndexRowH)};
+  if (g.count > 0)
+    g.selected = {g.list.x, int16_t(g.list.y + (g.sel - g.top) * kIndexRowH), g.list.w, int16_t(kIndexRowH)};
+  if (g.scrollbar) {
+    g.track = {int16_t(W - 20), g.list.y, 3, g.list.h};
+    int th = g.list.h * kIndexRows / g.count;
+    if (th < 8) th = 8;
+    const int span = g.list.h - th;
+    g.thumb = {g.track.x, int16_t(g.list.y + span * g.top / (g.count - kIndexRows)), 3, int16_t(th)};
+  }
+  return g;
+}
+
+// A list of project names: one per row, the highlighted one white on black,
+// "n/N" in the header, a scrollbar when it does not fit, hints at the bottom.
+void render_index(Framebuffer &fb, const View &v, const RenderContext &ctx) {
+  const Profile &p = ctx.settings->profile;
+  const IndexGeometry g = index_geometry_impl(v, ctx);
+  const Font &hf = fonts::sans_bold_10;
+  draw_text(fb, hf, 8, 1, "PROJECT INDEX");
+  const int status_left = W - 2 - kStatusWidth;  // the index uses the default status position
+  if (g.count > 0) {
+    char pos[24];
+    std::snprintf(pos, sizeof pos, "%d/%d", g.sel + 1, g.count);
+    draw_text(fb, hf, status_left - 6 - text_width(hf, pos), 1, pos);
+  }
+  fb.hline(6, 14, W - 12, Ink::Black);
+
+  const Font *const rc[] = {&fonts::sans_11};
+  const Font &rf = fonts::sans_11;
+  if (g.count == 0) {
+    const Font *ec[] = {&fonts::sans_bold_12};
+    FitResult r = fit_text(ec, 1, "No projects configured", W - 32);
+    draw_fitted(fb, r, "No projects configured", 16, 54, W - 32, Align::Center);
+  }
+  for (int i = 0; i < g.shown; ++i) {
+    const int n = g.top + i;
+    const int idx = nth_configured_project(p, n);
+    if (idx < 0) break;
+    const int y = g.list.y + i * kIndexRowH;
+    const bool sel = n == g.sel;
+    const Ink ink = sel ? Ink::White : Ink::Black;
+    if (sel) fb.fill_rect(g.selected, Ink::Black);
+    char num[12];
+    std::snprintf(num, sizeof num, "%d", n + 1);
+    const int text_top = y + (kIndexRowH - rf.line_height) / 2;
+    draw_text(fb, rf, g.list.x + 18 - text_width(rf, num), text_top, num, ink);
+    const int tx = g.list.x + 24, tw = g.list.right() - 4 - tx;
+    FitResult r = fit_text(rc, 1, p.projects[idx].title, tw);
+    draw_fitted(fb, r, p.projects[idx].title, tx, text_top, tw, Align::Left, ink);
+  }
+  if (g.scrollbar) {
+    fb.draw_rect(g.track, Ink::Black);
+    fb.fill_rect(g.thumb, Ink::Black);
+  }
+  if (g.count > 1) {
+    draw_triangle(fb, W - 9, kStatusHeight + 8, -1);  // next to the UP/DOWN buttons
+    draw_triangle(fb, W - 9, H - 12, +1);
+  }
+  const char *hint = g.count == 0 ? "A back" : g.count == 1 ? "C open \xC2\xB7 A back"
+                                                            : "C open \xC2\xB7 A back \xC2\xB7 hold UP/DOWN to scroll";
+  const Font *fc[] = {&fonts::sans_10};
+  FitResult r = fit_text(fc, 1, hint, W - 16 - 14);
+  draw_fitted(fb, r, hint, 8, H - fonts::sans_10.line_height, W - 16 - 14);
+}
+
 // ----------------------------------------------------------- diagnostics
 
 void render_info(Framebuffer &fb, const RenderContext &ctx, bool recovery) {
@@ -623,6 +701,7 @@ int status_right(const View &v, const RenderContext &ctx) {
 
 CardGeometry card_geometry(const RenderContext &ctx, bool full_screen) { return card_geometry_impl(ctx, full_screen); }
 CardGeometry project_qr_geometry(const RenderContext &ctx, int project) { return project_qr_geometry_impl(ctx, project); }
+IndexGeometry index_geometry(const View &v, const RenderContext &ctx) { return index_geometry_impl(v, ctx); }
 
 Rect status_rect(const View &v, const RenderContext &ctx) {
   const int xr = status_right(v, ctx);
@@ -644,6 +723,7 @@ void render(Framebuffer &fb, const View &v, const RenderContext &ctx) {
       else render_card(fb, ctx);
       break;
     case Screen::ProjectQr: render_project_qr(fb, v, ctx); break;
+    case Screen::Index: render_index(fb, v, ctx); break;
     case Screen::Info: render_info(fb, ctx, false); break;
     case Screen::Recovery: render_info(fb, ctx, true); break;
     default: break;

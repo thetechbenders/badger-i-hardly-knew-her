@@ -17,20 +17,71 @@ each run. Keep a serial terminal open on USB where noted (`status`, `diag all`).
 ## B. Buttons and screens
 
 1. A, B, C short: badge, card, projects. Each changes with one refresh and
-   no double refresh.
+   no double refresh. C acts about 0.35 s after release (it waits to see
+   whether a second press follows).
 2. On projects: DOWN/UP step through projects, with wrap-around and the
    arrow hints at the right edge.
 3. Long-press each button (≥ 1 s): A = visibly slower clean refresh;
-   B = full-screen QR (or card if unconfigured); C = diagnostics;
+   B = full-screen QR (or card if unconfigured); C = project 1;
    UP = gesture mode on/off (indicator appears / disappears);
    USR long = layout B, then A again; DOWN = power-off sequence (step D).
 4. Tap a button very briefly (< 20 ms, a glancing touch). **Expect**: no action.
 5. Hold A and B together, release A, then B. **Expect**: badge, then card.
+6. USR short: diagnostics screen (moved from C long). USR long on the badge:
+   the layout toggles, and diagnostics is **not** shown, not even briefly
+   (one refresh, `diag refresh` shows one frame).
+
+## B2. Project index and quiet browsing
+
+Keep `status` handy: on the index it prints `index highlight n (drawn m)`.
+
+1. On a middle project (e.g. 3), go to the card, then double-press C.
+   **Expect**: the project index with project 3 highlighted. The project page
+   is **not** shown first: one refresh, straight to the index.
+2. Tap DOWN once. **Expect**: the highlight moves after a short pause
+   (~0.3 s after release), with one refresh.
+3. Tap DOWN four times quickly. **Expect**: one refresh at the end showing
+   the final highlight, not one per tap.
+4. Hold DOWN for about 2.5 s (not 3). **Expect**: no refresh while held, no
+   power-off at 1 s, then one refresh after release with the last entry
+   highlighted (holding stops at the end; tapping wraps). Hold UP: back to
+   the first, gesture mode unchanged.
+4a. In the index, hold DOWN for 3 s or more. **Expect**: the normal power-off
+   sequence (badge drawn, then off; on USB, emulated sleep). The project
+   page is not opened, the moved highlight is not drawn, and after waking
+   short C opens the previously remembered project.
+5. Short C. **Expect**: the highlighted project opens at once (no extra
+   wait), and only that project page is drawn. Then go to the card and press
+   C once. **Expect**: the same project (it is now the remembered one).
+6. Double-press C, move the highlight, press A. **Expect**: back to the
+   previous screen, without the moved highlight being drawn. Short C then
+   opens the previously remembered project, not the abandoned highlight.
+7. Long-press C on a middle project and on a project QR. **Expect**: project
+   1 both times, and nothing else happens on release.
+8. With `set refresh.speed 0` (4.5 s refreshes): double-press C, and during
+   the index refresh tap DOWN several times, then press C. **Expect**: the
+   index refresh completes, then one refresh to the final project. No
+   intermediate highlight or project appears. `revert` afterwards.
+9. Pending C (tap C, then the other input within 0.35 s), with
+   `set refresh.speed 0` so an extra refresh would be obvious:
+   - C then hold B: **one** refresh, straight to the remembered project's
+     QR. Scan it: that project's link, not the contact vCard. On CatScan-MS
+     (no link): its teaser page.
+   - C then A: **one** refresh, to the badge. No project page in between.
+   - C then B short: the card; C then USR short: diagnostics.
+   - C then DOWN short: the project after the remembered one, one refresh.
+   - C then `screen badge` over USB: the badge stays; nothing appears later.
+   - `diag refresh` lists one frame per case. `revert` afterwards.
+10. Double-press C, then let the badge power off on battery (or `sleep`).
+    Wake with A. **Expect**: the badge; no delayed index or project action.
+11. CatScan-MS in the index opens its teaser page: "TOP SECRET - COMING
+    SOON", no QR hint, and long B there does nothing.
 
 ## C. Busy-panel behaviour
 
 1. `set refresh.speed 0` (refreshes estimated at 4.5 s). Press B, then press C, A, B, C
-   rapidly during the refresh. **Expect**: at most one further refresh, and
+   rapidly during the refresh, at least 0.35 s apart near the end so the last C
+   is not a double press. **Expect**: at most one further refresh, and
    the final screen is projects (the last press). `diag display` shows
    `dropped/coalesced` counts and `event overflow 0`.
 2. Press A while already on the badge. **Expect**: no refresh; `renders
@@ -161,7 +212,7 @@ Record the breakout model, the mounting and the enclosure for every run.
 ## J. Battery meter (single-cell LiPo)
 
 1. **USB.** On USB the icon reads `USB`, never bars and never "charging".
-2. **Battery.** On battery, compare the Info screen (C long; it redraws every
+2. **Battery.** On battery, compare the Info screen (USR short; it redraws every
    15 s with a fresh sample) against a multimeter at the JST connector, at
    ≥ 3 charge levels. Record badge mV, multimeter mV and the difference.
    Set `battery.cal_permille` for a ratio error; lower the thresholds for a

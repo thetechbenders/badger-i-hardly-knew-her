@@ -86,3 +86,24 @@ redundant with the clean-refresh flag, which already bypasses suppression.
   hash (≈ 2⁻³² per change) would not be sent.
 - Gesture decoding is validated with synthetic FIFO data only. No recorded
   sensor data exists yet.
+- **Project index (added later; host-verified only).** These are trade-offs,
+  not defects:
+  - A short C outside the index acts about 0.35 s after release
+    (`kDoublePressMs`), because it waits for a possible second press.
+  - An index refresh that has already started on the panel always
+    completes. The waveform cannot be cut short, so after a fast confirm or
+    cancel the index is still visible until that refresh finishes and the
+    final screen follows.
+  - The index ignores B, USR and swipes while it is open. Power-off there
+    is a 3 s DOWN hold, because the 1 s long press is taken by scrolling.
+  - A button pressed during the double-press window freezes a pending C
+    until its gesture is known. A visitor who taps C and then holds B sees
+    nothing for up to 1 s, then the project QR.
+  - Fixed before delivery: the first build of this branch (`8f27ad9`)
+    flushed a pending C on any other button's *press*, so C then A could
+    submit an intermediate project refresh. Long DOWN in the index scrolled
+    instead of ever powering off. Its firmware ZIP's `SHA256SUMS` listed
+    ELF/BIN/map files the ZIP did not contain; `scripts/package_firmware.py`
+    now writes and verifies a package-specific manifest.
+  - Diagnostics moved from long C to USR short to make room for "long C =
+    project 1".

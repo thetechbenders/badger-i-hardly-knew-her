@@ -83,7 +83,7 @@ Sampling does not reset the idle timer and never delays power-off.
 
 1. Run on battery with USB disconnected. A USB connection powers the sense
    point from VBUS, so `diag battery` over USB cannot validate the cell.
-   Open the Info screen (C long press). It shows the reading, the filtered
+   Open the Info screen (USR short press). It shows the reading, the filtered
    value and the bars, and redraws every 15 s. Measure the cell at the JST
    connector with the multimeter at the same moment. (Set
    `sleep.timeout_s 600` first so the badge stays on long enough.)

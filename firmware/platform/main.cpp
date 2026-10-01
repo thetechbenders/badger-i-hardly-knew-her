@@ -61,7 +61,7 @@ volatile bool g_core1_ready = false;
 uint8_t g_core1_speed = 1;  // written before core 1 launches, read-only after
 volatile uint8_t g_core1_crash = 0;  // crashtest request from core 0: 1 = hang, 2 = hard fault
 
-SpscQueue<ButtonEvent, 16> g_buttons;  // timer ISR -> main loop
+SpscQueue<ButtonEvent, 32> g_buttons;  // timer ISR -> main loop (Press + release per tap)
 ButtonTracker g_tracker;               // owned by the timer ISR after start
 repeating_timer_t g_button_timer;
 
@@ -86,8 +86,8 @@ uint32_t now_ms() { return to_ms_since_boot(get_absolute_time()); }
 
 // ------------------------------------------------------------- inputs
 bool button_timer_cb(repeating_timer_t *) {
-  ButtonEvent ev[4];
-  const int n = g_tracker.sample(board::read_buttons(), now_ms(), ev, 4);
+  ButtonEvent ev[kMaxEventsPerSample];
+  const int n = g_tracker.sample(board::read_buttons(), now_ms(), ev, kMaxEventsPerSample);
   for (int i = 0; i < n; ++i) g_buttons.push(ev[i]);  // full queue: drop (user is mashing)
   return true;
 }
@@ -277,6 +277,7 @@ class UsbCliHost : public CliHost {
     if (s == Screen::Projects && configured_project_count(g_staged.profile) == 0) return false;
     if (s == Screen::Projects && project >= configured_project_count(g_staged.profile)) return false;
     if (s == Screen::QrFull && !qr_configured(g_staged.profile)) return false;
+    if (s == Screen::Index && project >= configured_project_count(g_staged.profile)) return false;
     if (s == Screen::ProjectQr) {
       const int n = project >= 0 ? project : g_app.view().project;
       if (!project_url(g_staged.profile, n)) return false;  // no URL: no QR, never a stale one
@@ -297,6 +298,9 @@ class UsbCliHost : public CliHost {
   void print_status() override {
     const View v = g_app.view();
     std::printf("screen %s project %u layout %c\r\n", screen_name(v.screen), v.project + 1, v.layout ? 'B' : 'A');
+    if (v.screen == Screen::Index)
+      std::printf("index highlight %d (drawn %u)%s\r\n", g_app.index_selection() + 1, v.index_sel + 1,
+                  g_app.index_redraw_pending() ? " | redraw pending" : "");
     std::printf("power %s | battery %u mV (filtered %u) | idle %lu s | settings %s\r\n", g_usb ? "usb" : "battery",
                 g_battery.state().last_mv, g_battery.state().filtered_mv,
                 (unsigned long)(g_app.idle_ms(now_ms()) / 1000), g_staged_dirty ? "UNSAVED changes" : "saved");
@@ -598,6 +602,9 @@ int main() {
 
     ButtonEvent ev;
     while (g_buttons.pop(&ev)) apply(g_app.on_button(ev));
+    // Deferred single C and the quiet-browsing index redraw. A fresh clock
+    // sample: events just popped may be newer than `t`.
+    apply(g_app.on_poll(now_ms()));
     poll_cli();
 
     if (g_sleep == SleepPhase::None) {

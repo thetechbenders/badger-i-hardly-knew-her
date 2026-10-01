@@ -7,6 +7,11 @@ sheet, and a QR decode report.
       [--profile config/sample-profile.json] [--pack pack.bin] [--scale 3] \
       [--qr https://example.com/x] [--diagnostic-max] [--preview-arg=--faults ...]
 
+--example-projects N pads the portfolio to N entries with labelled
+placeholders ("Example project k") inserted before the last entry, so the
+configured order is kept and the last entry (BHIHKH!) stays last. It shows
+the project index at its maximum size; the placeholders are never content.
+
 --diagnostic-max renders a HOST DIAGNOSTIC SAMPLE: every text field filled
 to its byte limit with labelled filler (breakable, so titles wrap), all
 contacts and projects used, and a long QR URL. It checks layout limits; it
@@ -108,6 +113,29 @@ def diagnostic_max_pairs() -> list[tuple[str, str]]:
     return pairs
 
 
+def example_projects(pairs, n: int) -> list[tuple[str, str]]:
+    """Pad the configured projects to n entries, placeholders before the last one."""
+    d = dict(pairs)
+    fields = prof.PROJECT_FIELDS
+    entries = [{f: d.get(f"project{i}.{f}", "") for f in fields}
+               for i in range(1, prof.MAX_PROJECTS + 1) if d.get(f"project{i}.title")]
+    if not 0 < n <= prof.MAX_PROJECTS or n < len(entries):
+        raise SystemExit(f"--example-projects {n}: need {len(entries)}..{prof.MAX_PROJECTS}")
+    last = entries.pop() if entries else None
+    k = len(entries)
+    while len(entries) < n - (1 if last else 0):
+        k += 1
+        entries.append({**{f: "" for f in fields}, "title": f"Example project {k}",
+                        "tagline": "Host preview placeholder entry"})
+    if last:
+        entries.append(last)
+    out = [(key, v) for key, v in pairs if not key.startswith("project")]
+    for i in range(1, prof.MAX_PROJECTS + 1):
+        e = entries[i - 1] if i <= len(entries) else {}
+        out += [(f"project{i}.{f}", e.get(f, "")) for f in fields]
+    return out
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--preview", type=Path, default=Path("build/host/badger_preview"))
@@ -116,7 +144,9 @@ def main(argv=None) -> int:
     ap.add_argument("--pack", type=Path)
     ap.add_argument("--scale", type=int, default=3)
     ap.add_argument("--qr", help="override qr.payload (e.g. to exercise the QR screens)")
-    ap.add_argument("--screens", default="badge,card,projects,project-qr,qr,info,recovery")
+    ap.add_argument("--screens", default="badge,card,projects,project-qr,index,qr,info,recovery")
+    ap.add_argument("--example-projects", type=int, metavar="N",
+                    help="pad the portfolio to N labelled placeholder entries (index preview)")
     ap.add_argument("--diagnostic-max", action="store_true", help="labelled worst-case content (see above)")
     ap.add_argument("--preview-arg", action="append", default=[], help="extra badger_preview argument")
     args = ap.parse_args(argv)
@@ -125,6 +155,8 @@ def main(argv=None) -> int:
     pairs = prof.load(args.profile) if args.profile else []
     if args.diagnostic_max:
         pairs = diagnostic_max_pairs()
+    if args.example_projects:
+        pairs = example_projects(pairs, args.example_projects)
     if args.qr is not None:
         pairs = [(k, v) for k, v in pairs if k != "qr.payload"] + [("qr.payload", args.qr)]
     payload = dict(pairs).get("qr.payload", "")

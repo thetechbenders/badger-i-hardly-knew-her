@@ -172,6 +172,45 @@ The font generator measures advances in FreeType's monochrome mode
 (`mode="1"`), matching the 1-bit glyphs it stores. Antialiased advances had
 left visible gaps inside words ("Instrum entation").
 
+## Project index
+
+Double C opens a list of the project names. It is a way to jump to a
+project without paging through the others.
+
+| Sample portfolio, 3/7 highlighted | 12 entries (labelled placeholders), scrolled to 10/12 |
+|---|---|
+| ![index](previews/x3/index_3.png) | ![index-12](previews/x3/index-12_10.png) |
+
+Native size: [`index_3.png`](previews/native/index_3.png),
+[`index-12_10.png`](previews/native/index-12_10.png); every highlight of the
+sample is in `previews/*/index_N.png`, and the 12-entry example's first,
+7th, 8th (first scroll), 10th and last in `index-12_N.png`.
+
+- **Rows.** Seven rows of 14 px, each with a right-aligned number and the
+  name in regular 11 px (the portfolio body size). The highlighted row is
+  white on a black bar across the list width. A bar reads as "selected" on
+  1-bit e-paper better than a cursor glyph or a box. It costs one row of
+  black pixels, which stays within a partial refresh.
+- **Header.** `PROJECT INDEX` and `n/N` in bold 10, left of the reserved
+  status area, which is never drawn into (host test
+  `render_status_area_reserved_on_every_screen` covers every screen).
+- **Scrolling.** Up to seven entries fit without scrolling, so the
+  seven-entry sample never scrolls. With more, a 3 px scrollbar appears next
+  to the UP/DOWN triangles (the same triangles as on the project pages,
+  beside the physical buttons). The window moves only when the highlight
+  would leave it.
+- **Hints.** One line: `C open · A back · hold UP/DOWN to scroll`, shortened
+  for one entry (`C open · A back`) and for none (`A back`, with "No
+  projects configured" in the middle).
+- **Order.** The configured order. BHIHKH! is last, and the teaser
+  (CatScan-MS) is listed by name only; opening it shows its banner page.
+  Names never ellipsize in the sample (host test
+  `render_index_sample_portfolio`); a too-long name in another profile is
+  ellipsized within its row.
+- The 12-entry previews come from `render_previews.py --example-projects 12`.
+  It inserts "Example project k" placeholders before the last entry. These
+  are host previews of the layout, never content.
+
 ## QR codes
 
 - Encoded on the badge with Nayuki qrcodegen from `qr.payload`, so a code

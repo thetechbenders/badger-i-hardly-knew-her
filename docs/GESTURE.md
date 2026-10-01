@@ -51,6 +51,9 @@
 
 - All physical buttons keep working unchanged in gesture mode.
 - A swipe that would not change the screen does nothing (no refresh).
+- Swipes are ignored while the project index is open (it is modal; leave it
+  with C or A). A short C still waiting for its double-press window acts
+  first, then the swipe.
 - **Status indicator** (top right, next to the battery):
   - `↔` gesture mode on;
   - `↔` struck through: gesture mode on, but the sensor is missing or

@@ -55,6 +55,14 @@ were not observed or reproduced by the tooling that maintains this file.
   - Two-phone QR testing (§8).
   - Battery and APDS-9960 tests (sections at the end).
 
+### Project index / quiet browsing (branch `feature/project-index-quiet-browsing`)
+
+**Not yet tested on hardware.** This firmware changes the C button (short C
+now waits ~0.35 s for a possible double press; long C now opens project 1;
+diagnostics moved to USR short) and adds the project index (§11). The
+`023b3c6` results above do not cover it. Items 2.1 and 2.3 changed
+meaning, so re-run them along with §11 on the first build of this branch.
+
 ### Before first flash (September 2026)
 
 Status before the first flash: **all steps pending**; 0.1 done read-only.
@@ -115,8 +123,9 @@ Flashing (step 1) replaces MicroPython and needs the owner's explicit go-ahead.
       (Before the BHIHKH! update this step checked a two-page portfolio.)
       *2026-10-01, local `023b3c6`: passed (reported).*
 - [ ] 2.3 Long presses: A = slow clean refresh; B = full-screen QR (card if no
-      QR); C = diagnostics; USR = layout **B** (portrait right) for this
-      session, USR again = A.
+      QR); C = project 1 (since the project index; was diagnostics, now USR
+      short); USR = layout **B** (portrait right) for this session, USR
+      again = A. USR short: diagnostics.
       *2026-10-01, local `023b3c6`: both layouts and the long-B QR screens
       seen (reported); A long, C long and the USR toggle not individually
       reported. Still open.*
@@ -278,6 +287,51 @@ that only 9.7 reaches the three-in-a-row safe-mode threshold.
       video alongside and compare the phase timing.
 - [ ] 10.10 Optional: `> set refresh.speed 2`, browse the portfolio, judge
       ghosting versus the shorter flash; `> revert`.
+
+## 11. Project index and quiet browsing
+
+Run on the first build of `feature/project-index-quiet-browsing`; record its
+`> version` line. The detailed expectations are in
+[HARDWARE_SMOKE_TEST.md](HARDWARE_SMOKE_TEST.md) §B2.
+
+- [ ] 11.1 Short C from badge/card: the remembered project after ~0.35 s, one
+      refresh. Double C: the index directly (no project page first), with
+      the remembered project highlighted and `n/7` in the header.
+- [ ] 11.2 Readability at arm's length: names, highlight bar, `n/N`, hint
+      line; the battery/USB status top right is untouched.
+- [ ] 11.3 Single DOWN taps: one refresh per tap, about 0.3 s after release.
+      Four quick taps: one refresh at the end. `> status` during browsing
+      shows `index highlight n (drawn m)`.
+- [ ] 11.4 Hold DOWN ~2.5 s: no refresh while held, no power-off; stops at
+      7/7. Hold UP: back to 1/7, gesture indicator unchanged.
+- [ ] 11.4a Hold DOWN ≥ 3 s in the index: emulated sleep on USB (badge drawn,
+      `power off` printed); no project opened, no highlight drawn. A button
+      wakes it; short C opens the previously remembered project.
+- [ ] 11.5 C confirms at once and opens only the selected project; C from the
+      card then reopens that project. A cancels to the previous screen
+      (try from a project QR: back to the same QR) and keeps the remembered
+      project.
+- [ ] 11.6 Long C on project 4 and on a project QR: project 1. Nothing else on
+      release. Inside the index: also project 1.
+- [ ] 11.7 `> set refresh.speed 0`; double C, tap DOWN several times during the
+      index refresh, then C. **Expect**: the index refresh finishes, then one
+      refresh to the final project, no intermediate frame. `> diag refresh`
+      lists exactly those frames. `> revert`.
+- [ ] 11.8 Pending C, at `> set refresh.speed 0`: tap C, then within 0.35 s
+      hold B → one refresh to the remembered project's QR (scan: that
+      project's link, not the vCard); C then A → one refresh to the badge,
+      no project page; C then `> screen badge` → badge, nothing later.
+      `> diag refresh` shows one frame each. `> revert`.
+- [ ] 11.8a USR long on the badge: layout toggles with one refresh, no
+      diagnostics frame. USR short: diagnostics.
+- [ ] 11.9 No flash writes while browsing: `> diag settings` commit count
+      unchanged after a session in the index.
+- [ ] 11.10 `> screen index 5`, `> project next`, `> status`: the index with 6
+      highlighted; `screen index 9` → `ERR` (only 7 projects).
+- [ ] 11.11 CatScan-MS from the index: teaser page with "TOP SECRET - COMING
+      SOON", no QR hint; long B there does nothing.
+- [ ] 11.12 `> sleep` from the index (USB emulated sleep), then a button: the
+      wake screen, no delayed index or C action.
 
 ## Pending: battery (LiPo not yet available)
 

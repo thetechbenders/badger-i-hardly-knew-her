@@ -59,7 +59,7 @@ int main(int argc, char **argv) {
   std::vector<uint8_t> pack(kBuiltinAssetPack, kBuiltinAssetPack + kBuiltinAssetPack_size);
   bool no_portrait = false, faults = false, fit_report = false;
   int layout = -1;
-  std::string screens = "badge,card,projects,project-qr,qr,info";
+  std::string screens = "badge,card,projects,project-qr,index,qr,info";
   std::string suffix;
   StatusInfo status;
   status.battery.display = PowerDisplay::Battery;
@@ -170,7 +170,8 @@ int main(int argc, char **argv) {
     if (!screen_from_name(name.c_str(), &sc)) { std::fprintf(stderr, "unknown screen %s\n", name.c_str()); return 2; }
     View v;
     v.screen = sc;
-    const bool per_project = sc == Screen::Projects || sc == Screen::ProjectQr;
+    // The index is rendered once per highlighted entry, scrolling as DOWN would.
+    const bool per_project = sc == Screen::Projects || sc == Screen::ProjectQr || sc == Screen::Index;
     const int nproj = per_project ? configured_project_count(s.profile) : 1;
     for (int li = 0; li < 2; ++li) {
       const int lay = layouts[li];
@@ -179,6 +180,8 @@ int main(int argc, char **argv) {
       v.layout = uint8_t(lay);
       for (int p = 0; p < (nproj ? nproj : 1); ++p) {
         v.project = uint8_t(p);
+        v.index_sel = uint8_t(p);
+        v.index_top = uint8_t(index_viewport_top(v.index_top, p, nproj));
         if (sc == Screen::ProjectQr && !project_url(s.profile, p)) continue;  // no URL: no QR screen
         render(fb, v, ctx);
         std::string file = out + "/" + name;

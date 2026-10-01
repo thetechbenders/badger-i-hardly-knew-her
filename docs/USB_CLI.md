@@ -30,7 +30,7 @@ BOOTSEL (Pico SDK convention).
 | `help` | Command summary |
 | `version` | Firmware version (git describe), build type, commit date, SDK/library/compiler versions |
 | `status` | Current screen, power source, VSYS, idle time, unsaved-changes flag, display state |
-| `screen badge\|card\|projects [n]\|project-qr [n]\|qr\|info` | Show a screen (`n` = 1-based project). Unavailable screens (e.g. `project-qr` for a project without a link) return `ERR`. |
+| `screen badge\|card\|projects [n]\|project-qr [n]\|index [n]\|qr\|info` | Show a screen (`n` = 1-based project). Unavailable screens (e.g. `project-qr` for a project without a link) return `ERR`. `index [n]` opens the project index with entry `n` highlighted (default: the remembered project); it does not change the remembered project. While the index is shown, `project next\|prev` moves the highlight, and `status` adds `index highlight n (drawn m)`. A USB screen change cancels a short C that is still waiting for its double-press window. |
 | `project next\|prev\|<n>` | Navigate projects |
 | `fields` | Every key with type, limits and help |
 | `get [key]` | Staged value(s), quoted and escaped |
