@@ -1,8 +1,9 @@
-# Badger? I hardly knew her!
+# Badger? I hardly knew her! (BHIHKH!)
 
 ![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/thetechbenders/badger-i-hardly-knew-her?utm_source=oss&utm_medium=github&utm_campaign=thetechbenders%2Fbadger-i-hardly-knew-her&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
 
-A photo badge and digital business card for **Formnext 2026**, written as native
+**Badger? I hardly knew her! (BHIHKH!)**, occasionally BadgHer, is a photo badge,
+digital business card and project portfolio for **Formnext 2026**, written as native
 C/C++ firmware for the **original Pimoroni Badger 2040** (RP2040, 296 × 128
 monochrome e-paper, five front buttons, USB-C, battery connector). It uses the
 Raspberry Pi Pico SDK and Pimoroni's C++ UC8151 driver. No MicroPython, no
@@ -21,11 +22,19 @@ contact details are kept out of Git (see [Private content](#private-content)).
 | Button | Short press | Long press (≥ 1 s) |
 |---|---|---|
 | **A** | Photo badge | Clean full refresh (removes ghosting) |
-| **B** | Business card | Full-screen QR (if a QR destination is configured) |
-| **C** | Projects (if any are configured) | Diagnostics screen |
-| **UP / DOWN** | Previous / next project; from the full-screen QR, back to the card | UP: **gesture mode** on/off · DOWN: power off now |
+| **B** | Business card | On the card: full-screen contact QR (if configured) · on a project: that project's repository QR (if it has a link) · on a QR: back |
+| **C** | Project portfolio, at the last project viewed (if any are configured) | Diagnostics screen |
+| **UP / DOWN** | Previous / next project; from a full-screen QR, back to the card or project | UP: **gesture mode** on/off · DOWN: power off now |
 | **USR** | – | Switch layout A ↔ B for this session |
 
+- **Project portfolio**: up to 12 configurable entries (`projectN.*` keys),
+  each a page with title, tagline, description, optional status tag and a
+  `PROJECT n/N` counter. An entry with a `link` offers its repository as a
+  full-screen QR (long B); an entry without one, such as a teaser with a
+  `banner`, never shows a QR. Browsing never writes to flash.
+- **Contact icons**: card lines typed `github` or `discord` show a small
+  monochrome icon instead of the platform name (Simple Icons, CC0; see
+  [docs/LICENSES.md](docs/LICENSES.md)). Untyped lines keep their text label.
 - The badge boots to the photo badge. When woken from battery power-off by B
   or C, it opens the card or projects instead (`wake.selects_screen`).
 - Screens change only on deliberate button presses, swipes (gesture mode)
@@ -96,6 +105,7 @@ the photo.
 - [docs/DESIGN.md](docs/DESIGN.md): layout candidates, portrait conversion comparison, QR rules
 - [docs/GESTURE.md](docs/GESTURE.md): APDS-9960 wiring, power, calibration, aperture
 - [docs/BATTERY.md](docs/BATTERY.md): battery circuit, thresholds, sampling, multimeter validation
+- [docs/REFRESH.md](docs/REFRESH.md): why a full refresh flashes, refresh timing and `diag refresh`
 - [docs/HARDWARE_SMOKE_TEST.md](docs/HARDWARE_SMOKE_TEST.md): checks to run on a physical badge
 - [docs/USB_HARDWARE_CHECKLIST.md](docs/USB_HARDWARE_CHECKLIST.md): USB-only checklist (no battery / sensor), with pending items
 - [docs/REVIEW.md](docs/REVIEW.md): code-review findings, fixes and remaining limitations

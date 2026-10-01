@@ -112,6 +112,8 @@ AppConfig app_config(bool safe) {
   AppConfig c;
   const Settings &s = g_staged;
   c.project_count = uint8_t(configured_project_count(s.profile));
+  for (int i = 0; i < c.project_count && i < 16; ++i)
+    if (project_url(s.profile, i)) c.project_url_mask |= uint16_t(1u << i);
   c.qr_configured = qr_configured(s.profile);
   c.layout = s.prefs.layout;
   c.safe_mode = safe;
@@ -171,7 +173,7 @@ void build_info_lines() {
   L.count = 0;
   const diag::BootInfo &bi = diag::info();
   const diag::MemReport m = diag::memory();
-  L.add("Firmware  %s %s | sdk %s", build::kVersion, build::kBuildType, build::kPicoSdk);
+  L.add("Firmware  %s %s %s | sdk %s", build::kName, build::kVersion, build::kBuildType, build::kPicoSdk);
   {
     const BatteryState &b = g_battery.state();
     char v[16], f[16];
@@ -187,7 +189,8 @@ void build_info_lines() {
         (unsigned long)bi.crash_streak);
   if (bi.message[0]) L.add("Last      %s", bi.message);
   const StoreStatus &st = g_store->status();
-  L.add("Settings  %s seq %lu%s%s", st.active_slot < 0 ? "defaults" : (st.active_slot ? "slot B" : "slot A"),
+  L.add("Settings  %s seq %lu%s%s",
+        st.migrated_v1 ? "v1 (migrate on commit)" : st.active_slot < 0 ? "defaults" : (st.active_slot ? "slot B" : "slot A"),
         (unsigned long)st.sequence, st.recovered ? " | recovered" : "", g_staged_dirty ? " | UNSAVED" : "");
   L.add("Assets    %s: %s", g_asset_source, asset_status_str(g_asset_info.status));
   const DisplayStats &ds = g_display.stats();
@@ -273,6 +276,10 @@ class UsbCliHost : public CliHost {
     if (s == Screen::Projects && configured_project_count(g_staged.profile) == 0) return false;
     if (s == Screen::Projects && project >= configured_project_count(g_staged.profile)) return false;
     if (s == Screen::QrFull && !qr_configured(g_staged.profile)) return false;
+    if (s == Screen::ProjectQr) {
+      const int n = project >= 0 ? project : g_app.view().project;
+      if (!project_url(g_staged.profile, n)) return false;  // no URL: no QR, never a stale one
+    }
     apply(g_app.on_screen_request(s, project));
     return true;
   }
@@ -325,7 +332,14 @@ class UsbCliHost : public CliHost {
       std::printf("settings: active %d seq %lu commits %lu failures %lu%s%s\r\n", st.active_slot,
                   (unsigned long)st.sequence, (unsigned long)st.commits, (unsigned long)st.commit_failures,
                   st.recovered ? " (recovered from corrupt slot)" : "", g_staged_dirty ? " UNSAVED" : "");
-      std::printf("flash: settings @0x%06lx x2 sectors, assets @0x%06lx (%lu KiB)\r\n",
+      for (int i = 0; i < 2; ++i)
+        if (st.legacy_info[i].status != DecodeStatus::Erased)
+          std::printf("settings: legacy v1 slot %c %s seq %lu\r\n", 'A' + i, decode_status_str(st.legacy_info[i].status),
+                      (unsigned long)st.legacy_info[i].sequence);
+      if (st.migrated_v1)
+        std::printf("settings: running on legacy v1 record (slot %c); the next commit writes format 2 to slot A\r\n",
+                    'A' + st.legacy_slot);
+      std::printf("flash: settings @0x%06lx 2 x 8 KiB slots, assets @0x%06lx (%lu KiB)\r\n",
                   (unsigned long)flash_layout::kSettingsOffset, (unsigned long)flash_layout::kAssetOffset,
                   (unsigned long)(flash_layout::kAssetSize / 1024));
     }
@@ -351,6 +365,18 @@ class UsbCliHost : public CliHost {
                   (unsigned long)g_jobs.size(), (unsigned long)g_jobs.capacity(), (unsigned long)g_events.size(),
                   (unsigned long)g_events.capacity(), (unsigned long)g_buttons.size(),
                   (unsigned long)g_buttons.capacity(), (unsigned long)g_buttons.drops());
+    }
+    if (all || !std::strcmp(t, "refresh")) {
+      known = true;
+      RenderScheduler::RefreshRecord r[RenderScheduler::kTrace];
+      const int n = g_sched.trace(r, RenderScheduler::kTrace);
+      std::printf("refresh: last %d frames (ms since boot; wait = request->submit, busy = panel BUSY time)\r\n", n);
+      for (int i = 0; i < n; ++i)
+        std::printf("refresh: #%lu req %lu wait %lu busy %lu speed %u %s (%s)%s\r\n", (unsigned long)r[i].seq,
+                    (unsigned long)r[i].request_ms, (unsigned long)(r[i].submit_ms - r[i].request_ms),
+                    (unsigned long)r[i].busy_ms, r[i].mode == RefreshMode::Clean ? 0u : unsigned(r[i].speed),
+                    refresh_mode_str(r[i].mode), refresh_reason_str(r[i].reason),
+                    r[i].done_ms ? "" : " [in progress]");
     }
     if (all || !std::strcmp(t, "battery")) {
       known = true;
@@ -599,11 +625,11 @@ int main() {
     }
 
     g_sched.poll(render_cb, nullptr, g_staged.prefs.refresh_speed,
-                 g_staged.prefs.partial_refresh ? g_staged.prefs.max_partials : 0);
+                 g_staged.prefs.partial_refresh ? g_staged.prefs.max_partials : 0, t);
     if (g_single_core) {
       g_display.poll(t);
       g_sched.poll(render_cb, nullptr, g_staged.prefs.refresh_speed,
-                   g_staged.prefs.partial_refresh ? g_staged.prefs.max_partials : 0);
+                   g_staged.prefs.partial_refresh ? g_staged.prefs.max_partials : 0, t);
     }
     board::led(display_busy() ? g_staged.prefs.led_level : 0);
 

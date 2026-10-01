@@ -36,9 +36,9 @@ struct Rig {
   void step(uint32_t ms = 10) {
     for (uint32_t i = 0; i < ms; i += 10) {
       clock += 10;
-      sched.poll(draw_scene, &scene, speed, max_partials);
+      sched.poll(draw_scene, &scene, speed, max_partials, clock);
       display.poll(clock);
-      sched.poll(draw_scene, &scene, speed, max_partials);
+      sched.poll(draw_scene, &scene, speed, max_partials, clock);
     }
   }
   void settle() { for (int i = 0; i < 3000 && !sched.settled(); ++i) step(); }
@@ -269,4 +269,57 @@ TEST(pipeline_failed_speed_change_is_a_panel_fault_not_a_hang) {
   CHECK(r.sched.settled());
   CHECK_EQ(r.count('F'), 1);
   CHECK_EQ(r.panel.violations, 0);
+}
+
+// The trace records why each frame got its mode, and a browsing session
+// costs exactly one panel refresh per navigation step (no hidden extra
+// blank/clean phases from the scheduler).
+TEST(pipeline_refresh_trace_reasons_and_one_refresh_per_step) {
+  Rig r;
+  r.sched.invalidate();
+  r.settle();
+  for (int v = 1; v <= 4; ++v) {  // small changes: P P P then the partial budget forces F
+    r.scene.value = v;
+    r.sched.invalidate();
+    r.settle();
+  }
+  r.scene.value = 120;  // large change
+  r.sched.invalidate();
+  r.settle();
+  r.scene.value = 121;
+  r.sched.invalidate(true);  // clean request
+  r.settle();
+  CHECK_EQ(r.count('F') + r.count('P'), 7);  // 7 requests, 7 refreshes
+  RenderScheduler::RefreshRecord t[RenderScheduler::kTrace];
+  const int n = r.sched.trace(t, RenderScheduler::kTrace);
+  CHECK_EQ(n, 7);
+  const RefreshReason want[] = {RefreshReason::FirstFrame, RefreshReason::SmallChange, RefreshReason::SmallChange,
+                                RefreshReason::SmallChange, RefreshReason::PartialBudget, RefreshReason::LargeChange,
+                                RefreshReason::CleanRequested};
+  for (int i = 0; i < n; ++i) {
+    CHECK(t[i].reason == want[i]);
+    CHECK_EQ(t[i].seq, uint32_t(i + 1));
+    CHECK(t[i].request_ms <= t[i].submit_ms && t[i].submit_ms <= t[i].done_ms);
+    CHECK(t[i].busy_ms > 0);
+    CHECK(refresh_reason_str(t[i].reason)[0] != '\0');
+  }
+  CHECK(t[6].clean_requested);
+  CHECK(!t[5].clean_requested);
+  CHECK(t[1].mode == RefreshMode::Partial && t[4].mode == RefreshMode::Full);
+}
+
+TEST(pipeline_refresh_trace_is_a_bounded_ring) {
+  Rig r;
+  for (int v = 0; v < 40; ++v) {
+    r.scene.value = v % 2 ? 120 : 0;  // alternate: every step is a full refresh
+    r.sched.invalidate();
+    r.settle();
+  }
+  RenderScheduler::RefreshRecord t[RenderScheduler::kTrace + 4];
+  const int n = r.sched.trace(t, RenderScheduler::kTrace + 4);
+  CHECK_EQ(n, RenderScheduler::kTrace);
+  for (int i = 1; i < n; ++i) CHECK_EQ(t[i].seq, t[i - 1].seq + 1);  // oldest first
+  CHECK_EQ(t[n - 1].seq, r.sched.submitted());
+  CHECK_EQ(r.sched.trace(t, 3), 3);  // caller's buffer bound respected
+  CHECK_EQ(t[2].seq, r.sched.submitted());  // newest entries
 }

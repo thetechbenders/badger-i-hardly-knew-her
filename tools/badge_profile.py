@@ -9,7 +9,9 @@ import json
 from pathlib import Path
 
 MAX_CONTACTS = 6
-MAX_PROJECTS = 4
+MAX_PROJECTS = 12
+CONTACT_TYPES = ("", "email", "phone", "web", "github", "discord", "text")
+PROJECT_FIELDS = ("title", "tagline", "body", "link", "status", "banner")
 
 # key -> (type, capacity-or-(min,max)). String capacity includes the NUL.
 FIELD_LIMITS: dict[str, tuple] = {
@@ -17,11 +19,14 @@ FIELD_LIMITS: dict[str, tuple] = {
     "interests": ("str", 112), "event": ("str", 32),
     **{f"contact{i}.label": ("str", 16) for i in range(1, 7)},
     **{f"contact{i}.value": ("str", 72) for i in range(1, 7)},
+    **{f"contact{i}.type": ("str", 12) for i in range(1, 7)},
     "qr.payload": ("str", 384), "qr.caption": ("str", 40),
-    **{f"project{i}.title": ("str", 40) for i in range(1, 5)},
-    **{f"project{i}.tagline": ("str", 64) for i in range(1, 5)},
-    **{f"project{i}.body": ("str", 200) for i in range(1, 5)},
-    **{f"project{i}.link": ("str", 72) for i in range(1, 5)},
+    **{f"project{i}.title": ("str", 40) for i in range(1, 13)},
+    **{f"project{i}.tagline": ("str", 64) for i in range(1, 13)},
+    **{f"project{i}.body": ("str", 200) for i in range(1, 13)},
+    **{f"project{i}.link": ("str", 72) for i in range(1, 13)},
+    **{f"project{i}.status": ("str", 48) for i in range(1, 13)},
+    **{f"project{i}.banner": ("str", 40) for i in range(1, 13)},
     "layout": ("u8", (0, 1)), "refresh.speed": ("u8", (0, 3)), "refresh.partial": ("bool", (0, 1)),
     "refresh.max_partials": ("u8", (0, 20)), "sleep.timeout_s": ("u16", (0, 3600)),
     "sleep.screen": ("u8", (0, 1)), "wake.selects_screen": ("bool", (0, 1)),
@@ -52,6 +57,12 @@ def _check_text(key: str, value: str, cap: int) -> str:
     return value
 
 
+def valid_link(link: str) -> bool:
+    """Same rule as the firmware (settings_text_ok): https, a host, no spaces."""
+    return (link.startswith("https://") and len(link) > 8 and link[8] != "/"
+            and " " not in link and "\n" not in link)
+
+
 def flatten(doc: dict) -> list[tuple[str, str]]:
     """Convert a profile document into validated (key, value) pairs."""
     if doc.get("format") != 1:
@@ -68,6 +79,10 @@ def flatten(doc: dict) -> list[tuple[str, str]]:
         c = contacts[i] if i < len(contacts) else {}
         out[f"contact{i + 1}.label"] = c.get("label", "")
         out[f"contact{i + 1}.value"] = c.get("value", "")
+        ctype = c.get("type", "")
+        if ctype not in CONTACT_TYPES:
+            raise ProfileError(f"contacts[{i}].type {ctype!r}: expected one of {', '.join(t for t in CONTACT_TYPES if t)}")
+        out[f"contact{i + 1}.type"] = ctype
     qr = p.get("qr", {})
     out["qr.payload"] = qr.get("payload", "")
     out["qr.caption"] = qr.get("caption", "")
@@ -76,7 +91,15 @@ def flatten(doc: dict) -> list[tuple[str, str]]:
         raise ProfileError(f"at most {MAX_PROJECTS} projects")
     for i in range(MAX_PROJECTS):
         pr = projects[i] if i < len(projects) else {}
-        for f in ("title", "tagline", "body", "link"):
+        unknown = set(pr) - set(PROJECT_FIELDS)
+        if unknown:
+            raise ProfileError(f"projects[{i}]: unknown field(s) {', '.join(sorted(unknown))}")
+        if any(pr.get(f) for f in PROJECT_FIELDS) and not pr.get("title"):
+            raise ProfileError(f"projects[{i}]: a project needs a title (it would be invisible)")
+        link = pr.get("link", "")
+        if link and not valid_link(link):
+            raise ProfileError(f"projects[{i}].link must be an https:// URL without spaces: {link!r}")
+        for f in PROJECT_FIELDS:
             out[f"project{i + 1}.{f}"] = pr.get(f, "")
     for k, v in doc.get("prefs", {}).items():
         out[k] = str(int(v)) if not isinstance(v, bool) else ("true" if v else "false")

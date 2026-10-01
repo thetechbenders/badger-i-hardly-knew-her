@@ -4,10 +4,13 @@
 //
 // Controls
 //   A short   photo badge              A long    clean full refresh (de-ghost)
-//   B short   business card            B long    full-screen QR (if configured)
-//   C short   projects (if any)        C long    diagnostics screen
-//   UP/DOWN   previous/next project on the projects screen; from the
-//             full-screen QR, either returns to the card
+//   B short   business card            B long    contact QR (if configured); on a
+//                                                project page: that project's QR
+//                                                (only if it has a URL); again: back
+//   C short   portfolio at the last-viewed project (this session)
+//                                      C long    diagnostics screen
+//   UP/DOWN   previous/next project on the portfolio; from a QR screen,
+//             return to the page it came from (card / same project)
 //   UP long   gesture mode on/off (APDS-9960 on Qwiic; not saved)
 //   DOWN long power off now (battery) / emulated sleep (USB)
 //   USR long  toggle layout candidate for this session (not saved)
@@ -25,7 +28,8 @@
 
 namespace badge {
 
-enum class Screen : uint8_t { Badge = 0, Card, Projects, QrFull, Info, Recovery, Count };
+// Values are stable (CLI names, tests); ProjectQr was appended.
+enum class Screen : uint8_t { Badge = 0, Card, Projects, QrFull, Info, Recovery, ProjectQr, Count };
 const char *screen_name(Screen s);
 bool screen_from_name(const char *name, Screen *out);
 
@@ -49,6 +53,7 @@ enum Action : uint32_t {
 
 struct AppConfig {
   uint8_t project_count = 0;
+  uint16_t project_url_mask = 0;  // bit n: n-th configured project has an https URL
   bool qr_configured = false;
   uint8_t layout = 0;
   bool safe_mode = false;
@@ -82,6 +87,7 @@ class App {
 
  private:
   uint32_t go(Screen s);
+  bool project_has_url(int n) const { return n >= 0 && n < 16 && (cfg_.project_url_mask >> n) & 1u; }
   uint32_t on_tick_power(uint32_t now_ms, bool on_battery, bool display_settled);
   AppConfig cfg_;
   View view_;

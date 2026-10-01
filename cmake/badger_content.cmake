@@ -24,6 +24,7 @@ set(BADGER_CORE_SOURCES
   ${_BADGER_ROOT}/firmware/core/settings_store.cpp
   ${_BADGER_ROOT}/firmware/core/text.cpp
   ${_BADGER_ROOT}/firmware/generated/fonts.cpp
+  ${_BADGER_ROOT}/firmware/generated/icons.cpp
   ${_BADGER_ROOT}/third_party/qrcodegen/qrcodegen.c
 )
 set(BADGER_CLI_SOURCES ${_BADGER_ROOT}/firmware/cli/cli.cpp)

@@ -98,7 +98,7 @@ target_link_libraries(${FW} PRIVATE
   pico_stdlib pico_multicore pico_flash hardware_spi hardware_i2c hardware_pwm hardware_adc hardware_flash hardware_watchdog)
 pico_enable_stdio_usb(${FW} 1)
 pico_enable_stdio_uart(${FW} 0)
-pico_set_program_name(${FW} "badger-i-hardly-knew-her")
+pico_set_program_name(${FW} "BHIHKH!")
 pico_set_program_version(${FW} "${BADGER_GIT_VERSION}")
 pico_set_program_description(${FW} "Formnext 2026 photo badge and business card for the original Badger 2040")
 target_link_options(${FW} PRIVATE -Wl,--print-memory-usage)

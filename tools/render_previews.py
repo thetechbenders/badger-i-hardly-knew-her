@@ -62,8 +62,19 @@ def diagnostic_max_pairs() -> list[tuple[str, str]]:
     """Labelled worst-case content: each text field at its byte limit."""
     filler = "HOST DIAGNOSTIC SAMPLE Wide Wörds Überlong Titles Wrap WWW MMM "
     pairs = []
+    types = [t for t in prof.CONTACT_TYPES if t]
     for key, (typ, lim) in prof.FIELD_LIMITS.items():
         if typ != "str" or key == "qr.payload":
+            continue
+        n = int("".join(ch for ch in key.split(".")[0] if ch.isdigit()) or 0)
+        if key.endswith(".type"):  # cycle through every icon/type
+            pairs.append((key, types[(n - 1) % len(types)]))
+            continue
+        if key.endswith(".link"):  # valid https URL at the byte limit
+            base = f"https://github.com/host-diagnostic-sample/p{n}-"
+            pairs.append((key, base + "x" * (lim - 1 - len(base))))
+            continue
+        if key.endswith(".banner") and n % 4 != 3:  # some teaser pages, not all
             continue
         out = ""
         while len((out + filler).encode()) < lim - 1:
@@ -85,7 +96,7 @@ def main(argv=None) -> int:
     ap.add_argument("--pack", type=Path)
     ap.add_argument("--scale", type=int, default=3)
     ap.add_argument("--qr", help="override qr.payload (e.g. to exercise the QR screens)")
-    ap.add_argument("--screens", default="badge,card,projects,qr,info,recovery")
+    ap.add_argument("--screens", default="badge,card,projects,project-qr,qr,info,recovery")
     ap.add_argument("--diagnostic-max", action="store_true", help="labelled worst-case content (see above)")
     ap.add_argument("--preview-arg", action="append", default=[], help="extra badger_preview argument")
     args = ap.parse_args(argv)
@@ -115,15 +126,21 @@ def main(argv=None) -> int:
         up = im.resize((296 * args.scale, 128 * args.scale), Image.Resampling.NEAREST)
         up.save(big / png.name)
         pngs.append((png.stem, im))
-        if pbm.stem in ("card", "qr"):
+        expected = payload
+        if pbm.stem.startswith("project-qr"):
+            # n-th configured project (1-based in the file name) -> its link
+            titles = [i for i in range(1, 13) if dict(pairs).get(f"project{i}.title")]
+            n = int(pbm.stem.split("_")[1]) if "_" in pbm.stem else 1
+            expected = dict(pairs).get(f"project{titles[n - 1]}.link", "") if titles else ""
+        if pbm.stem in ("card", "qr") or pbm.stem.startswith("project-qr"):
             # zbar needs some margin around the panel image.
             framed = Image.new("L", (296 + 40, 128 + 40), 255)
             framed.paste(im.convert("L"), (20, 20))
             res = {"native": decode_qr(framed),
                    f"x{args.scale}": decode_qr(framed.resize((framed.width * args.scale, framed.height * args.scale),
                                                              Image.Resampling.NEAREST))}
-            ok = bool(payload) and all(r == [payload] for r in res.values())
-            report["screens"][pbm.stem] = {"decoded": res, "ok": ok if payload else None}
+            ok = bool(expected) and all(r == [expected] for r in res.values())
+            report["screens"][pbm.stem] = {"expected": expected, "decoded": res, "ok": ok if expected else None}
 
     # Contact sheet: every screen at the enlarged size, labelled.
     pad, label = 12, 16

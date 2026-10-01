@@ -30,7 +30,7 @@ BOOTSEL (Pico SDK convention).
 | `help` | Command summary |
 | `version` | Firmware version (git describe), build type, commit date, SDK/library/compiler versions |
 | `status` | Current screen, power source, VSYS, idle time, unsaved-changes flag, display state |
-| `screen badge\|card\|projects [n]\|qr\|info` | Show a screen (`n` = 1-based project). Unavailable screens return `ERR`. |
+| `screen badge\|card\|projects [n]\|project-qr [n]\|qr\|info` | Show a screen (`n` = 1-based project). Unavailable screens (e.g. `project-qr` for a project without a link) return `ERR`. |
 | `project next\|prev\|<n>` | Navigate projects |
 | `fields` | Every key with type, limits and help |
 | `get [key]` | Staged value(s), quoted and escaped |
@@ -41,7 +41,7 @@ BOOTSEL (Pico SDK convention).
 | `defaults` | Stage the factory defaults (compiled-in profile); needs `commit` |
 | `export` | Print `set ...` lines that recreate the staged settings |
 | `refresh [clean]` | Redraw; `clean` forces a full refresh with the slow OTP waveform |
-| `diag [all\|reset\|mem\|flash\|settings\|assets\|display\|qr\|battery\|gesture]` | Diagnostics; `diag battery` takes a fresh reading and shows raw ADC counts |
+| `diag [all\|reset\|mem\|flash\|settings\|assets\|display\|refresh\|qr\|battery\|gesture]` | Diagnostics; `diag battery` takes a fresh reading and shows raw ADC counts; `diag refresh` lists the last 16 refreshes with timing, mode and reason ([REFRESH.md](REFRESH.md)) |
 | `selftest` | Verify font tables, built-in assets, settings validity and queue health |
 | `gesture on\|off` | Gesture mode (not saved; see `gesture.default_on`) |
 | `echo on\|off` | Terminal echo |
@@ -62,14 +62,17 @@ Text limits are in UTF-8 bytes (one less than the storage size).
 | `event` | text 31 | Optional event strip, e.g. "Formnext 2026" |
 | `contact1..6.label` | text 15 | e.g. Work, Email, Phone, GitHub |
 | `contact1..6.value` | text 71 | Empty value hides the whole line (label included); lines that do not fit the card are omitted, caption first |
+| `contact1..6.type` | `email`, `phone`, `web`, `github`, `discord`, `text` or empty | Explicit, never guessed from the label. `github`/`discord` lines show the icon instead of the label. Empty = text label (older profiles) |
 | `qr.payload` | text 383 | `https://…` URL or `BEGIN:VCARD…`; empty = no QR drawn at all (card text uses the full width) |
 | `qr.caption` | text 39 | Shown next to the code |
-| `project1..4.title` | text 39 | Empty hides the project |
-| `project1..4.tagline` | text 63 | |
-| `project1..4.body` | text 199 | Wrapped; `\n` for line breaks |
-| `project1..4.link` | text 71 | Short reference text |
+| `project1..12.title` | text 39 | Empty hides the project; pages are numbered over the configured ones |
+| `project1..12.tagline` | text 63 | Bold, up to 2 lines |
+| `project1..12.body` | text 199 | Wrapped; `\n` for line breaks |
+| `project1..12.status` | text 47 | Optional outlined tag, e.g. a version |
+| `project1..12.link` | text 71 | Empty or `https://…` (no spaces). Shown without `https://` in the footer; long B shows it as a QR |
+| `project1..12.banner` | text 39 | Optional black teaser band, e.g. `TOP SECRET - COMING SOON` |
 | `layout` | 0..1 | 0 = portrait left (default), 1 = portrait right |
-| `refresh.speed` | 0..3 | 0 = OTP waveform ~4.5 s, 1 = ~2 s (default), 2 = ~0.8 s, 3 = ~0.25 s (more ghosting) |
+| `refresh.speed` | 0..3 | 0 = OTP waveform ~4.5 s, 1 = ~2.5 s (default), 2 = ~0.9 s, 3 = ~0.26 s (more ghosting) |
 | `refresh.partial` | bool | Allow partial refresh for changes under 40 % of the screen |
 | `refresh.max_partials` | 0..20 | Partial refreshes before a forced full refresh (default 5) |
 | `sleep.timeout_s` | 0, 15..3600 | Battery auto power-off; 0 = never (default 120) |

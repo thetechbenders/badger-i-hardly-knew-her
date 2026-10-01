@@ -8,18 +8,27 @@
 namespace badge {
 
 constexpr int kMaxContacts = 6;
-constexpr int kMaxProjects = 4;
+constexpr int kMaxProjects = 12;  // bounded portfolio; v1 records held 4
+
+// Explicit contact kinds (contactN.type). Empty = untyped text line with its
+// label, which is how every pre-type profile renders.
+enum class ContactType : uint8_t { None = 0, Email, Phone, Web, GitHub, Discord, Text };
+ContactType contact_type(const char *type_field);
+const char *const *contact_type_names(size_t *count);
 
 struct ContactLine {
   char label[16];
   char value[72];
+  char type[12];  // "", email, phone, web, github, discord, text
 };
 
 struct Project {
-  char title[40];
-  char tagline[64];
-  char body[200];
-  char link[72];
+  char title[40];    // empty = slot unused
+  char tagline[64];  // optional one-line subtitle
+  char body[200];    // short description, wrapped
+  char link[72];     // optional https:// URL (repository); enables the project QR
+  char status[48];   // optional, verified status label
+  char banner[40];   // optional prominent banner (teasers), e.g. "TOP SECRET - COMING SOON"
 };
 
 struct Profile {
@@ -84,11 +93,14 @@ const FieldDesc *find_field_id(uint16_t id);
 // Factory defaults (compiled-in profile from config/*.json plus prefs).
 void settings_defaults(Settings *s);
 
-enum class SetResult : uint8_t { Ok, UnknownKey, TooLong, BadUtf8, OutOfRange, BadNumber };
+enum class SetResult : uint8_t { Ok, UnknownKey, TooLong, BadUtf8, OutOfRange, BadNumber, BadValue };
 const char *set_result_str(SetResult r);
 
 // Parse and validate `value` for `f`, then store into `s`.
 SetResult settings_set(Settings *s, const FieldDesc &f, const char *value);
+// Field-specific content rules for text fields (contact types, https:// project
+// links). Shared by settings_set, settings_validate and the flash decoder.
+bool settings_text_ok(const FieldDesc &f, const char *s, size_t len);
 // Format the value of `f` into buf (always NUL terminated).
 void settings_get(const Settings &s, const FieldDesc &f, char *buf, size_t buflen);
 // Validate every field of an in-memory settings object (bounds, UTF-8, NUL).
@@ -99,5 +111,7 @@ inline bool str_empty(const char *s) { return s == nullptr || s[0] == '\0'; }
 int configured_project_count(const Profile &p);
 int nth_configured_project(const Profile &p, int n);  // index into projects[] or -1
 bool qr_configured(const Profile &p);
+// Link of the n-th configured project if it is a usable https:// URL, else nullptr.
+const char *project_url(const Profile &p, int n);
 
 }  // namespace badge

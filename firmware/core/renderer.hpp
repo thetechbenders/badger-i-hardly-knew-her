@@ -55,5 +55,7 @@ struct CardGeometry {
 void render(Framebuffer &fb, const View &v, const RenderContext &ctx);
 // Describe where the card screen places its QR code (for tests).
 CardGeometry card_geometry(const RenderContext &ctx, bool full_screen);
+// Geometry of the n-th configured project's repository QR (Empty if it has no URL).
+CardGeometry project_qr_geometry(const RenderContext &ctx, int project);
 
 }  // namespace badge

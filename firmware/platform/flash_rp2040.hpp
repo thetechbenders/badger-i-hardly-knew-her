@@ -18,9 +18,9 @@ class Rp2040Flash : public FlashBackend {
  public:
   explicit Rp2040Flash(bool core1_running) : core1_running_(core1_running) {}
   size_t sector_size() const override;
-  int sector_count() const override;
+  size_t region_size() const override;
   bool read(uint32_t offset, void *dst, size_t len) override;
-  bool erase_and_program(uint32_t sector_offset, const void *src, size_t len) override;
+  bool erase_and_program(uint32_t offset, const void *src, size_t len, size_t erase_len) override;
   void set_core1_running(bool r) { core1_running_ = r; }
   int last_error() const { return last_error_; }
   uint32_t last_duration_us() const { return last_us_; }

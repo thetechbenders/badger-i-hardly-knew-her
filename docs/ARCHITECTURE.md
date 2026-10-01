@@ -29,11 +29,14 @@ firmware/core/        portable C++17, no SDK headers; compiled for device and ho
   framebuffer         1-bpp buffer in the UC8151 column-major layout; diff bounds
   font, text          compiled bitmap fonts; UTF-8, fit chains, ellipsis, wrapping
   qr                  qrcodegen wrapper: version/ECC/scale choice, quiet zone
-  renderer            badge (layouts A/B), card, projects, full-screen QR, info, recovery
+  renderer            badge (layouts A/B), card (contact icons), project portfolio,
+                      full-screen contact and project QR, info, recovery
+  icons               generated 12 px GitHub/Discord bitmaps (Simple Icons, CC0)
   input               5 ms sampling debouncer, short/long gestures, wake suppression
   app                 screen state machine and actions (redraw, clean refresh, sleep)
   settings            content/prefs model and field table (keys, IDs, limits)
-  settings_store      versioned TLV records, CRCs, A/B slots over a FlashBackend
+  settings_store      versioned TLV records, CRCs, A/B slots over a FlashBackend,
+                      read-only migration from format-1 records
   assetpack           validated bitmap container (built-in or flashed)
   spsc_queue          lock-free bounded single-producer/single-consumer ring
   display_pipeline    RenderScheduler (app side) + DisplayService (panel side)
@@ -115,6 +118,10 @@ core 1 ─ DisplayService: the only owner of the UC8151 driver, SPI0 and the
    heartbeat continues, and re-initialisation is retried with a 2 → 60 s
    backoff. Recovery forces one clean redraw. `diag display` and `selftest`
    report `panel NOT RESPONDING`.
+
+Each submitted frame is recorded in a 16-entry trace (request, submit and
+done times, panel BUSY time, mode and the reason for it) for `diag refresh`.
+[REFRESH.md](REFRESH.md) explains the visible phases of a full refresh.
 
 Refresh speeds use the driver's LUT sets (`update_speed` 0–3), and
 `refresh.speed` selects them. Changing speed re-runs the controller setup,

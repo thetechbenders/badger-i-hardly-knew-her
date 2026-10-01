@@ -5,7 +5,7 @@
 namespace badge {
 
 namespace {
-const char *const kScreenNames[] = {"badge", "card", "projects", "qr", "info", "recovery"};
+const char *const kScreenNames[] = {"badge", "card", "projects", "qr", "info", "recovery", "project-qr"};
 }
 
 const char *screen_name(Screen s) {
@@ -65,13 +65,18 @@ uint32_t App::on_button(const ButtonEvent &e) {
       case Button::Down:
         if (view_.screen == Screen::Projects) return on_project_step(e.button == Button::Up ? -1 : 1);
         if (view_.screen == Screen::QrFull) return go(Screen::Card);
+        if (view_.screen == Screen::ProjectQr) return go(Screen::Projects);  // same project
         return kActNone;
       default: return kActNone;
     }
   }
   switch (e.button) {
     case Button::A: return kActRedraw | kActCleanRefresh;
-    case Button::B: return cfg_.qr_configured ? go(Screen::QrFull) : go(Screen::Card);
+    case Button::B:
+      // Project context: the project's own repository QR, never the contact one.
+      if (view_.screen == Screen::ProjectQr) return go(Screen::Projects);
+      if (view_.screen == Screen::Projects) return project_has_url(view_.project) ? go(Screen::ProjectQr) : kActNone;
+      return cfg_.qr_configured ? go(Screen::QrFull) : go(Screen::Card);
     case Button::C: return go(Screen::Info);
     case Button::Up:
       return set_gesture_mode(!gesture_on_);
@@ -97,6 +102,13 @@ uint32_t App::on_screen_request(Screen s, int project) {
     }
   }
   if (s == Screen::QrFull && !cfg_.qr_configured) s = Screen::Card;
+  if (s == Screen::ProjectQr) {
+    if (project >= 0 && project < cfg_.project_count && project != view_.project) {
+      view_.project = uint8_t(project);
+      a |= kActRedraw;
+    }
+    if (!project_has_url(view_.project)) return kActNone;
+  }
   return a | go(s);
 }
 
@@ -104,7 +116,8 @@ uint32_t App::on_project_step(int delta) {
   const int n = cfg_.project_count;
   if (n <= 1) return kActNone;
   view_.project = uint8_t(((int(view_.project) + delta) % n + n) % n);
-  return view_.screen == Screen::Projects ? kActRedraw : kActNone;
+  if (view_.screen == Screen::ProjectQr) view_.screen = Screen::Projects;  // never a stale QR
+  return (view_.screen == Screen::Projects) ? kActRedraw : kActNone;
 }
 
 uint32_t App::set_gesture_mode(bool on) {
@@ -116,10 +129,11 @@ uint32_t App::set_gesture_mode(bool on) {
 uint32_t App::on_swipe(Swipe s, uint32_t now_ms) {
   if (!gesture_on_ || sleep_pending_ || cfg_.safe_mode || view_.screen == Screen::Recovery) return kActNone;
   last_activity_ms_ = now_ms;
-  // Cycle of main screens; the full-screen QR counts as the card.
+  // Cycle of main screens; a QR screen counts as the page it belongs to.
   Screen cycle[3] = {Screen::Badge, Screen::Card, Screen::Projects};
   const int n = cfg_.project_count > 0 ? 3 : 2;
-  Screen cur = view_.screen == Screen::QrFull ? Screen::Card : view_.screen;
+  Screen cur = view_.screen == Screen::QrFull ? Screen::Card
+               : view_.screen == Screen::ProjectQr ? Screen::Projects : view_.screen;
   int idx = -1;
   for (int i = 0; i < n; ++i)
     if (cycle[i] == cur) idx = i;
@@ -141,6 +155,8 @@ uint32_t App::on_config_changed(const AppConfig &cfg) {
   if (view_.project >= cfg.project_count) view_.project = 0;
   if (view_.screen == Screen::Projects && cfg.project_count == 0) view_.screen = Screen::Badge;
   if (view_.screen == Screen::QrFull && !cfg.qr_configured) view_.screen = Screen::Card;
+  if (view_.screen == Screen::ProjectQr && !project_has_url(view_.project))
+    view_.screen = cfg.project_count ? Screen::Projects : Screen::Badge;
   if (leaving_safe && view_.screen == Screen::Recovery) view_.screen = Screen::Badge;
   return kActRedraw;  // content may have changed; unchanged frames are suppressed by hash
 }

@@ -8,8 +8,16 @@
     "interests": "3D printing · electronics · embedded systems",
     "event": "Formnext 2026",
     "contacts": [
-      {"label": "Email", "value": "[email not configured]"},
-      {"label": "Web", "value": "[website not configured]"}
+      {
+        "label": "Email",
+        "value": "[email not configured]",
+        "type": "email"
+      },
+      {
+        "label": "Web",
+        "value": "[website not configured]",
+        "type": "web"
+      }
     ],
     "qr": {
       "payload": "",
@@ -19,14 +27,48 @@
       {
         "title": "Jump Jet",
         "tagline": "Chamber heater for the Prusa CORE One family",
-        "body": "Heated-chamber project for Prusa CORE One printers. Work in progress – happy to talk design, electronics and firmware.",
-        "link": ""
+        "body": "ESP32-S3 / ESP-IDF redesign of Philip Sørensen's Jetpack, built on dragon-core. PCBWay-sponsored.",
+        "status": "Cold-safe foundation · no heater control yet",
+        "link": "https://github.com/thetechbenders/JumpJet"
       },
       {
-        "title": "Dragon family",
-        "tagline": "Tools for embedded development and validation.",
-        "body": "DragonBreath · DragonSniff · DragonBench · dragon-core.",
-        "link": ""
+        "title": "DragonBreath",
+        "tagline": "Open firmware for the BTT Panda Breath heater",
+        "body": "ESP32-C3 firmware with local web control, driven by Klipper/Moonraker, Home Assistant (MQTT), Bambu LAN or PrusaLink.",
+        "status": "v1.1.19 · validated on boards V1.0, V1.0.1",
+        "link": "https://github.com/plastikman/DragonBreath"
+      },
+      {
+        "title": "DragonSniff",
+        "tagline": "Read-only observability for Dragon devices",
+        "body": "Local tooling to inspect Dragon HTTP APIs, follow event streams and export timestamped evidence. Never part of a control loop.",
+        "status": "v0.5.0",
+        "link": "https://github.com/thetechbenders/DragonSniff"
+      },
+      {
+        "title": "DragonBench",
+        "tagline": "ESP32-S3 characterization instrument",
+        "body": "Deterministic module workloads while external equipment measures current, voltage, rail stability and resets. No actuators.",
+        "status": "v0.1.0 characterization image",
+        "link": "https://github.com/thetechbenders/DragonBench"
+      },
+      {
+        "title": "dragon-core",
+        "tagline": "Shared ESP-IDF components",
+        "body": "Board-neutral Wi-Fi, portal, UI, MQTT, Moonraker and Bambu services; products keep their own hardware and safety policy.",
+        "status": "v0.35.2",
+        "link": "https://github.com/justinh-rahb/dragon-core"
+      },
+      {
+        "title": "CatScan-MS",
+        "banner": "TOP SECRET - COMING SOON"
+      },
+      {
+        "title": "BHIHKH! / BadgHer",
+        "tagline": "Badger? I hardly knew her!",
+        "body": "Native Pico SDK photo badge and business card for the original Badger 2040 - the badge you are looking at.",
+        "status": "In development · hardware checks pending",
+        "link": "https://github.com/thetechbenders/badger-i-hardly-knew-her"
       }
     ]
   },

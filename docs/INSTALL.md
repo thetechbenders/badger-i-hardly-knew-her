@@ -12,7 +12,7 @@ RP2040") uses the top 1 MiB (0x100000–0x1FFFFF); later releases use the top
 - Flashing `badger_badge.uf2` overwrites only the sectors the image covers
   (0x000000–0x02C6FF today). MicroPython stops working at once.
 - The BadgerOS files are **not** erased by flashing, but this firmware keeps
-  its settings at 0x1FE000–0x1FFFFF and its asset pack at 0x1E0000–0x1EFFFF,
+  its settings at 0x1FC000–0x1FFFFF and its asset pack at 0x1E0000–0x1EFFFF,
   both inside the old filesystem area. The first `commit` or asset flash
   corrupts that filesystem. Treat the BadgerOS files as lost unless you
   back them up.
@@ -61,6 +61,27 @@ python3 tools/badgerctl.py push local/profile.json   # validates locally, stages
 python3 tools/badgerctl.py backup local/settings-backup.txt
 python3 tools/badgerctl.py cmd "diag qr"
 ```
+
+### Updating from firmware before the project portfolio
+
+BHIHKH! firmware with the project portfolio stores settings in format 2
+(2 × 8 KiB slots at 0x1FC000). On the first boot after the update it finds
+the old format-1 record and keeps using it: `status` shows
+`v1 (migrate on commit)`. Nothing is written until the next `commit`, which
+goes to a slot that does not overlap the old record (see FORMATS.md).
+
+The old record contains the old project list (up to 4 entries) and untyped
+contacts. Its values win over the new built-in defaults, so the new
+portfolio and the contact icons do **not** appear on their own. To adopt
+them, after flashing, either:
+
+```bash
+python3 tools/badgerctl.py backup local/settings-before-update.txt   # optional, keeps the old values
+python3 tools/badgerctl.py push local/profile.json                   # new portfolio + contact types, committed
+```
+
+or, to return to the defaults compiled into the firmware:
+`badgerctl.py cmd defaults` followed by `badgerctl.py cmd commit`.
 
 Changes made with `set` appear on the display immediately but are **not
 saved** until `commit`. Flash is written only on `commit` (never on button

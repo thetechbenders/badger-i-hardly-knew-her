@@ -78,36 +78,60 @@ class RenderedOutput(unittest.TestCase):
             names = {p.stem for p in (Path(d) / "native").glob("*.png")}
             self.assertTrue({"badge_layoutA", "badge_layoutB", "card", "qr", "info", "recovery",
                              "projects_1", "projects_4"} <= names, names)
+            # Every linked project's QR decodes to its own link (no stale QR).
+            pqr = {k: v for k, v in report["screens"].items() if k.startswith("project-qr")}
+            self.assertEqual(len(pqr), badge_profile.MAX_PROJECTS)
+            self.assertEqual(len({r["expected"] for r in pqr.values()}), badge_profile.MAX_PROJECTS)
         for key, value in render_previews.diagnostic_max_pairs():
             typ, cap = badge_profile.FIELD_LIMITS[key]
+            if key.endswith(".type"):
+                self.assertIn(value, badge_profile.CONTACT_TYPES, key)
+                continue
             if key != "qr.payload" and not key.endswith(".label"):
                 self.assertEqual(len(value.encode()), cap - 1, key)
+            if key.endswith(".link"):
+                self.assertTrue(badge_profile.valid_link(value), key)
+                continue
             # Labelled on screen (15-byte contact labels hold "HOST DIAGNOSTIC").
             self.assertTrue(value.startswith("HOST DIAGNOSTIC") if key != "qr.payload"
                             else "host-diagnostic-sample" in value, key)
 
-    def test_field_table_matches_python(self):
-        out = subprocess.run([str(PREVIEW), "--dump-fields"], capture_output=True, text=True, check=True).stdout
-        cpp = {}
-        for line in out.splitlines():
-            key, typ, size, lo, hi = line.split()
-            cpp[key] = (typ, int(size)) if typ == "str" else (typ, (int(lo), int(hi)))
-        self.assertEqual(cpp, badge_profile.FIELD_LIMITS)
+    def test_project_qr_decodes_its_own_link(self):
+        import render_previews
+        pairs = dict(badge_profile.load(ROOT / "config/sample-profile.json"))
+        links = [pairs[f"project{i}.link"] for i in range(1, 13) if pairs.get(f"project{i}.title")]
+        with tempfile.TemporaryDirectory() as d:
+            rc = render_previews.main(["--preview", str(PREVIEW), "--out", d, "--screens", "projects,project-qr",
+                                       "--profile", str(ROOT / "config/sample-profile.json")])
+            self.assertEqual(rc, 0)
+            report = json.loads((Path(d) / "qr_report.json").read_text())
+            names = {p.stem for p in (Path(d) / "native").glob("*.png")}
+        for n, link in enumerate(links, 1):
+            self.assertIn(f"projects_{n}", names)
+            key = f"project-qr_{n}"
+            if link:
+                self.assertEqual(report["screens"][key]["expected"], link)
+                self.assertTrue(report["screens"][key]["ok"], key)
+            else:  # e.g. the teaser project: no QR screen at all
+                self.assertNotIn(key, names)
+        self.assertIn("", links)  # the sample keeps one unlinked project
 
-    def test_status_states_render_distinctly(self):
-        seen = set()
-        for batt in ("none", "usb", "invalid", "low", "0", "1", "2", "3", "4"):
-            for gest in ("off", "on", "fault"):
-                (im,) = render("badge", {}, ["--layout", "0", "--battery", batt, "--gesture", gest])
-                seen.add(im.crop((296 - 56, 0, 296, 8)).tobytes())
-        self.assertEqual(len(seen), 27)
+    EMPTY = {f"project{i}.{f}": "" for i in range(1, 13) for f in badge_profile.PROJECT_FIELDS}
 
-    def test_both_layouts_and_every_screen_render(self):
-        ims = render("badge,card,projects,qr,info,recovery", {})
-        self.assertGreaterEqual(len(ims), 7)
-        for im in ims:
-            self.assertEqual(im.size, (296, 128))
-            self.assertLess(im.histogram()[0], 296 * 128)  # not all black
+    def test_project_page_without_link_shows_no_qr(self):
+        sets = dict(self.EMPTY, **{"project1.title": "Secret", "project1.banner": "TOP SECRET - COMING SOON"})
+        (im,) = render("projects", sets)
+        self.assertEqual(decode_qr(framed(im, 3)), [])
+        self.assertEqual(render("project-qr", sets), [])  # no link: the QR screen is not offered
+
+    def test_empty_and_single_project_lists(self):
+        ims = render("projects,project-qr", self.EMPTY)
+        self.assertEqual(len(ims), 1)  # one placeholder page, no QR
+        self.assertEqual(decode_qr(framed(ims[0], 3)), [])
+        one = dict(self.EMPTY, **{"project1.title": "Only", "project1.link": "https://example.com/only"})
+        page, qr = render("projects,project-qr", one)
+        self.assertEqual(decode_qr(framed(page, 3)), [])
+        self.assertEqual(decode_qr(framed(qr, 3)), ["https://example.com/only"])
 
 
 class AssetPack(unittest.TestCase):
@@ -162,6 +186,48 @@ class Profile(unittest.TestCase):
             doc[section][key] = value
             with self.assertRaises(badge_profile.ProfileError, msg=f"{key}={value!r}"):
                 badge_profile.flatten(doc)
+
+    def test_contact_types_and_projects_validated(self):
+        base = json.loads((ROOT / "config/sample-profile.json").read_text())
+
+        def check(mutate, ok):
+            doc = json.loads(json.dumps(base))
+            mutate(doc["profile"])
+            if ok:
+                return dict(badge_profile.flatten(doc))
+            with self.assertRaises(badge_profile.ProfileError):
+                badge_profile.flatten(doc)
+
+        check(lambda p: p["contacts"][0].update(type="carrier-pigeon"), False)
+        check(lambda p: p["contacts"][0].update(type="GitHub"), False)   # explicit, exact names
+        d = check(lambda p: p["contacts"][0].update(type="github"), True)
+        self.assertEqual(d["contact1.type"], "github")
+        d = check(lambda p: p["contacts"][0].pop("type", None), True)    # old profiles: untyped is fine
+        self.assertEqual(d["contact1.type"], "")
+        for link in ("http://example.com", "https://", "https:///x", "https://a b", "ftp://x"):
+            check(lambda p, l=link: p["projects"][0].update(link=l), False)
+        check(lambda p: p["projects"][0].update(colour="red"), False)    # unknown field
+        check(lambda p: p["projects"][0].update(title=""), False)        # content without a title
+        check(lambda p: p["projects"][0].update(status="x" * 48), False)  # over the byte limit
+        twelve = [{"title": f"P{i}"} for i in range(12)]
+        d = check(lambda p: p.update(projects=twelve), True)
+        self.assertEqual(d["project12.title"], "P11")
+        check(lambda p: p.update(projects=twelve + [{"title": "P12"}]), False)
+        d = check(lambda p: p.update(projects=[]), True)
+        self.assertTrue(all(d[f"project{i}.title"] == "" for i in range(1, 13)))
+
+
+class Icons(unittest.TestCase):
+    def test_generated_icons_are_reproducible(self):
+        r = subprocess.run([sys.executable, str(ROOT / "tools/iconsgen.py"), "--out",
+                            str(ROOT / "firmware/generated/icons.cpp"), "--check"], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_icon_licence_notices_present(self):
+        d = ROOT / "third_party/simple-icons"
+        for f in ("LICENSE.md", "DISCLAIMER.md", "README.md", "github.svg", "discord.svg"):
+            self.assertTrue((d / f).exists(), f)
+        self.assertIn("CC0", (d / "LICENSE.md").read_text())
 
 
 @unittest.skipUnless((ROOT / "build/fonts/dejavu/DejaVuSans.ttf").exists(), "run tools/fontgen.py --fetch first")

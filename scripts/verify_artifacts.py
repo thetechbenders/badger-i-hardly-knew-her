@@ -33,7 +33,7 @@ import uf2  # noqa: E402
 XIP = 0x10000000
 # firmware/platform/flash_layout.hpp
 ASSET_OFF, ASSET_SIZE = 0x1E0000, 0x10000
-SETTINGS_OFF, SETTINGS_SIZE = 0x1FE000, 0x2000
+SETTINGS_OFF, SETTINGS_SIZE = 0x1FC000, 0x4000  # 2 x 8 KiB slots (legacy 4 KiB slots inside B)
 FLASH_SIZE = 0x200000
 # RP2040 memmap_default.ld: SCRATCH_X (core 1 stack) and SCRATCH_Y (core 0 stack)
 SCRATCH_X, SCRATCH_Y, STACK = 0x20040000, 0x20041000, 0x1000
@@ -113,7 +113,10 @@ def main(argv=None) -> int:
         check(not overlaps(blo, bhi, *guard) and not overlaps(blo, bhi, *settings),
               f"{label} UF2 leaves the guard gap and settings sectors untouched")
     check(not overlaps(lo, hi, alo, ahi), "firmware and asset UF2s do not overlap")
-    check(SETTINGS_OFF + SETTINGS_SIZE == FLASH_SIZE, "settings are the top two sectors of 2 MiB")
+    check(SETTINGS_OFF + SETTINGS_SIZE == FLASH_SIZE, "settings are the top 16 KiB of 2 MiB")
+    layout = (ROOT / "firmware/platform/flash_layout.hpp").read_text()
+    check(f"kSettingsOffset = 0x{SETTINGS_OFF:X}" in layout and f"kAssetOffset = 0x{ASSET_OFF:X}" in layout,
+          "verifier flash map matches firmware/platform/flash_layout.hpp")
 
     # --- linker placement ------------------------------------------------------
     elf = d / f"{n}.elf"

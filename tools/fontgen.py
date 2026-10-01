@@ -71,8 +71,10 @@ def render_font(ttf: Path, size: int):
         # Skip codepoints the TTF lacks (Pillow would render .notdef).
         if cp != 0x20 and font.getmask(ch).getbbox() is None and not ch.isspace() and cp != 0xA0:
             continue
-        advance = int(round(font.getlength(ch)))
-        bbox = font.getbbox(ch, anchor="ls")  # relative to (pen x, baseline)
+        # Advances and boxes from the same monochrome-hinted metrics used to
+        # rasterise (antialiased advances differ by a pixel on some glyphs).
+        advance = int(round(font.getlength(ch, mode="1")))
+        bbox = font.getbbox(ch, mode="1", anchor="ls")  # relative to (pen x, baseline)
         x0, y0, x1, y1 = bbox
         w, h = max(0, x1 - x0), max(0, y1 - y0)
         rows = []

@@ -42,11 +42,23 @@ enum class DisplayEventKind : uint8_t {
   PanelReset,      // panel (re)initialised after a fault: content unknown, redraw
 };
 
+// Why the display service chose a refresh mode (diagnostics: `diag refresh`).
+enum class RefreshReason : uint8_t {
+  None = 0,
+  FirstFrame,     // panel content unknown (boot, after a fault): full
+  CleanRequested, // A long press / refresh clean / after a fault: OTP waveform
+  LargeChange,    // changed area >= kPartialMaxAreaPct: full
+  PartialBudget,  // refresh.max_partials partials since the last full: full
+  PartialOff,     // partial refresh disabled: full
+  SmallChange,    // partial window
+};
+const char *refresh_reason_str(RefreshReason r);
+
 struct DisplayEvent {
   DisplayEventKind kind;
   RefreshMode mode;
   uint8_t buffer;
-  uint8_t reserved;
+  RefreshReason reason;  // for Done
   uint32_t seq;
   uint32_t duration_ms;
 };
@@ -118,6 +130,7 @@ class DisplayService {
   State state_ = State::Idle;
   FrameJob active_{};
   RefreshMode active_mode_ = RefreshMode::None;
+  RefreshReason active_reason_ = RefreshReason::None;
   uint32_t started_ms_ = 0;
   uint8_t partials_since_full_ = 0;
   uint8_t base_speed_ = 1;
@@ -141,11 +154,13 @@ class RenderScheduler {
   // Mark the screen dirty. `clean` requests a full clean refresh.
   void invalidate(bool clean = false) {
     if (dirty_) ++coalesced_;  // an unrendered view is superseded
+    else request_ms_ = now_;  // first request of this frame (time of the last poll)
     dirty_ = true;
     clean_ |= clean;
   }
   // Drain display events; render + submit if possible. Returns events seen.
-  int poll(RenderFn fn, void *ctx, uint8_t speed, uint8_t max_partials);
+  // `now_ms` only timestamps the refresh trace.
+  int poll(RenderFn fn, void *ctx, uint8_t speed, uint8_t max_partials, uint32_t now_ms = 0);
   // True when the newest view has been rendered and fully shown.
   bool settled() const { return !dirty_ && done_seq_ == submitted_seq_ && free_count() == nbuf_; }
   bool display_active() const { return done_seq_ != submitted_seq_; }
@@ -155,7 +170,24 @@ class RenderScheduler {
   uint32_t submitted() const { return submitted_seq_; }
   uint32_t timeouts() const { return timeouts_; }
 
+  // Last kTrace submitted frames, oldest first: when they were requested,
+  // submitted and finished, the mode/reason the display service chose and
+  // how long the panel was busy. Recorded on core 0 from the event queue.
+  struct RefreshRecord {
+    uint32_t seq, request_ms, submit_ms, done_ms, busy_ms;
+    RefreshMode mode;
+    RefreshReason reason;
+    uint8_t speed;
+    uint8_t clean_requested;
+  };
+  static constexpr int kTrace = 16;
+  int trace(RefreshRecord *out, int max) const;
+
  private:
+  RefreshRecord trace_[kTrace] = {};
+  int trace_count_ = 0;  // total recorded (ring index = count % kTrace)
+  uint32_t request_ms_ = 0;
+  uint32_t now_ = 0;
   Framebuffer *buffers_;
   int nbuf_;
   JobQueue &jobs_;

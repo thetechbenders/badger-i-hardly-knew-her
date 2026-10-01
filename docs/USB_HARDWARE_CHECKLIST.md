@@ -40,7 +40,7 @@ Flashing (step 1) replaces MicroPython and needs the owner's explicit go-ahead.
 
 - [ ] 1.1 BOOTSEL, copy `badger_badge.uf2` to `RPI-RP2`. **Expect**: one full
       refresh to the photo badge (layout **A**, portrait left) within ~3 s.
-- [ ] 1.2 Port enumerates as `2E8A:000A`. `> version` shows the commit
+- [ ] 1.2 Port enumerates as `2E8A:000A`. `> version` shows `BHIHKH!`, the commit
       (`git describe`, 12 hex digits) and `pico-sdk 2.2.0`.
 - [ ] 1.3 `> selftest` → fonts ok, built-in assets ok, settings ok, event
       overflows 0, **display panel ok**, `OK`.
@@ -171,6 +171,32 @@ that only 9.7 reaches the three-in-a-row safe-mode threshold.
 - [ ] 9.9 A+C held while pressing RST: safe mode (forced).
 - [ ] 9.10 Unplug USB for > 10 s, replug: `power-on`, boot count 1, no stale
       message (the crash record from 9.x is discarded).
+
+## 10. BHIHKH! portfolio update (format-2 settings, icons, project QR)
+
+- [ ] 10.1 Before flashing the update: `badgerctl.py backup local/settings-before-update.txt`.
+- [ ] 10.2 Flash the new UF2. **Expect**: the old name/contacts/projects are
+      still shown; `> status` shows settings `v1 (migrate on commit)`;
+      `> diag settings` names the legacy slot; contacts show text labels (no icons yet).
+- [ ] 10.3 `badgerctl.py push local/profile.json`. **Expect**: commit to
+      **slot A**, sequence continues; `> reboot`: the new 7-entry portfolio and
+      the GitHub/Discord icons persist; `> status` shows `slot A`.
+- [ ] 10.4 Two more commits alternate B/A; reboot after each loads the newest.
+- [ ] 10.5 C opens `PROJECT 1/7`; DOWN ×3, A, C: reopens at `PROJECT 4/7`.
+      UP from 1/7 wraps to 7/7. No flash write while browsing (`> diag settings`
+      commit count unchanged).
+- [ ] 10.6 Long B on each linked project: the QR shows that repository; scan
+      with both phones and compare against the footer URL. Long B again and UP/DOWN
+      return to the same project. CatScan-MS (6/7): banner only, long B does nothing.
+- [ ] 10.7 Short B from a project: contact card; long B there: the contact QR
+      (unchanged payload), not a project QR.
+- [ ] 10.8 Icons at arm's length: GitHub and Discord marks recognisable,
+      aligned with their usernames; no "GitHub"/"Discord" words beside them.
+- [ ] 10.9 Browse 5 screens, then `> diag refresh`: one entry per press, no
+      unrequested entries, `busy` ≈ 2.5 s at speed 1 (see REFRESH.md). Record a
+      video alongside and compare the phase timing.
+- [ ] 10.10 Optional: `> set refresh.speed 2`, browse the portfolio, judge
+      ghosting versus the shorter flash; `> revert`.
 
 ## Pending: battery (LiPo not yet available)
 

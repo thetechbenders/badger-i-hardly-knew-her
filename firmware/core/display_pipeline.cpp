@@ -12,6 +12,19 @@ const char *refresh_mode_str(RefreshMode m) {
   return "?";
 }
 
+const char *refresh_reason_str(RefreshReason r) {
+  switch (r) {
+    case RefreshReason::None: return "-";
+    case RefreshReason::FirstFrame: return "first frame";
+    case RefreshReason::CleanRequested: return "clean requested";
+    case RefreshReason::LargeChange: return "large change";
+    case RefreshReason::PartialBudget: return "partial budget used";
+    case RefreshReason::PartialOff: return "partial disabled";
+    case RefreshReason::SmallChange: return "small change";
+  }
+  return "?";
+}
+
 // ---------------------------------------------------------------- display side
 
 void DisplayService::start(uint8_t speed) {
@@ -67,7 +80,7 @@ void DisplayService::poll_fault(uint32_t now_ms) {
 }
 
 void DisplayService::emit(DisplayEventKind k, const FrameJob &j, RefreshMode m, uint32_t dur) {
-  DisplayEvent e{k, m, j.buffer, 0, j.seq, dur};
+  DisplayEvent e{k, m, j.buffer, k == DisplayEventKind::Done ? active_reason_ : RefreshReason::None, j.seq, dur};
   // Sized so this cannot fail: with the one-pending-job rule a single poll
   // emits at most three events and core 0 drains the queue every loop. Never
   // spin here - in single-core mode the consumer runs on this same core.
@@ -77,9 +90,11 @@ void DisplayService::emit(DisplayEventKind k, const FrameJob &j, RefreshMode m, 
 void DisplayService::begin(const FrameJob &j, uint32_t now_ms) {
   const Framebuffer &fb = buffers_[j.buffer];
   RefreshMode mode = RefreshMode::Full;
+  RefreshReason reason = RefreshReason::FirstFrame;
   Rect diff{};
   if (j.clean) {
     mode = RefreshMode::Clean;
+    reason = RefreshReason::CleanRequested;
   } else if (shown_known_) {
     diff = fb.diff_bounds(shown_);
     if (diff.empty()) {
@@ -90,9 +105,12 @@ void DisplayService::begin(const FrameJob &j, uint32_t now_ms) {
     }
     const uint32_t area = uint32_t(diff.w) * uint32_t(diff.h);
     const uint32_t full = uint32_t(Framebuffer::kWidth) * Framebuffer::kHeight;
-    if (j.max_partials > 0 && partials_since_full_ < j.max_partials &&
-        area * 100 <= full * kPartialMaxAreaPct) {
+    if (area * 100 > full * kPartialMaxAreaPct) reason = RefreshReason::LargeChange;
+    else if (j.max_partials == 0) reason = RefreshReason::PartialOff;
+    else if (partials_since_full_ >= j.max_partials) reason = RefreshReason::PartialBudget;
+    else {
       mode = RefreshMode::Partial;
+      reason = RefreshReason::SmallChange;
     }
   }
   shown_.copy_from(fb);
@@ -118,6 +136,7 @@ void DisplayService::begin(const FrameJob &j, uint32_t now_ms) {
   shown_known_ = true;
   active_ = j;
   active_mode_ = mode;
+  active_reason_ = reason;
   started_ms_ = now_ms;
   state_ = State::Refreshing;
 }
@@ -169,11 +188,32 @@ int RenderScheduler::free_count() const {
   return n;
 }
 
-int RenderScheduler::poll(RenderFn fn, void *ctx, uint8_t speed, uint8_t max_partials) {
+int RenderScheduler::trace(RefreshRecord *out, int max) const {
+  const int n = trace_count_ < kTrace ? trace_count_ : kTrace;
+  const int k = n < max ? n : max;
+  for (int i = 0; i < k; ++i) out[i] = trace_[(trace_count_ - k + i) % kTrace];
+  return k;
+}
+
+int RenderScheduler::poll(RenderFn fn, void *ctx, uint8_t speed, uint8_t max_partials, uint32_t now_ms) {
   int seen = 0;
+  now_ = now_ms;
   DisplayEvent e;
   while (events_.pop(&e)) {
     ++seen;
+    if (e.kind == DisplayEventKind::Done || e.kind == DisplayEventKind::Suppressed ||
+        e.kind == DisplayEventKind::Timeout) {
+      for (int i = 0; i < kTrace && i < trace_count_; ++i) {
+        RefreshRecord &r = trace_[(trace_count_ - 1 - i) % kTrace];
+        if (r.seq == e.seq) {
+          r.done_ms = now_ms;
+          r.busy_ms = e.duration_ms;
+          r.mode = e.mode;
+          r.reason = e.reason;
+          break;
+        }
+      }
+    }
     switch (e.kind) {
       case DisplayEventKind::BufferReleased:
         if (e.buffer < nbuf_) owned_[e.buffer] = true;
@@ -231,6 +271,9 @@ int RenderScheduler::poll(RenderFn fn, void *ctx, uint8_t speed, uint8_t max_par
   }
   owned_[buf] = false;
   ++submitted_seq_;
+  trace_[trace_count_ % kTrace] = {submitted_seq_, request_ms_, now_ms, 0, 0, RefreshMode::None,
+                                   RefreshReason::None, speed, uint8_t(clean)};
+  ++trace_count_;
   last_hash_ = h;
   have_last_ = true;
   return seen;

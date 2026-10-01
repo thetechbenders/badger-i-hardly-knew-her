@@ -30,7 +30,9 @@ namespace {
   CSTR_FIELD("contact" #n ".label", uint16_t(0x100 + ((n)-1) * 2), profile.contacts[(n)-1].label, \
              sizeof(ContactLine::label), "label shown before the value, e.g. Email"),         \
   CSTR_FIELD("contact" #n ".value", uint16_t(0x101 + ((n)-1) * 2), profile.contacts[(n)-1].value, \
-             sizeof(ContactLine::value), "contact detail; empty hides the line")
+             sizeof(ContactLine::value), "contact detail; empty hides the line"),        \
+  CSTR_FIELD("contact" #n ".type", uint16_t(0x140 + ((n)-1)), profile.contacts[(n)-1].type,          \
+             sizeof(ContactLine::type), "email|phone|web|github|discord|text; github/discord show an icon")
 
 #define PROJECT(n)                                                                              \
   CSTR_FIELD("project" #n ".title", uint16_t(0x200 + ((n)-1) * 8), profile.projects[(n)-1].title, \
@@ -40,7 +42,11 @@ namespace {
   CSTR_FIELD("project" #n ".body", uint16_t(0x202 + ((n)-1) * 8), profile.projects[(n)-1].body, \
              sizeof(Project::body), "wrapped description (\\n for a line break)"),              \
   CSTR_FIELD("project" #n ".link", uint16_t(0x203 + ((n)-1) * 8), profile.projects[(n)-1].link, \
-             sizeof(Project::link), "short link or reference text")
+             sizeof(Project::link), "https:// repository URL; enables hold-B project QR"),     \
+  CSTR_FIELD("project" #n ".status", uint16_t(0x204 + ((n)-1) * 8),                             \
+             profile.projects[(n)-1].status, sizeof(Project::status), "verified status label"), \
+  CSTR_FIELD("project" #n ".banner", uint16_t(0x205 + ((n)-1) * 8),                             \
+             profile.projects[(n)-1].banner, sizeof(Project::banner), "prominent banner (teaser)")
 
 const FieldDesc kFields[] = {
     STR_FIELD("name", 0x001, profile.name, "name shown on the badge"),
@@ -51,7 +57,8 @@ const FieldDesc kFields[] = {
     CONTACT(1), CONTACT(2), CONTACT(3), CONTACT(4), CONTACT(5), CONTACT(6),
     STR_FIELD("qr.payload", 0x010, profile.qr_payload, "QR content: https:// URL or BEGIN:VCARD...; empty = not configured"),
     STR_FIELD("qr.caption", 0x011, profile.qr_caption, "text next to the QR code"),
-    PROJECT(1), PROJECT(2), PROJECT(3), PROJECT(4),
+    PROJECT(1), PROJECT(2), PROJECT(3), PROJECT(4), PROJECT(5), PROJECT(6),
+    PROJECT(7), PROJECT(8), PROJECT(9), PROJECT(10), PROJECT(11), PROJECT(12),
     NUM_FIELD("layout", 0x300, FieldType::U8, prefs.layout, 0, 1, "0 = portrait left, 1 = portrait right"),
     NUM_FIELD("refresh.speed", 0x301, FieldType::U8, prefs.refresh_speed, 0, 3, "0 slow/clean .. 3 turbo"),
     NUM_FIELD("refresh.partial", 0x302, FieldType::Bool, prefs.partial_refresh, 0, 1, "allow partial refresh"),
@@ -90,7 +97,43 @@ bool parse_uint(const char *s, uint32_t *out) {
   return true;
 }
 
+const char *const kContactTypes[] = {"", "email", "phone", "web", "github", "discord", "text"};
+
+bool is_contact_type_field(uint16_t id) { return id >= 0x140 && id < 0x140 + kMaxContacts; }
+bool is_project_link_field(uint16_t id) {
+  return id >= 0x200 && id < 0x200 + 8 * kMaxProjects && (id - 0x200) % 8 == 3;
+}
+
 }  // namespace
+
+ContactType contact_type(const char *t) {
+  for (size_t i = 1; i < sizeof kContactTypes / sizeof kContactTypes[0]; ++i)
+    if (std::strcmp(t, kContactTypes[i]) == 0) return ContactType(i);
+  return ContactType::None;
+}
+
+const char *const *contact_type_names(size_t *count) {
+  *count = sizeof kContactTypes / sizeof kContactTypes[0];
+  return kContactTypes;
+}
+
+bool settings_text_ok(const FieldDesc &f, const char *s, size_t len) {
+  if (is_contact_type_field(f.id)) {
+    if (len == 0) return true;
+    for (const char *t : kContactTypes)
+      if (std::strlen(t) == len && std::memcmp(t, s, len) == 0) return true;
+    return false;
+  }
+  if (is_project_link_field(f.id)) {
+    if (len == 0) return true;
+    // A URL for a QR code: https only, a host part, no spaces or line breaks.
+    if (len <= 8 || std::strncmp(s, "https://", 8) != 0) return false;
+    for (size_t i = 8; i < len; ++i)
+      if (s[i] == ' ' || s[i] == '\n') return false;
+    return s[8] != '/';
+  }
+  return true;
+}
 
 const FieldDesc *settings_fields(size_t *count) {
   *count = kFieldCount;
@@ -117,6 +160,7 @@ const char *set_result_str(SetResult r) {
     case SetResult::BadUtf8: return "invalid UTF-8 or control character";
     case SetResult::OutOfRange: return "value out of range";
     case SetResult::BadNumber: return "not a number";
+    case SetResult::BadValue: return "invalid value for this field";
   }
   return "?";
 }
@@ -127,6 +171,7 @@ SetResult settings_set(Settings *s, const FieldDesc &f, const char *value) {
     const size_t len = cstr_len(value, f.size);
     if (len >= f.size) return SetResult::TooLong;
     if (!utf8_valid_printable(value, len)) return SetResult::BadUtf8;
+    if (!settings_text_ok(f, value, len)) return SetResult::BadValue;
     std::memset(base, 0, f.size);
     std::memcpy(base, value, len);
     return SetResult::Ok;
@@ -182,7 +227,7 @@ bool settings_validate(const Settings &s, const FieldDesc **first_bad) {
     if (f.type == FieldType::Str) {
       const char *str = reinterpret_cast<const char *>(base);
       const size_t len = cstr_len(str, f.size);
-      ok = len < f.size && utf8_valid_printable(str, len);
+      ok = len < f.size && utf8_valid_printable(str, len) && settings_text_ok(f, str, len);
     } else {
       uint32_t v;
       if (f.size == 1) v = *base;
@@ -250,5 +295,12 @@ int nth_configured_project(const Profile &p, int n) {
 }
 
 bool qr_configured(const Profile &p) { return !str_empty(p.qr_payload); }
+
+const char *project_url(const Profile &p, int n) {
+  const int i = nth_configured_project(p, n);
+  if (i < 0) return nullptr;
+  const char *l = p.projects[i].link;
+  return std::strncmp(l, "https://", 8) == 0 && l[8] ? l : nullptr;
+}
 
 }  // namespace badge

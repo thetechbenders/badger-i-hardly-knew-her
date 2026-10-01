@@ -109,7 +109,8 @@ asset region), 59.7 KiB static RAM of 264 KiB, 4 KiB stack per core.
 ```bash
 python3 tools/fontgen.py --fetch            # fetches DejaVu 2.37 (SHA-256 pinned), writes firmware/generated/fonts.cpp
 python3 tools/fontgen.py --check            # CI: fails if the committed fonts are stale
-python3 tools/portrait.py <photo> --settings local/private/portrait.json --out local/portrait.png --compare local/previews/portrait
+python3 tools/iconsgen.py --out firmware/generated/icons.cpp [--check]   # Simple Icons SVGs -> 12 px bitmaps
+python3 tools/portrait.py local/private/<photo> --settings local/private/portrait.json --out local/portrait.png --compare local/previews/portrait
 python3 tools/assetpack.py build --portrait local/portrait.png --out local/build/assets.bin --uf2 local/build/assets.uf2
 python3 tools/render_previews.py --profile local/profile.json --pack local/build/assets.bin --out local/previews/screens
 ```

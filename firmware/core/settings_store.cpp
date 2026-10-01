@@ -55,7 +55,7 @@ size_t settings_encode(const Settings &s, uint32_t sequence, uint8_t *out, size_
   }
   const size_t payload_len = pos - kSettingsHeaderSize;
   put32(out + 0, kSettingsMagic);
-  put16(out + 4, kSettingsFormatVersion);
+  put16(out + 4, kSettingsFormatVersion);  // encoder only writes the current format
   put16(out + 6, uint16_t(kSettingsHeaderSize));
   put16(out + 8, uint16_t(payload_len));
   put16(out + 10, 0);
@@ -65,7 +65,7 @@ size_t settings_encode(const Settings &s, uint32_t sequence, uint8_t *out, size_
   return pos;
 }
 
-DecodeInfo settings_decode(const uint8_t *rec, size_t len, Settings *s) {
+DecodeInfo settings_decode(const uint8_t *rec, size_t len, Settings *s, uint16_t version) {
   DecodeInfo info;
   if (len < kSettingsHeaderSize) { info.status = DecodeStatus::BadLength; return info; }
   bool erased = true;
@@ -73,10 +73,12 @@ DecodeInfo settings_decode(const uint8_t *rec, size_t len, Settings *s) {
   if (erased) { info.status = DecodeStatus::Erased; return info; }
   if (get32(rec) != kSettingsMagic) { info.status = DecodeStatus::BadMagic; return info; }
   if (get32(rec + 20) != crc32(rec, 20)) { info.status = DecodeStatus::BadHeaderCrc; return info; }
-  if (get16(rec + 4) != kSettingsFormatVersion) { info.status = DecodeStatus::UnsupportedVersion; return info; }
+  info.version = get16(rec + 4);
+  if (info.version != version) { info.status = DecodeStatus::UnsupportedVersion; return info; }
+  const size_t max_record = version == kSettingsLegacyVersion ? kSettingsLegacySlotSize : kSettingsMaxRecord;
   const uint16_t hsize = get16(rec + 6);
   const uint16_t plen = get16(rec + 8);
-  if (hsize != kSettingsHeaderSize || size_t(hsize) + plen > len || size_t(hsize) + plen > kSettingsMaxRecord) {
+  if (hsize != kSettingsHeaderSize || size_t(hsize) + plen > len || size_t(hsize) + plen > max_record) {
     info.status = DecodeStatus::BadLength;
     return info;
   }
@@ -91,6 +93,22 @@ DecodeInfo settings_decode(const uint8_t *rec, size_t len, Settings *s) {
     if (pos + 4 + flen > plen) { info.status = DecodeStatus::BadTlv; return info; }
     pos += 4 + flen;
   }
+  // Legacy records always stored their (up to 4) project slots: that list is
+  // authoritative, so newer default projects must not be appended to it.
+  // They also predate contact types: a default type must not attach itself to
+  // whatever value the old record holds in that line (e.g. a GitHub icon
+  // beside a phone number), so legacy contacts are untyped.
+  if (version == kSettingsLegacyVersion) {
+    for (auto &c : s->profile.contacts) std::memset(c.type, 0, sizeof c.type);
+    for (size_t pos = 0; pos < plen;) {
+      const uint16_t id = get16(p + pos);
+      if (id >= 0x200 && id < 0x300) {
+        std::memset(s->profile.projects, 0, sizeof s->profile.projects);
+        break;
+      }
+      pos += 4 + get16(p + pos + 2);
+    }
+  }
   // Second pass: apply known, valid fields. Nothing below can abort, so the
   // record is applied whole (minus individually rejected fields).
   uint8_t *base = reinterpret_cast<uint8_t *>(s);
@@ -103,7 +121,7 @@ DecodeInfo settings_decode(const uint8_t *rec, size_t len, Settings *s) {
     if (!f) { ++info.unknown_fields; continue; }
     if (f->type == FieldType::Str) {
       if (flen >= f->size || !utf8_valid_printable(reinterpret_cast<const char *>(val), flen) ||
-          std::memchr(val, 0, flen)) {
+          std::memchr(val, 0, flen) || !settings_text_ok(*f, reinterpret_cast<const char *>(val), flen)) {
         ++info.rejected_fields;
         continue;
       }
@@ -126,21 +144,24 @@ DecodeInfo settings_decode(const uint8_t *rec, size_t len, Settings *s) {
 
 void SettingsStore::load(Settings *s) {
   status_ = StoreStatus{};
-  // Candidates live in the store object: Settings is ~2.6 KiB and the RP2040
-  // stacks are small.
+  // Candidates live in the store object: Settings is several KiB and the
+  // RP2040 stacks are small.
   Settings *candidate = work_;
   bool ok[2] = {false, false};
-  const size_t n = flash_.sector_size() < kSettingsMaxRecord ? flash_.sector_size() : kSettingsMaxRecord;
   for (int slot = 0; slot < 2; ++slot) {
     std::memcpy(&candidate[slot], s, sizeof *s);
-    if (!flash_.read(uint32_t(slot) * uint32_t(flash_.sector_size()), scratch_, n)) {
+    if (!flash_.read(uint32_t(slot) * kSettingsSlotSize, scratch_, kSettingsSlotSize)) {
       status_.slot_info[slot].status = DecodeStatus::BadLength;
       status_.recovered = true;
       continue;
     }
-    status_.slot_info[slot] = settings_decode(scratch_, n, &candidate[slot]);
-    ok[slot] = status_.slot_info[slot].status == DecodeStatus::Ok;
-    if (!ok[slot] && status_.slot_info[slot].status != DecodeStatus::Erased) status_.recovered = true;
+    status_.slot_info[slot] = settings_decode(scratch_, kSettingsSlotSize, &candidate[slot]);
+    const DecodeInfo &di = status_.slot_info[slot];
+    ok[slot] = di.status == DecodeStatus::Ok;
+    // Slot B starts where the legacy slot A lives: a format-1 header there is
+    // expected, not corruption.
+    const bool legacy_header = di.status == DecodeStatus::UnsupportedVersion && di.version == kSettingsLegacyVersion;
+    if (!ok[slot] && di.status != DecodeStatus::Erased && !legacy_header) status_.recovered = true;
   }
   int pick = -1;
   if (ok[0] && ok[1]) pick = seq_newer(status_.slot_info[1].sequence, status_.slot_info[0].sequence) ? 1 : 0;
@@ -150,17 +171,39 @@ void SettingsStore::load(Settings *s) {
     std::memcpy(s, &candidate[pick], sizeof *s);
     status_.active_slot = pick;
     status_.sequence = status_.slot_info[pick].sequence;
+    return;
+  }
+  // No format-2 record: migrate from the legacy format-1 slots, if any.
+  bool lok[2] = {false, false};
+  for (int slot = 0; slot < 2; ++slot) {
+    std::memcpy(&candidate[slot], s, sizeof *s);
+    if (!flash_.read(kSettingsLegacyOffset[slot], scratch_, kSettingsLegacySlotSize)) continue;
+    status_.legacy_info[slot] =
+        settings_decode(scratch_, kSettingsLegacySlotSize, &candidate[slot], kSettingsLegacyVersion);
+    lok[slot] = status_.legacy_info[slot].status == DecodeStatus::Ok;
+  }
+  int lpick = -1;
+  if (lok[0] && lok[1]) lpick = seq_newer(status_.legacy_info[1].sequence, status_.legacy_info[0].sequence) ? 1 : 0;
+  else if (lok[0]) lpick = 0;
+  else if (lok[1]) lpick = 1;
+  if (lpick >= 0) {
+    std::memcpy(s, &candidate[lpick], sizeof *s);
+    status_.migrated_v1 = true;
+    status_.legacy_slot = lpick;
+    status_.sequence = status_.legacy_info[lpick].sequence;  // continue the sequence
   }
 }
 
 bool SettingsStore::commit(const Settings &s) {
-  const uint32_t seq = status_.active_slot >= 0 ? status_.sequence + 1 : 1;
+  const bool continuing = status_.active_slot >= 0 || status_.migrated_v1;
+  const uint32_t seq = continuing ? status_.sequence + 1 : 1;
+  // Never slot B while a legacy record may still be the only good copy:
+  // slot A does not overlap the legacy slots.
   const int target = status_.active_slot == 0 ? 1 : 0;
-  const size_t len = settings_encode(s, seq, scratch_, flash_.sector_size() < kSettingsMaxRecord
-                                                           ? flash_.sector_size() : kSettingsMaxRecord);
+  const size_t len = settings_encode(s, seq, scratch_, kSettingsSlotSize);
   if (!len) { ++status_.commit_failures; return false; }
-  const uint32_t off = uint32_t(target) * uint32_t(flash_.sector_size());
-  if (!flash_.erase_and_program(off, scratch_, len)) { ++status_.commit_failures; return false; }
+  const uint32_t off = uint32_t(target) * kSettingsSlotSize;
+  if (!flash_.erase_and_program(off, scratch_, len, kSettingsSlotSize)) { ++status_.commit_failures; return false; }
   // Read back and fully decode before trusting the new slot.
   if (!flash_.read(off, scratch_, len)) { ++status_.commit_failures; return false; }
   Settings &verify = work_[0];
@@ -174,17 +217,18 @@ bool SettingsStore::commit(const Settings &s) {
   status_.active_slot = target;
   status_.sequence = seq;
   status_.slot_info[target] = di;
+  status_.migrated_v1 = false;
   ++status_.commits;
   return true;
 }
 
 bool SettingsStore::erase_all() {
-  std::memset(scratch_, 0xFF, 16);
   bool ok = true;
   for (int slot = 0; slot < 2; ++slot)
-    ok &= flash_.erase_and_program(uint32_t(slot) * uint32_t(flash_.sector_size()), scratch_, 0);
+    ok &= flash_.erase_and_program(uint32_t(slot) * kSettingsSlotSize, scratch_, 0, kSettingsSlotSize);
   status_.active_slot = -1;
   status_.sequence = 0;
+  status_.migrated_v1 = false;
   return ok;
 }
 

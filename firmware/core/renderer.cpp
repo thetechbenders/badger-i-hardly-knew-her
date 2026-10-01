@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "icons.hpp"
 #include "text.hpp"
 
 namespace badge {
@@ -229,11 +230,13 @@ void render_badge(Framebuffer &fb, const View &v, const RenderContext &ctx) {
 
 // ------------------------------------------------------------------- card
 
-CardGeometry card_geometry_impl(const RenderContext &ctx, bool full) {
-  const Profile &p = ctx.settings->profile;
+// Encode `payload` (which may be null = no QR) into g_qr and place it. Every
+// QR screen calls this with its own payload on every render, so a code can
+// never be left over from another screen or project.
+CardGeometry qr_geometry_impl(const char *payload, bool full) {
   CardGeometry g{};
   const int max_px = H;  // the symbol + quiet zone may use the full height
-  g.qr_status = qr_encode(p.qr_payload, max_px, &g_qr);
+  g.qr_status = qr_encode(payload ? payload : "", max_px, &g_qr);
   if (g.qr_status == QrStatus::Ok) {
     const int side = g_qr.px;
     const int x = full ? 0 : W - side;
@@ -248,6 +251,22 @@ CardGeometry card_geometry_impl(const RenderContext &ctx, bool full) {
     g.qr = {int16_t(W), 0, 0, 0};  // not configured: nothing is drawn, text gets the width
   }
   return g;
+}
+
+CardGeometry card_geometry_impl(const RenderContext &ctx, bool full) {
+  return qr_geometry_impl(ctx.settings->profile.qr_payload, full);
+}
+
+const Icon *contact_icon(const ContactLine &cl) {
+  switch (contact_type(cl.type)) {
+    case ContactType::GitHub: return &icons::github;
+    case ContactType::Discord: return &icons::discord;
+    default: return nullptr;
+  }
+}
+
+void draw_icon(Framebuffer &fb, const Icon &ic, int x, int y) {
+  fb.blit_mono(ic.bits, ic.w, ic.h, ic.stride, x, y, true);
 }
 
 // Only for a payload that cannot be encoded; an empty payload draws nothing.
@@ -290,15 +309,16 @@ void render_card(Framebuffer &fb, const RenderContext &ctx) {
   fb.hline(c.x, c.y + 2, 24, Ink::Black);
   c.y += 6;
 
-  // Contact lines: bold label column + value, only for configured values.
+  // Contact lines: label column (bold text, or the platform icon for typed
+  // GitHub/Discord lines instead of repeating the platform name) + value,
+  // only for configured values. Values share one left edge.
   int label_w = 0, lines = 0;
   for (const auto &cl : p.contacts) {
     if (str_empty(cl.value)) continue;
     ++lines;
-    if (!str_empty(cl.label)) {
-      const int w = text_width(fonts::sans_bold_10, cl.label);
-      if (w > label_w) label_w = w;
-    }
+    const Icon *ic = contact_icon(cl);
+    const int w = ic ? ic->w : (str_empty(cl.label) ? 0 : text_width(fonts::sans_bold_10, cl.label));
+    if (w > label_w) label_w = w;
   }
   if (label_w > 52) label_w = 52;
   const int value_x = c.x + (label_w ? label_w + 6 : 0);
@@ -312,7 +332,10 @@ void render_card(Framebuffer &fb, const RenderContext &ctx) {
   for (const auto &cl : p.contacts) {
     if (str_empty(cl.value)) continue;
     if (c.y + pitch > bottom) break;
-    if (!str_empty(cl.label)) {
+    if (const Icon *ic = contact_icon(cl)) {
+      // 12 px icon centred on the value's cap height (caps span top+3..top+10).
+      draw_icon(fb, *ic, c.x, c.y + 1);
+    } else if (!str_empty(cl.label)) {
       const Font *lc[] = {&fonts::sans_bold_10};
       FitResult lr = fit_text(lc, 1, cl.label, label_w);
       draw_fitted(fb, lr, cl.label, c.x, c.y + 1, label_w);
@@ -347,42 +370,159 @@ void render_qr_full(Framebuffer &fb, const RenderContext &ctx) {
 
 // --------------------------------------------------------------- projects
 
+// Tiny 9x9 QR-like glyph for the "hold B" hint (three finder squares).
+void draw_qr_glyph(Framebuffer &fb, int x, int y) {
+  auto finder = [&](int fx, int fy) {
+    fb.draw_rect({int16_t(fx), int16_t(fy), 4, 4}, Ink::Black);
+  };
+  finder(x, y);
+  finder(x + 5, y);
+  finder(x, y + 5);
+  fb.fill_rect({int16_t(x + 6), int16_t(y + 6), 2, 2}, Ink::Black);
+}
+
+const char *strip_scheme(const char *url) { return std::strncmp(url, "https://", 8) == 0 ? url + 8 : url; }
+
+// Wrap a URL, preferring breaks after '/' (then after '-'), never inside a
+// path segment unless the segment alone is wider than the column.
+void col_url(Framebuffer &fb, Column &c, const Font &f, const char *url, int max_lines) {
+  size_t pos = 0;
+  const size_t len = cstr_len(url, 512);
+  for (int line = 0; line < max_lines && pos < len; ++line) {
+    if (c.y + f.line_height > c.bottom) return;
+    const bool last = line == max_lines - 1;
+    size_t best = 0, fit = 0;
+    for (size_t i = pos + 1; i <= len; ++i) {
+      if (text_width(f, url + pos, i - pos) > c.w) break;
+      fit = i;
+      if (i == len || url[i - 1] == '/' || url[i - 1] == '-') best = i;
+    }
+    size_t end = (fit == len) ? len : (best > pos ? best : fit);
+    if (end <= pos) end = pos + 1;
+    if (last && end < len) {  // out of lines: ellipsize the remainder
+      const Font *fc[] = {&f};
+      FitResult r = fit_text(fc, 1, url + pos, c.w);
+      draw_fitted(fb, r, url + pos, c.x, c.y, c.w);
+      c.y += f.line_height;
+      return;
+    }
+    draw_text(fb, f, c.x, c.y, url + pos, end - pos);
+    c.y += f.line_height;
+    pos = end;
+  }
+}
+
+// Description: 11 px while it fits, otherwise 10 px (one more line in the
+// same space) before resorting to an ellipsis.
+void col_body(Framebuffer &fb, Column &c, const char *s) {
+  if (str_empty(s)) return;
+  WrapLine probe[6];
+  const int room11 = (c.bottom - c.y) / fonts::sans_11.line_height;
+  const int n11 = room11 > 0 ? wrap_text(fonts::sans_11, s, c.w, probe, room11 < 6 ? room11 : 6) : 0;
+  const bool fits11 = n11 > 0 && !probe[n11 - 1].ellipsized;
+  col_wrapped(fb, c, fits11 ? fonts::sans_11 : fonts::sans_10, s, 6, 0);
+}
+
+void project_header(Framebuffer &fb, Column &c, int n, int total) {
+  char hdr[24];
+  std::snprintf(hdr, sizeof hdr, "PROJECT %d/%d", n + 1, total);
+  const Font *hc[] = {&fonts::sans_bold_10};
+  col_line(fb, c, hc, 1, hdr, 1);
+}
+
 void render_projects(Framebuffer &fb, const View &v, const RenderContext &ctx) {
   const Profile &p = ctx.settings->profile;
   const int total = configured_project_count(p);
-  const int idx = nth_configured_project(p, v.project < total ? v.project : 0);
+  const int n = v.project < total ? v.project : 0;
+  const int idx = nth_configured_project(p, n);
   const int right_margin = total > 1 ? 18 : 8;
-  Column c{8, W - 8 - right_margin, 5, H - 4};
-  if (idx < 0) {
-    col_line(fb, c, kTitleChain, 1, "No projects configured", 0);
-    return;
-  }
+  Column c{8, W - 8 - right_margin, 3, H - 2};
+  if (idx < 0) return;  // unreachable: the app never shows an empty portfolio
   const Project &pr = p.projects[idx];
-  char hdr[24];
-  if (total > 1) std::snprintf(hdr, sizeof hdr, "PROJECT %d/%d", v.project + 1, total);
-  else std::snprintf(hdr, sizeof hdr, "PROJECT");
-  const Font *hc[] = {&fonts::sans_bold_10};
-  col_line(fb, c, hc, 1, hdr, 1);
-  col_line(fb, c, kNameChainSmall, 2, pr.title, 0);
-  // Tagline: one line (bold 12, else 10) if it fits; otherwise two lines of
-  // bold 10 rather than an ellipsis, so it matches single-line taglines.
-  if (!str_empty(pr.tagline) && fit_text(kTitleChain, 2, pr.tagline, c.w).ellipsized)
-    col_wrapped(fb, c, fonts::sans_bold_10, pr.tagline, 2, 3);
-  else
-    col_line(fb, c, kTitleChain, 2, pr.tagline, 3);
-  const bool has_link = !str_empty(pr.link);
+  project_header(fb, c, n, total);
+  col_line(fb, c, kNameChainSmall, 2, pr.title, 1);
+
+  if (!str_empty(pr.banner)) {
+    // Prominent teaser banner: white on black across the column.
+    const Font *bc[] = {&fonts::sans_bold_14, &fonts::sans_bold_12, &fonts::sans_bold_10};
+    FitResult r = fit_text(bc, 3, pr.banner, c.w - 12);
+    const int bh = r.font->line_height + 8;
+    if (c.y + bh <= c.bottom) {
+      fb.fill_rect({int16_t(c.x), int16_t(c.y + 2), int16_t(c.w), int16_t(bh)}, Ink::Black);
+      draw_fitted(fb, r, pr.banner, c.x + 6, c.y + 6, c.w - 12, Align::Center, Ink::White);
+      c.y += bh + 6;
+    }
+  }
+  // Tagline: always bold 10 (same size on every page, so the hierarchy does
+  // not shift while browsing), wrapping onto a second line if needed.
+  col_wrapped(fb, c, fonts::sans_bold_10, pr.tagline, 2, 2);
+
+  if (!str_empty(pr.status)) {
+    // Outlined status tag, sized to its text.
+    const Font *sc[] = {&fonts::sans_10};
+    FitResult r = fit_text(sc, 1, pr.status, c.w - 8);
+    const int th = fonts::sans_10.line_height + 1;
+    if (c.y + th <= c.bottom) {
+      fb.draw_rect({int16_t(c.x), int16_t(c.y), int16_t(r.width + 8), int16_t(th)}, Ink::Black);
+      draw_fitted(fb, r, pr.status, c.x + 4, c.y, c.w - 8);
+      c.y += th + 3;
+    }
+  }
+
+  const char *url = project_url(p, n);
+  const int footer_h = url ? fonts::sans_10.line_height + 1 : 0;
   Column body = c;
-  body.bottom = has_link ? H - fonts::sans_10.line_height - 3 : H - 3;
-  col_wrapped(fb, body, fonts::sans_11, pr.body, 5, 0);
-  if (has_link) {
-    FitResult r = fit_text(kSmallChain, 1, pr.link, c.w);
-    draw_fitted(fb, r, pr.link, c.x, H - fonts::sans_10.line_height - 1, c.w);
+  body.bottom = H - 2 - footer_h;
+  col_body(fb, body, pr.body);
+
+  if (url) {
+    // Footer: where the code points, and how to get it.
+    const int fy = H - fonts::sans_10.line_height;
+    const char *hint = "hold B";
+    const int hint_w = 9 + 3 + text_width(fonts::sans_10, hint);
+    const int hx = c.x + c.w - hint_w;
+    draw_qr_glyph(fb, hx, fy + 2);
+    draw_text(fb, fonts::sans_10, hx + 12, fy - 1, hint);
+    const Font *uc[] = {&fonts::sans_10};
+    const char *shown = strip_scheme(url);
+    FitResult r = fit_text(uc, 1, shown, hx - c.x - 8);
+    draw_fitted(fb, r, shown, c.x, fy - 1, hx - c.x - 8);
   }
   if (total > 1) {
     // Hints next to the UP/DOWN buttons on the right edge.
     draw_triangle(fb, W - 9, kStatusHeight + 8, -1);  // below the status area
     draw_triangle(fb, W - 9, H - 12, +1);
   }
+}
+
+CardGeometry project_qr_geometry_impl(const RenderContext &ctx, int n) {
+  return qr_geometry_impl(project_url(ctx.settings->profile, n), true);
+}
+
+void render_project_qr(Framebuffer &fb, const View &v, const RenderContext &ctx) {
+  const Profile &p = ctx.settings->profile;
+  const int total = configured_project_count(p);
+  const int n = v.project < total ? v.project : 0;
+  const char *url = project_url(p, n);
+  const CardGeometry g = project_qr_geometry_impl(ctx, n);
+  if (!url || g.qr_status == QrStatus::Empty) {  // no URL: no code, show the page instead
+    render_projects(fb, v, ctx);
+    return;
+  }
+  if (g.qr_status == QrStatus::Ok) qr_draw(fb, g_qr, g.qr.x, g.qr.y);
+  else draw_qr_too_long(fb, g.qr);
+  const int x = g.qr.right() + 6;
+  Column c{x, W - x - 8, 3, H - 2};
+  project_header(fb, c, n, total);
+  col_line(fb, c, kNameChainSmall, 2, p.projects[nth_configured_project(p, n)].title, 4);
+  col_wrapped(fb, c, fonts::sans_11, "Scan to open the repository", 2, 4);
+  Column u = c;
+  u.bottom = H - fonts::sans_10.line_height - 3;
+  col_url(fb, u, fonts::sans_10, strip_scheme(url), 3);
+  const Font *hc[] = {&fonts::sans_10};
+  const char *back = "hold B: back to project";
+  FitResult r = fit_text(hc, 1, back, c.w);
+  draw_fitted(fb, r, back, c.x, H - fonts::sans_10.line_height - 1, c.w);
 }
 
 // ----------------------------------------------------------- diagnostics
@@ -425,6 +565,7 @@ int status_right(const View &v, const RenderContext &ctx) {
 }  // namespace
 
 CardGeometry card_geometry(const RenderContext &ctx, bool full_screen) { return card_geometry_impl(ctx, full_screen); }
+CardGeometry project_qr_geometry(const RenderContext &ctx, int project) { return project_qr_geometry_impl(ctx, project); }
 
 Rect status_rect(const View &v, const RenderContext &ctx) {
   const int xr = status_right(v, ctx);
@@ -445,6 +586,7 @@ void render(Framebuffer &fb, const View &v, const RenderContext &ctx) {
       if (qr_configured(ctx.settings->profile)) render_qr_full(fb, ctx);
       else render_card(fb, ctx);
       break;
+    case Screen::ProjectQr: render_project_qr(fb, v, ctx); break;
     case Screen::Info: render_info(fb, ctx, false); break;
     case Screen::Recovery: render_info(fb, ctx, true); break;
     default: break;

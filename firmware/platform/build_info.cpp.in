@@ -3,7 +3,7 @@
 #include "pico/version.h"
 
 namespace badge::build {
-const char *const kName = "badger-i-hardly-knew-her";
+const char *const kName = "BHIHKH!";  // Badger? I hardly knew her!
 const char *const kVersion = "@BADGER_GIT_VERSION@";
 const char *const kBuildType = "@CMAKE_BUILD_TYPE@";
 const char *const kDate = "@BADGER_BUILD_DATE@";

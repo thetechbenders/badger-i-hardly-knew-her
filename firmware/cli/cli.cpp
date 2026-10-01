@@ -175,7 +175,7 @@ void Cli::cmd_help() {
   host_.write(
       "Commands:\r\n"
       "  help | version | status | selftest\r\n"
-      "  screen badge|card|projects [n]|qr|info    show a screen (n = 1-based project)\r\n"
+      "  screen badge|card|projects [n]|project-qr [n]|qr|info  show a screen (n = 1-based project)\r\n"
       "  project next|prev|<n>\r\n"
       "  fields                list configurable keys with limits\r\n"
       "  get [key]             show staged value(s)\r\n"
@@ -185,7 +185,7 @@ void Cli::cmd_help() {
       "  defaults              stage factory defaults (then commit)\r\n"
       "  export                print replayable set commands\r\n"
       "  refresh [clean]       redraw the current screen\r\n"
-      "  diag [all|mem|flash|display|assets|reset|settings|qr|battery|gesture]\r\n"
+      "  diag [all|mem|flash|display|refresh|assets|reset|settings|qr|battery|gesture]\r\n"
       "  gesture on|off        gesture mode (APDS-9960 on Qwiic)\r\n"
       "  echo on|off           terminal echo\r\n"
       "  sleep                 power off (battery) / emulated sleep (USB)\r\n"
@@ -308,7 +308,7 @@ void Cli::execute(char *line) {
     char *name = next_token(&args);
     Screen s;
     if (!name || !screen_from_name(name, &s) || s == Screen::Recovery) {
-      err("usage: screen badge|card|projects [n]|qr|info");
+      err("usage: screen badge|card|projects [n]|project-qr [n]|qr|info");
       return;
     }
     int project = -1;

@@ -39,7 +39,7 @@ e.g. "Principal Mechanical Design / Engineer".
 
 Screens without a portrait asset fall back to a full-width text layout.
 Empty optional fields (affiliation, interests, event, contacts, project
-tagline/link) are skipped entirely: no labels, rules or gaps are left behind.
+tagline/status/banner/link) are skipped entirely: no labels, rules or gaps are left behind.
 A card with no contacts shows only the identity block. Project taglines
 that do not fit one line wrap onto two lines of bold 10 instead of being cut.
 
@@ -50,38 +50,94 @@ diagnostics. It checks layout limits; it is not content.
 
 ## Portrait conversion
 
-Source: the studio headshot `download_20180329_102401_Original.jpeg`
-(600 × 600). The original is never modified. The processed files stay in
-`local/`, which Git ignores.
+Source: the owner's current studio headshot (1254 × 1254, light background),
+kept byte-identical in `local/private/`. The previous portrait and its
+settings are kept in `local/private/previous-portrait-v1/`. Nothing here is
+committed: Git ignores `local/`.
 
-Settings (`local/private/portrait.json`):
+Settings (`local/private/portrait.json`, crop is x, y, width, height):
 
 ```json
-{"crop": [118, 48, 364, 448], "size": [104, 128], "white_pct": 14, "black_pct": 2,
- "gamma": 0.7, "sharpen": 1.0, "method": "atkinson"}
+{"crop": [250, 10, 800, 985], "size": [104, 128], "white_pct": 14, "black_pct": 2,
+ "gamma": 0.6, "sharpen": 1.0, "method": "atkinson"}
 ```
 
-The crop covers the head and upper shoulders at the target's 104:128 aspect.
-The pipeline is: downscale in linear light (so the thin glasses frames keep
-their weight), apply a mild unsharp mask, apply global levels (2 % / 14 %
-clip, so the light studio background becomes clean white), apply gamma 0.7
-to lift skin mid-tones, then convert to 1 bit. Only global tone and geometric
-operations are used; nothing is painted, retouched or synthesised.
+The pipeline is unchanged: crop at the target's 104:128 aspect, downscale in
+linear light (so the thin glasses frames keep their weight), apply a mild
+unsharp mask, apply global levels (2 % / 14 % clip), apply gamma, then
+convert to 1 bit. Only global tone and geometric operations are used;
+nothing is painted, retouched or synthesised.
 
-`tools/portrait.py --compare DIR` writes all four methods at native
-resolution, plus a gray reference and a 3× sheet:
+Choices, compared at native resolution and 3×
+(`local/previews/portrait-v2/crop_comparison_x3.png`,
+`tone_comparison_x3.png`):
+
+- **Crop.** Three framings were compared: a closer crop, head and shoulders
+  (chosen) and a wider one. The closer crop pushes the hair against the top
+  edge. The wider one makes the face and glasses smaller, leaving fewer
+  pixels for the eyes. The chosen crop shows the whole head of longer hair
+  with a little margin, the glasses at full width, and the jacket collar at
+  the bottom.
+- **Gamma.** 0.6 instead of the previous 0.7. On this photo, 0.7 makes the
+  hair and the shadow side of the face noticeably heavier. 0.5 lightens the
+  skin stipple until the face starts to lose shape. A 20 % white clip
+  differed little from 14 %, so 14 % was kept.
 
 | Method | Result on this photo |
 |---|---|
-| Otsu threshold | Clean, bold graphic; glasses clear. Loses all shading, so the face flattens into outline. |
-| Bayer 8×8 ordered | Keeps tone but adds a visible cross-hatch texture over the face; glasses break up. |
-| Floyd–Steinberg | Most tonal detail, but dense speckle on skin makes the face look noisy at 1:1. |
-| **Atkinson** (chosen) | Discards 25 % of the error, so highlights stay clean and skin is lightly stippled. The glasses, eyes, smile and jacket edge stay distinct. |
+| Otsu threshold | Glasses very clear, but the hair becomes a solid helmet and the face flattens into an outline. |
+| Bayer 8×8 ordered | Visible cross-hatch over the face and hair; the glasses break up. |
+| Floyd–Steinberg | Most tonal detail, but worm-like texture in the hair and dense speckle on the skin at 1:1. |
+| **Atkinson** (chosen) | Highlights stay clean, the skin is lightly stippled, the hair keeps strands and volume, and the glasses, eyes and mouth stay distinct. |
 
-The comparison sheet for the real photo is at
-`local/previews/portrait/compare_x3.png` and is not committed. The backup
-portrait (`IMG_5860.jpeg`, gray ILS jacket) works with the same tool: new
-crop coordinates are needed because it is 1932 × 2576.
+## Contact icons
+
+Typed `github` and `discord` contact lines show a 12 × 12 monochrome icon in
+the label column instead of the words "GitHub"/"Discord", so the line is
+only the username. The icons come from Simple Icons (CC0, see
+LICENSES.md). `tools/iconsgen.py` rasterises them, with no reshaping, using a
+small SVG path parser and a supersampled non-zero fill. Its `--check` mode
+keeps `firmware/generated/icons.cpp` reproducible.
+
+- The icon sits at the label column's left edge, 1 px below the line top, so
+  it is centred on the value's cap height. Values keep one shared left edge
+  and the 14 px line pitch. A host test checks the exact bitmap position.
+- Other lines keep their bold text label. The type is explicit: a line
+  labelled "GitHub" with no `type` gets no icon, so older profiles render as
+  before.
+- At 12 px the GitHub mark reduces to its round silhouette with the
+  Octocat's tail at the lower left, and Discord's to the rounded "controller"
+  face with two eyes. Both read as their platforms on the native-resolution
+  previews. Legibility at arm's length on the panel is still to be checked
+  (pending: physical test).
+
+## Project portfolio
+
+C opens the portfolio at the project viewed last; UP/DOWN browse (wrapping);
+long B on a project with a `link` shows its repository QR, and long B or
+UP/DOWN there returns to that same project. Each page has:
+
+- a header with `PROJECT n/N`, left of the reserved status area;
+- the title (bold, auto-sized);
+- an optional teaser **banner**, white on a black band. The CatScan-MS
+  entry uses it ("TOP SECRET - COMING SOON") and deliberately has no link
+  and no QR;
+- the tagline, always bold 10 so the hierarchy does not shift while
+  browsing, up to 2 lines;
+- an optional outlined **status** tag (a version or readiness note taken
+  from the repository);
+- the description in 11 px, falling back to 10 px before anything is cut;
+- a footer with the link without `https://`, plus a small QR glyph and
+  "hold B" when a QR is available.
+
+The QR page re-encodes the project's own link on every render, so it can
+never show a previous project's code. Long URLs wrap after `/` or `-`
+rather than mid-word. Projects, links and status texts were taken from each
+repository's public README and tags; nothing was added beyond them.
+
+The font generator measures advances in FreeType's monochrome mode
+(`mode="1"`), matching the 1-bit glyphs it stores. Antialiased advances had
+left visible gaps inside words ("Instrum entation").
 
 ## QR codes
 

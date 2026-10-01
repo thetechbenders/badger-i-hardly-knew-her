@@ -2,6 +2,7 @@
   "payload": "https://example.com/dan",
   "screens": {
     "card": {
+      "expected": "https://example.com/dan",
       "decoded": {
         "native": [
           "https://example.com/dan"
@@ -13,6 +14,7 @@
       "ok": true
     },
     "qr": {
+      "expected": "https://example.com/dan",
       "decoded": {
         "native": [
           "https://example.com/dan"

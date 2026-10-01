@@ -194,3 +194,29 @@ TEST(cli_crashtest_requires_exact_confirmation) {
   CHECK_EQ(h.crashed, int(CrashTest::FaultCore1));
   CHECK(has_err(run(cli, h, "crashtest hang1 confirm\n")));  // host says: not available
 }
+
+TEST(cli_portfolio_keys_and_project_qr) {
+  FakeHost h;
+  Cli cli(h);
+  cli.set_echo(false);
+  CHECK(ends_ok(run(cli, h, "screen project-qr 3\n")));
+  CHECK(h.screen == Screen::ProjectQr);
+  CHECK_EQ(h.project, 2);
+  CHECK(has_err(run(cli, h, "screen project-qr 0\n")));
+  CHECK(ends_ok(run(cli, h, "diag refresh\n")));
+  // Contact types are explicit names; project links must be https URLs.
+  CHECK(has_err(run(cli, h, "set contact1.type pigeon\n")));
+  CHECK(has_err(run(cli, h, "set contact1.type GitHub\n")));
+  CHECK(has_err(run(cli, h, "set project1.link http://example.com\n")));
+  CHECK(has_err(run(cli, h, "set project1.link \"https://a b\"\n")));
+  CHECK(has_err(run(cli, h, "set project13.title x\n")));  // bounded list
+  CHECK_EQ(h.changes, 0);
+  CHECK(ends_ok(run(cli, h, "set contact1.type github\n")));
+  CHECK(ends_ok(run(cli, h, "set contact1.type \"\"\n")));  // untyped is valid
+  CHECK(ends_ok(run(cli, h, "set project12.link https://example.com/p12\n")));
+  CHECK(ends_ok(run(cli, h, "set project12.banner \"TOP SECRET - COMING SOON\"\n")));
+  // export carries every new key so backup/restore round-trips.
+  const std::string ex = run(cli, h, "export\n");
+  for (const char *k : {"set contact6.type", "set project1.status", "set project12.banner", "set project12.link"})
+    CHECK(ex.find(k) != std::string::npos);
+}

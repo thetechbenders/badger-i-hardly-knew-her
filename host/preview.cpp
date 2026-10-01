@@ -58,7 +58,7 @@ int main(int argc, char **argv) {
   std::vector<uint8_t> pack(kBuiltinAssetPack, kBuiltinAssetPack + kBuiltinAssetPack_size);
   bool no_portrait = false, faults = false;
   int layout = -1;
-  std::string screens = "badge,card,projects,qr,info";
+  std::string screens = "badge,card,projects,project-qr,qr,info";
   std::string suffix;
   StatusInfo status;
   status.battery.display = PowerDisplay::Battery;
@@ -120,7 +120,7 @@ int main(int argc, char **argv) {
 
   static InfoLines info;
   if (!faults) {
-    info.add("Firmware  badger-i-hardly-knew-her  (host preview)");
+    info.add("Firmware  BHIHKH! (host preview)");
     info.add("Battery   3.86 V (filtered 3.87) | 3/4 bars | approx.");
     info.add("Gesture   off | sensor standby (off) | swipes 0");
     info.add("Reset     power-on  |  boots 1  |  faults 0");
@@ -156,7 +156,8 @@ int main(int argc, char **argv) {
     if (!screen_from_name(name.c_str(), &sc)) { std::fprintf(stderr, "unknown screen %s\n", name.c_str()); return 2; }
     View v;
     v.screen = sc;
-    const int nproj = sc == Screen::Projects ? configured_project_count(s.profile) : 1;
+    const bool per_project = sc == Screen::Projects || sc == Screen::ProjectQr;
+    const int nproj = per_project ? configured_project_count(s.profile) : 1;
     for (int li = 0; li < 2; ++li) {
       const int lay = layouts[li];
       if (layout >= 0 && lay != layout) continue;
@@ -164,10 +165,11 @@ int main(int argc, char **argv) {
       v.layout = uint8_t(lay);
       for (int p = 0; p < (nproj ? nproj : 1); ++p) {
         v.project = uint8_t(p);
+        if (sc == Screen::ProjectQr && !project_url(s.profile, p)) continue;  // no URL: no QR screen
         render(fb, v, ctx);
         std::string file = out + "/" + name;
         if (sc == Screen::Badge) file += lay ? "_layoutB" : "_layoutA";
-        if (sc == Screen::Projects && nproj > 1) file += "_" + std::to_string(p + 1);
+        if (per_project && nproj > 1) file += "_" + std::to_string(p + 1);
         file += suffix + ".pbm";
         if (!write_pbm(fb, file)) { std::fprintf(stderr, "cannot write %s\n", file.c_str()); return 1; }
         std::printf("%s\n", file.c_str());

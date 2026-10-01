@@ -178,3 +178,137 @@ TEST(app_gesture_mode_timeout_and_defaults) {
   CHECK(!a.gesture_mode());
   CHECK_EQ(a.on_swipe(Swipe::Right, 10), kActNone);
 }
+
+namespace {
+AppConfig pcfg(int projects, uint16_t url_mask) {
+  AppConfig c = cfg(projects, true);
+  c.project_url_mask = url_mask;
+  return c;
+}
+}  // namespace
+
+TEST(app_portfolio_reopens_at_last_project) {
+  App a;
+  a.boot(pcfg(7, 0x5F), -1, 0);
+  a.on_button(press(Button::C));
+  CHECK(a.view().screen == Screen::Projects);
+  CHECK_EQ(a.view().project, 0);
+  for (int i = 0; i < 4; ++i) a.on_button(press(Button::Down));
+  CHECK_EQ(a.view().project, 4);
+  a.on_button(press(Button::A));
+  a.on_button(press(Button::B));
+  CHECK(a.view().screen == Screen::Card);
+  CHECK_EQ(a.on_button(press(Button::C)), kActRedraw);
+  CHECK(a.view().screen == Screen::Projects);
+  CHECK_EQ(a.view().project, 4);  // where the visitor left off
+  a.on_button(press(Button::Up));
+  a.on_button(press(Button::Up));
+  a.on_button(press(Button::Up));
+  a.on_button(press(Button::Up));
+  a.on_button(press(Button::Up));
+  CHECK_EQ(a.view().project, 6);  // wraps backwards to the last entry
+  CHECK_EQ(a.on_button(press(Button::C)), kActNone);  // already on the portfolio
+}
+
+TEST(app_project_qr_enter_and_return) {
+  App a;
+  // Projects 0..6; project 5 (the teaser) has no URL.
+  a.boot(pcfg(7, 0x5F), -1, 0);
+  a.on_button(press(Button::C));
+  a.on_button(press(Button::Down));
+  a.on_button(press(Button::Down));
+  CHECK_EQ(a.on_button(press(Button::B, Gesture::Long)), kActRedraw);
+  CHECK(a.view().screen == Screen::ProjectQr);
+  CHECK_EQ(a.view().project, 2);
+  CHECK_EQ(a.on_button(press(Button::B, Gesture::Long)), kActRedraw);  // long B again: back
+  CHECK(a.view().screen == Screen::Projects);
+  CHECK_EQ(a.view().project, 2);
+  a.on_button(press(Button::B, Gesture::Long));
+  a.on_button(press(Button::Up));  // UP/DOWN from the QR also return to that project
+  CHECK(a.view().screen == Screen::Projects);
+  CHECK_EQ(a.view().project, 2);
+  a.on_button(press(Button::B, Gesture::Long));
+  a.on_button(press(Button::Down));
+  CHECK(a.view().screen == Screen::Projects);
+  CHECK_EQ(a.view().project, 2);
+  // Short B still opens the contact card, long B there keeps the contact QR.
+  a.on_button(press(Button::B, Gesture::Long));
+  CHECK_EQ(a.on_button(press(Button::B)), kActRedraw);
+  CHECK(a.view().screen == Screen::Card);
+  a.on_button(press(Button::B, Gesture::Long));
+  CHECK(a.view().screen == Screen::QrFull);
+  // C from the contact QR reopens the portfolio at the last project, not its QR.
+  a.on_button(press(Button::C));
+  CHECK(a.view().screen == Screen::Projects);
+  CHECK_EQ(a.view().project, 2);
+}
+
+TEST(app_project_without_url_offers_no_qr) {
+  App a;
+  a.boot(pcfg(7, 0x5F), -1, 0);
+  a.on_screen_request(Screen::Projects, 5);
+  CHECK_EQ(a.on_button(press(Button::B, Gesture::Long)), kActNone);
+  CHECK(a.view().screen == Screen::Projects);
+  CHECK_EQ(a.view().project, 5);
+  a.on_button(press(Button::Down));
+  a.on_button(press(Button::B, Gesture::Long));
+  CHECK(a.view().screen == Screen::ProjectQr);
+  CHECK_EQ(a.view().project, 6);
+  // No contact QR configured does not affect project QRs, and vice versa.
+  AppConfig c = pcfg(7, 0);
+  a.boot(c, -1, 0);
+  a.on_button(press(Button::C));
+  CHECK_EQ(a.on_button(press(Button::B, Gesture::Long)), kActNone);
+  a.on_button(press(Button::B));
+  a.on_button(press(Button::B, Gesture::Long));
+  CHECK(a.view().screen == Screen::QrFull);
+}
+
+TEST(app_config_change_never_leaves_a_stale_project_qr) {
+  App a;
+  a.boot(pcfg(3, 0x7), -1, 0);
+  a.on_screen_request(Screen::Projects, 1);
+  a.on_button(press(Button::B, Gesture::Long));
+  CHECK(a.view().screen == Screen::ProjectQr);
+  a.on_config_changed(pcfg(3, 0x5));  // project 2's link removed over USB
+  CHECK(a.view().screen == Screen::Projects);
+  CHECK_EQ(a.view().project, 1);
+  a.on_screen_request(Screen::Projects, 2);
+  a.on_button(press(Button::B, Gesture::Long));
+  CHECK(a.view().screen == Screen::ProjectQr);
+  a.on_config_changed(pcfg(1, 0x1));  // list shrank under the QR
+  CHECK(a.view().screen == Screen::ProjectQr && a.view().project == 0);  // project 0 still has a URL
+  CHECK(a.view().project < 1);
+  a.on_config_changed(pcfg(0, 0));
+  CHECK(a.view().screen == Screen::Badge);
+}
+
+TEST(app_swipes_from_project_qr) {
+  App a;
+  a.boot(pcfg(3, 0x7), -1, 0);
+  a.on_button(press(Button::Up, Gesture::Long));
+  a.on_screen_request(Screen::Projects, 1);
+  a.on_button(press(Button::B, Gesture::Long));
+  CHECK(a.view().screen == Screen::ProjectQr);
+  a.on_swipe(Swipe::Right, 100);  // the project QR counts as the portfolio
+  CHECK(a.view().screen == Screen::Badge);
+  a.on_screen_request(Screen::ProjectQr, 1);
+  a.on_swipe(Swipe::Left, 200);
+  CHECK(a.view().screen == Screen::Card);
+}
+
+TEST(app_twelve_projects_bound) {
+  App a;
+  a.boot(pcfg(12, 0xFFF), -1, 0);
+  a.on_button(press(Button::C));
+  for (int i = 0; i < 11; ++i) a.on_button(press(Button::Down));
+  CHECK_EQ(a.view().project, 11);
+  a.on_button(press(Button::Down));
+  CHECK_EQ(a.view().project, 0);
+  a.on_screen_request(Screen::Projects, 40);  // out-of-range request is clamped
+  CHECK(a.view().project < 12);
+  a.boot(pcfg(1, 0x1), -1, 0);
+  a.on_button(press(Button::C));
+  CHECK_EQ(a.on_button(press(Button::Down)), kActNone);  // single entry: nothing to scroll
+  CHECK_EQ(a.view().project, 0);
+}
