@@ -1,26 +1,26 @@
 {
-  "payload": "https://example.com/dan",
+  "payload": "https://example.com/alex",
   "screens": {
     "card": {
-      "expected": "https://example.com/dan",
+      "expected": "https://example.com/alex",
       "decoded": {
         "native": [
-          "https://example.com/dan"
+          "https://example.com/alex"
         ],
         "x3": [
-          "https://example.com/dan"
+          "https://example.com/alex"
         ]
       },
       "ok": true
     },
     "qr": {
-      "expected": "https://example.com/dan",
+      "expected": "https://example.com/alex",
       "decoded": {
         "native": [
-          "https://example.com/dan"
+          "https://example.com/alex"
         ],
         "x3": [
-          "https://example.com/dan"
+          "https://example.com/alex"
         ]
       },
       "ok": true
@@ -34,8 +34,11 @@
       "status": 1,
       "body": 1,
       "link": 1,
+      "banner": 1,
+      "qr_title": 1,
+      "index_title": 1,
       "body_px": 14,
-      "name": "Jump Jet"
+      "name": "Quiet Duct"
     },
     {
       "project": 2,
@@ -44,8 +47,11 @@
       "status": 1,
       "body": 1,
       "link": 1,
+      "banner": 1,
+      "qr_title": 1,
+      "index_title": 1,
       "body_px": 14,
-      "name": "DragonBreath"
+      "name": "Chamber Heater"
     },
     {
       "project": 3,
@@ -54,8 +60,11 @@
       "status": 1,
       "body": 1,
       "link": 1,
+      "banner": 1,
+      "qr_title": 1,
+      "index_title": 1,
       "body_px": 14,
-      "name": "DragonSniff"
+      "name": "Bench Logger"
     },
     {
       "project": 4,
@@ -64,8 +73,11 @@
       "status": 1,
       "body": 1,
       "link": 1,
+      "banner": 1,
+      "qr_title": 1,
+      "index_title": 1,
       "body_px": 14,
-      "name": "DragonBench"
+      "name": "Load Tester"
     },
     {
       "project": 5,
@@ -74,8 +86,11 @@
       "status": 1,
       "body": 1,
       "link": 1,
+      "banner": 1,
+      "qr_title": 1,
+      "index_title": 1,
       "body_px": 14,
-      "name": "dragon-core"
+      "name": "Shared Components"
     },
     {
       "project": 6,
@@ -84,8 +99,11 @@
       "status": 1,
       "body": 1,
       "link": 1,
+      "banner": 1,
+      "qr_title": 1,
+      "index_title": 1,
       "body_px": 0,
-      "name": "CatScan-MS"
+      "name": "Secret Project"
     },
     {
       "project": 7,
@@ -94,8 +112,113 @@
       "status": 1,
       "body": 1,
       "link": 1,
+      "banner": 1,
+      "qr_title": 1,
+      "index_title": 1,
       "body_px": 14,
-      "name": "BHIHKH!"
+      "name": "Weather Station"
     }
-  ]
+  ],
+  "screen_fit": {
+    "badge_layoutA": {
+      "name": true,
+      "title": true,
+      "affiliation": true,
+      "interests": true,
+      "event": true,
+      "caption": true,
+      "caption_shown": true,
+      "label": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "value": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    "badge_layoutB": {
+      "name": true,
+      "title": true,
+      "affiliation": true,
+      "interests": true,
+      "event": true,
+      "caption": true,
+      "caption_shown": true,
+      "label": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "value": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    "card": {
+      "name": true,
+      "title": true,
+      "affiliation": true,
+      "interests": true,
+      "event": true,
+      "caption": true,
+      "caption_shown": true,
+      "label": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "value": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    },
+    "qr": {
+      "name": true,
+      "title": true,
+      "affiliation": true,
+      "interests": true,
+      "event": true,
+      "caption": true,
+      "caption_shown": true,
+      "label": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "value": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ]
+    }
+  }
 }

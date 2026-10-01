@@ -46,7 +46,7 @@ form = 1                        # format version of this file; leave it at 1
 name = "Alex Example"           # required, up to 47 bytes; shrinks to fit, never cut
 title = "Mechanical Engineer"   # required, up to 55 bytes; may wrap onto two lines
 affiliation = ""                # optional, up to 55 bytes (company, lab, school)
-event = "Formnext 2026"         # optional, up to 31 bytes; the strip along the badge
+event = "Example Expo 2026"     # optional, up to 31 bytes; the strip along the badge
 
 # Optional, up to 111 bytes in total. Either a list, shown joined with " · " ...
 interests = ["3D printing", "electronics", "embedded systems"]
@@ -133,7 +133,7 @@ caption = "Scan for my website"
 #  looking at local/out/badge/portrait-methods_x3.png and the previews):
 #   crop      = [x, y, width, height] in photo pixels. Default: the
 #               largest centred area. Keep width:height at 104:128
-#               (13:16), e.g. [250, 10, 800, 985]; the face is never
+#               (13:16), e.g. [120, 40, 800, 985]; the face is never
 #               stretched.
 #   method    = "atkinson" (default; clean highlights), "floyd" (more
 #               tone, more speckle), "bayer8" (cross-hatch), "threshold"
@@ -160,7 +160,7 @@ processed = "../assets/sample/portrait_placeholder.png"  # sample silhouette: re
 #                 "Work in progress" (no version numbers: they go stale)
 #   banner      = optional, up to 39 bytes, white on black, for teasers
 #   link        = optional https:// address, up to 71 bytes. It is shown
-#                 as owner/repo and offered as a QR code (hold B). Without
+#                 short (owner/repo for GitHub) and offered as a QR code (hold B). Without
 #                 a link the page has no QR code and no footer.
 #  With no [[projects]] blocks at all, the portfolio is simply empty.
 
@@ -171,7 +171,7 @@ description = """
 Printable duct with a 5015 blower.
 Measured 6 dB quieter at the same cooling."""
 status = "Work in progress"
-link = "https://github.com/example/printer-mod"
+link = "https://example.com/alex/printer-mod"
 
 [[projects]]
 title = "Secret Project"

@@ -44,10 +44,10 @@ def framed(im, scale=1):
 @unittest.skipUnless(PREVIEW.exists(), "build host/ first")
 class RenderedOutput(unittest.TestCase):
     PAYLOADS = [
-        "https://example.com/dan",
-        "https://example.org/contact/dan-brown?src=formnext2026&lang=en",
-        "BEGIN:VCARD\\nVERSION:3.0\\nN:Brown;Dan;;;\\nFN:Dan Brown\\nTITLE:Engineer + Maker\\n"
-        "EMAIL:dan@example.com\\nURL:https://example.com\\nEND:VCARD",
+        "https://example.com/alex",
+        "https://example.org/contact/alex-example?src=expo2026&lang=en",
+        "BEGIN:VCARD\\nVERSION:3.0\\nN:Example;Alex;;;\\nFN:Alex Example\\nTITLE:Mechanical Engineer\\n"
+        "EMAIL:alex@example.com\\nURL:https://example.com\\nEND:VCARD",
     ]
 
     def test_qr_decodes_from_final_bitmaps(self):
@@ -121,7 +121,7 @@ class RenderedOutput(unittest.TestCase):
         doc = json.loads((ROOT / "config/sample-profile.json").read_text())
         fits = render_previews.fit_report(PREVIEW, badge_profile.flatten(doc))
         self.assertTrue(all(f[k] for f in fits for k in ("title", "tagline", "status", "body", "link")), fits)
-        self.assertEqual(fits[-1]["name"], "BHIHKH!")
+        self.assertEqual(fits[-1]["name"], "Weather Station")
         doc["profile"]["projects"][0]["body"] = "Far too long for the page. " * 7
         with tempfile.TemporaryDirectory() as d:
             prof = Path(d) / "p.json"
@@ -140,7 +140,7 @@ class RenderedOutput(unittest.TestCase):
         titles = [v for k, v in padded if k.endswith(".title") and k.startswith("project") and v]
         self.assertEqual(len(titles), 12)
         self.assertEqual(titles[:len(sample) - 1], sample[:-1])  # configured order kept
-        self.assertEqual(titles[-1], "BHIHKH!")                  # still last
+        self.assertEqual(titles[-1], sample[-1])                # still last
         self.assertTrue(all(t.startswith("Example project") for t in titles[len(sample) - 1:-1]))
         with self.assertRaises(SystemExit):
             render_previews.example_projects(pairs, 13)
@@ -201,7 +201,7 @@ class AssetPack(unittest.TestCase):
 class Profile(unittest.TestCase):
     def test_sample_profile_is_valid(self):
         pairs = dict(badge_profile.load(ROOT / "config/sample-profile.json"))
-        self.assertEqual(pairs["name"], "Dan Brown")
+        self.assertEqual(pairs["name"], "Alex Example")
         self.assertEqual(pairs["qr.payload"], "")  # unconfigured until the owner provides a destination
 
     def test_invalid_profiles_rejected(self):

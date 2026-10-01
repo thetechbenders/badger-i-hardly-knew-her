@@ -153,7 +153,7 @@ def main(argv=None) -> int:
     blob = elf.read_bytes()
     # The program name and description (pico_set_program_*). The repository
     # name is not used: it only appears when a profile links the repository.
-    check(b"BHIHKH!\0" in binary and b"photo badge and business card for the original Badger 2040" in binary,
+    check(b"BHIHKH!\0" in binary and b"business card and portfolio for the original Badger 2040" in binary,
           "program name embedded")
     try:
         desc = subprocess.run(["git", "-C", str(ROOT), "describe", "--always", "--dirty", "--tags", "--abbrev=12"],

@@ -31,14 +31,22 @@ processed = "{PLACEHOLDER.as_posix()}"
 '''
 
 
+CANONICAL = "https://github.com/thetechbenders/badger-i-hardly-knew-her"
+
+
+def public_destinations(text: str) -> set[str]:
+    """Links and e-mail addresses that are neither example.com/.org nor
+    this repository: public samples must use fictional destinations only."""
+    import re
+    found = set(re.findall(r"https?://[^\s\"'<>)]+", text)) | set(re.findall(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", text))
+    return {f for f in found if not re.search(r"(^|[/@.])example\.(com|org)\b", f) and not f.startswith(CANONICAL)}
+
+
 def sample_doc() -> dict:
-    """The public sample profile with its [placeholders] filled in, generic
-    values only (the form refuses placeholders such as "[email not configured]")."""
+    """The public sample profile (fictional) with its QR configured, so the
+    caption has a code to describe (the form refuses a caption without one)."""
     doc = json.loads(SAMPLE_JSON.read_text(encoding="utf-8"))
     p = doc["profile"]
-    p["contacts"] = [{"label": "Email", "value": "alex@example.com", "type": "email"},
-                     {"label": "Web", "value": "example.com/alex", "type": "web"},
-                     {"label": "GitHub", "value": "alex-example", "type": "github"}]
     p["qr"]["payload"] = "https://example.com/alex"
     return doc
 
@@ -73,8 +81,7 @@ class Parsing(FormCase):
         form = bf.load_form(bf.TEMPLATE)
         p = form.doc["profile"]
         self.assertEqual(p["name"], "Alex Example")
-        text = bf.TEMPLATE.read_text(encoding="utf-8")
-        self.assertNotIn("@", text.replace("alex@example.com", ""))  # fictional contacts only
+        self.assertEqual(public_destinations(bf.TEMPLATE.read_text(encoding="utf-8")), set())
         self.assertEqual([x["title"] for x in p["projects"]],
                          ["Example Printer Mod", "Secret Project", "Weather Station"])
         teaser = p["projects"][1]
@@ -84,6 +91,12 @@ class Parsing(FormCase):
         self.assertNotIn("\n", p["projects"][2]["body"])  # backslash continuation joins lines
         self.assertEqual(p["contacts"][2], {"label": "", "value": "alex-example", "type": "github"})
         self.assertEqual(form.doc["prefs"], {"layout": 0, "refresh.speed": 1, "sleep.timeout_s": 120})
+
+    def test_public_samples_use_fictional_destinations(self):
+        for path in (SAMPLE_JSON, bf.TEMPLATE):
+            self.assertEqual(public_destinations(path.read_text(encoding="utf-8")), set(), path)
+        report = ROOT / "docs/previews/qr_report_example.json"
+        self.assertEqual(public_destinations(report.read_text(encoding="utf-8")), set())
 
     def test_toml_profile_loads_through_badge_profile(self):
         pairs = badge_profile.load(bf.TEMPLATE)
@@ -144,6 +157,16 @@ wake.selects_screen = false
         text = bf.export_form(doc, [f'processed = "{PLACEHOLDER.as_posix()}"'], "sample-profile.json")
         self.assertEqual(badge_profile.flatten(self.load(text).doc), badge_profile.flatten(doc))
 
+    def test_export_keeps_an_unused_caption_as_a_comment(self):
+        doc = json.loads(SAMPLE_JSON.read_text(encoding="utf-8"))  # caption, no QR payload
+        text = bf.export_form(doc, [f'processed = "{PLACEHOLDER.as_posix()}"'], "sample-profile.json")
+        self.assertIn('# caption = "Scan for my website"', text)
+        pairs = dict(badge_profile.flatten(self.load(text).doc))
+        want = dict(badge_profile.flatten(doc))
+        self.assertEqual({k: v for k, v in pairs.items() if k != "qr.caption"},
+                         {k: v for k, v in want.items() if k != "qr.caption"})
+        self.assertEqual(pairs["qr.caption"], "")  # identical screens: a caption without a code is never drawn
+
     def test_windows_editors_crlf_and_bom(self):
         text = (BASE + '[[projects]]\ntitle = "P"\ndescription = """\none\ntwo\n"""\n').replace("\n", "\r\n")
         form = self.load("", raw=b"\xef\xbb\xbf" + text.encode())
@@ -186,7 +209,7 @@ link = ""
         self.assertEqual(omitted, blank)
 
     def test_project_order_is_kept(self):
-        names = ["Zulu", "alpha", "Mike", "BHIHKH!"]
+        names = ["Zulu", "alpha", "Mike", "Last on purpose"]
         p = self.pairs(BASE + "".join(f'[[projects]]\ntitle = "{n}"\n' for n in names))
         self.assertEqual([p[f"project{i}.title"] for i in range(1, 5)], names)
 

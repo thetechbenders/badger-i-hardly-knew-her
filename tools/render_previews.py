@@ -9,7 +9,7 @@ sheet, and a QR decode report.
 
 --example-projects N pads the portfolio to N entries with labelled
 placeholders ("Example project k") inserted before the last entry, so the
-configured order is kept and the last entry (BHIHKH!) stays last. It shows
+configured order is kept and the last entry stays last. It shows
 the project index at its maximum size; the placeholders are never content.
 
 --diagnostic-max renders a HOST DIAGNOSTIC SAMPLE: every text field filled

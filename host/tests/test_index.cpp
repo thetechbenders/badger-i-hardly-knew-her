@@ -586,9 +586,9 @@ TEST(render_index_sample_portfolio) {
     for (uint32_t h : seen) CHECK(h != g_ifb.hash());
     seen.push_back(g_ifb.hash());
   }
-  // Configured order, BHIHKH! last.
-  CHECK_STR(g_is.profile.projects[nth_configured_project(g_is.profile, n - 1)].title, "BHIHKH!");
-  CHECK_STR(g_is.profile.projects[nth_configured_project(g_is.profile, 5)].title, "CatScan-MS");
+  // Configured order: the last entry last, the teaser sixth.
+  CHECK_STR(g_is.profile.projects[nth_configured_project(g_is.profile, n - 1)].title, "Weather Station");
+  CHECK_STR(g_is.profile.projects[nth_configured_project(g_is.profile, 5)].title, "Secret Project");
 }
 
 TEST(render_index_empty_one_and_twelve) {
@@ -1126,7 +1126,7 @@ TEST(pipeline_c_then_long_b_shows_the_remembered_projects_qr) {
   System s;
   CHECK(settings_set(&g_is, *find_field("qr.payload"), "https://example.com/contact") == SetResult::Ok);
   s.settle();
-  // Remember project 2 (DragonBreath), then go to the card.
+  // Remember project 2 (Chamber Heater), then go to the card.
   s.press(Button::C, 80, kDoublePressMs + 20);
   s.press(Button::Down, 80, 100);
   s.press(Button::B, 80, 100);
@@ -1141,7 +1141,7 @@ TEST(pipeline_c_then_long_b_shows_the_remembered_projects_qr) {
   // Its payload is that project's own link, not the contact QR.
   const char *url = project_url(g_is.profile, 1);
   CHECK(url != nullptr);
-  CHECK_STR(url, "https://github.com/danielbrownjr/DragonBreath");
+  CHECK_STR(url, "https://example.com/alex/chamber-heater");
   CHECK(project_qr_geometry(s.ctx, 1).qr_status == QrStatus::Ok);
   Framebuffer want, contact;
   View v;
