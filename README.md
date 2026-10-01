@@ -23,15 +23,30 @@ contact details are kept out of Git (see [Private content](#private-content)).
 |---|---|---|
 | **A** | Photo badge | Clean full refresh (removes ghosting) |
 | **B** | Business card | On the card: full-screen contact QR (if configured) · on a project: that project's repository QR (if it has a link) · on a QR: back |
-| **C** | Project portfolio, at the last project viewed (if any are configured) | Diagnostics screen |
+| **C** | Project portfolio, at the last project viewed (if any are configured). **Double press**: project index | Project 1 (from anywhere, including a project QR) |
 | **UP / DOWN** | Previous / next project; from a full-screen QR, back to the card or project | UP: **gesture mode** on/off · DOWN: power off now |
-| **USR** | – | Switch layout A ↔ B for this session |
+| **USR** | Diagnostics screen | Switch layout A ↔ B for this session |
+
+**Project index** (double C): a list of the project names with the
+last-viewed one highlighted. UP/DOWN move the highlight; hold to scroll
+(it stops at the ends). **C** opens the highlighted project at once; **A**
+cancels back to where you were, without changing the remembered project;
+long C opens project 1. Browsing is quiet: the highlight moves in memory and
+the panel is refreshed once the buttons pause (about 0.3 s after release),
+not for every step. A highlight change still takes an e-paper refresh. A
+single short C waits about 0.35 s before acting, to tell it apart from a
+double press. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#buttons-c-gestures-and-the-project-index).
+
+| Project index (sample) | Index at 12 entries (labelled placeholders) |
+|---|---|
+| ![index](docs/previews/x3/index_3.png) | ![index-12](docs/previews/x3/index-12_10.png) |
 
 - **Project portfolio**: up to 12 configurable entries (`projectN.*` keys),
   each a page with title, tagline, description, optional status tag and a
   `PROJECT n/N` counter. An entry with a `link` offers its repository as a
   full-screen QR (long B); an entry without one, such as a teaser with a
-  `banner`, never shows a QR. Browsing never writes to flash.
+  `banner`, never shows a QR. Browsing (pages or the index) never writes to
+  flash.
 - **Contact icons**: card lines typed `github` or `discord` show a small
   monochrome icon instead of the platform name (Simple Icons, CC0; see
   [docs/LICENSES.md](docs/LICENSES.md)). Untyped lines keep their text label.

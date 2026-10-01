@@ -30,10 +30,12 @@ firmware/core/        portable C++17, no SDK headers; compiled for device and ho
   font, text          compiled bitmap fonts; UTF-8, fit chains, ellipsis, wrapping
   qr                  qrcodegen wrapper: version/ECC/scale choice, quiet zone
   renderer            badge (layouts A/B), card (contact icons), project portfolio,
-                      full-screen contact and project QR, info, recovery
+                      project index, full-screen contact and project QR, info, recovery
   icons               generated 12 px GitHub/Discord bitmaps (Simple Icons, CC0)
-  input               5 ms sampling debouncer, short/long gestures, wake suppression
-  app                 screen state machine and actions (redraw, clean refresh, sleep)
+  input               5 ms sampling debouncer, press/short/long/repeat gestures, wake
+                      suppression; ClickRecognizer (single/double/long C)
+  app                 screen state machine and actions (redraw, clean refresh, sleep),
+                      project index with quiet browsing
   settings            content/prefs model and field table (keys, IDs, limits)
   settings_store      versioned TLV records, CRCs, A/B slots over a FlashBackend,
                       read-only migration from format-1 records
@@ -57,7 +59,8 @@ coalescing, settings recovery, CLI validation, rendering) is in `core/` or
 
 ```
 core 0 ─ main loop (event driven: WFE with 10 ms timeout)
-  ├─ drains ButtonEvents        ◄─ SpscQueue<16> ◄─ 5 ms timer IRQ (debouncer)
+  ├─ drains ButtonEvents        ◄─ SpscQueue<32> ◄─ 5 ms timer IRQ (debouncer)
+  ├─ App::on_poll every pass: deferred single C, quiet index redraw
   ├─ USB CDC CLI (stdio_usb)
   ├─ App state machine
   ├─ RenderScheduler: renders newest View into a free buffer
@@ -85,6 +88,85 @@ core 1 ─ DisplayService: the only owner of the UC8151 driver, SPI0 and the
 - **Queues** are bounded, never block, and use only 32-bit acquire/release
   loads and stores (lock-free on the Cortex-M0+). Host tests exercise them
   across real threads under ASan/UBSan.
+
+## Buttons, C gestures and the project index
+
+Three layers, all pure logic in `core/` and host-tested:
+
+1. **ButtonTracker** (timer IRQ, every 5 ms): 20 ms integrating debounce per
+   button. It emits `Press` when a debounced press starts, `Short` on a
+   release before 1 s (with the number of repeats the hold produced),
+   `Long` once at 1 s while held (the release then emits nothing), and for
+   UP/DOWN only `Repeat` after 500 ms and every 150 ms after that, also past
+   the long threshold. A button held at boot (the wake button) emits nothing
+   until it has been released once. One sample produces at most
+   `kMaxEventsPerSample` (12) events; the queue holds 32 (a tap is now two
+   events). A full queue drops events and `diag display` counts the drops.
+2. **ClickRecognizer** (core 0, inside `App`): turns C's raw gestures into
+   exactly one `Single`, `Double` or `Long` per interaction.
+   - A second press that *begins* less than `kDoublePressMs` (350 ms) after
+     the first release makes a double, which acts on the second release.
+   - Outside the index a single acts only once that window has passed
+     without a second press. A double therefore never shows the project page
+     first.
+   - Inside the index the single acts on release. Confirming does not wait.
+   - A long press (1 s, on the first or second press) discards a pending
+     single, and its release emits nothing.
+   - **Context changes.** A USB screen or content change, power-off or boot
+     cancels a pending single. A press that was already down when that
+     happened is ignored on release, so a delayed action never fires on a
+     screen it was not meant for. Another button or swipe while a single
+     waits flushes it first (the C happened first). Tap C then hold B is
+     therefore "open the project, then its QR".
+   - `App::on_poll()` runs on every main-loop pass (at least every 10 ms)
+     and fires an expired single. It uses signed time differences, so a
+     clock sample taken just before an event was queued never looks like
+     a far-future time.
+3. **App**: screen state machine. Each recognised action changes the `View`
+   and returns actions (redraw, clean refresh, sleep).
+
+### Project index and quiet browsing
+
+`Screen::Index` lists the configured project names in configured order
+(BHIHKH! last in the sample), seven rows at a time, with `n/N`, a scrollbar
+when it does not fit, and UP/DOWN triangles. All index state is
+session-only RAM; nothing about browsing is ever written to flash, and the
+settings format is unchanged.
+
+- **Two selections.** `View::project` is the remembered (last-viewed)
+  project. The index keeps its own candidate: the live `App::index_sel_`,
+  and `View::index_sel` / `View::index_top`, which is what is drawn.
+  Browsing and cancelling never touch `View::project`. Confirming sets it.
+- **Quiet browsing.** UP/DOWN taps (wrapping) and repeats (stopping at
+  the ends, since the hold is blind) move only the live candidate. Every
+  UP/DOWN event, including the press, pushes back a quiet timer
+  (`kIndexSettleMs`, 300 ms, longer than the repeat interval). When it
+  expires, the candidate is copied into the `View` and one redraw is
+  requested, but only if it differs from what is drawn. Taking several
+  taps, or a hold, therefore gives one refresh after release. DOWN then UP
+  gives none.
+- **Confirm / cancel.** Confirm switches the `View` straight to the
+  selected project page. Cancel (A) switches to the screen the index was
+  opened from (re-validated, e.g. a project QR whose link was removed meanwhile
+  becomes that project's page). A pending, undrawn highlight is discarded in
+  both cases, so it is never shown.
+- **Viewport.** `index_viewport_top()` moves the window only when the
+  highlight would leave it (minimal scrolling). It clamps to the list, so
+  a partial change usually stays a partial refresh.
+- **Refreshes.** The index uses the normal pipeline. A highlight change
+  still needs an e-paper refresh (partial when small, full when the window
+  scrolls or the partial budget is used; necessary cleaning waveforms are
+  unchanged). A refresh already running is never cut short. The
+  RenderScheduler renders only the newest `View` once it finishes, and the
+  DisplayService drops a queued job a newer one supersedes. Rapid input
+  during a slow refresh therefore ends with exactly one more frame: the
+  newest highlight, or the confirmed project, never an intermediate one
+  (host test `pipeline_rapid_index_navigation_during_refresh_shows_only_the_final_project`).
+- **Modal.** In the index only UP/DOWN, C, A short (cancel) and A long
+  (clean refresh) act. B, USR and swipes are ignored. Holding DOWN or UP
+  repeats instead of powering off or toggling gesture mode. Auto power-off
+  still applies; the sleep view is the badge (or the index when
+  `sleep.screen` is "current").
 
 ## Refresh scheduling
 
@@ -174,7 +256,8 @@ milliseconds, well inside the 5 s watchdog.
 
 ## Memory
 
-Sample build: 178 KiB flash; 59.7 KiB static RAM. The two render buffers,
+Sample build: 191.6 KiB flash; 86.7 KiB static RAM (the project index added
+3.7 KiB of flash and 320 B of RAM, mostly the larger button queue). The two render buffers,
 the shown image, the driver buffer (4.6 KiB each) and three Settings copies
 (2.6 KiB each) dominate. There are 4 KiB stacks per core; large objects are
 static, never on the stack. Each core paints its own stack below its

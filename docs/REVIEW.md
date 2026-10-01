@@ -86,3 +86,14 @@ redundant with the clean-refresh flag, which already bypasses suppression.
   hash (≈ 2⁻³² per change) would not be sent.
 - Gesture decoding is validated with synthetic FIFO data only. No recorded
   sensor data exists yet.
+- **Project index (added later; host-verified only).** These are trade-offs,
+  not defects:
+  - A short C outside the index acts about 0.35 s after release
+    (`kDoublePressMs`), because it waits for a possible second press.
+  - An index refresh that has already started on the panel always
+    completes. The waveform cannot be cut short, so after a fast confirm or
+    cancel the index is still visible until that refresh finishes and the
+    final screen follows.
+  - The index ignores B, USR and swipes while it is open.
+  - Diagnostics moved from long C to USR short to make room for "long C =
+    project 1".
