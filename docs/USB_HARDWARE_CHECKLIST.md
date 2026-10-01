@@ -10,7 +10,50 @@ Conventions: `>` lines are CLI commands (a terminal on the badge's USB serial
 port, or `python3 tools/badgerctl.py cmd "…"`). Every command ends in `OK` or
 `ERR …`. "Refresh" means one visible e-paper update.
 
-Status as of this revision: **all steps pending**; 0.1 done read-only.
+## Test record
+
+### 2026-10-01: first USB run, local build `023b3c6` (reported by the owner)
+
+These results were reported by the badge owner from a physical test. They
+were not observed or reproduced by the tooling that maintains this file.
+
+- **Build:** personalized firmware reported as `023b3c6`
+  (`badger_badge.uf2` SHA-256
+  `8215a6e292ceb341fbba60d4eda1a284cbecbabdbb8fc5f856eaf4ab1904cd96` in the
+  delivered firmware ZIP). On 2026-10-01 that commit and its four
+  predecessors (`abddac0`…`023b3c6`) existed **only in the local
+  checkout**. They were not on the remote branch, whose head (and PR #1's)
+  was still `766aede`. These results therefore apply to that local build and
+  do **not** validate the remote head. The `> version` line that would
+  confirm the flashed commit on the badge is still pending (1.2).
+- **Passed (reported):**
+  - Personalized firmware installed (1.1); startup time not measured.
+  - Both badge layouts, the updated portrait and title, and the GitHub and
+    Discord icons beside their usernames (2.1, 10.8).
+  - All seven projects in order, with BHIHKH! last, and CatScan-MS showing
+    its banner with no QR hint (2.2, 10.6).
+  - Buttons and portfolio navigation, project QR entry and return, and the
+    remembered project position (2.1, 2.2, 10.5, 10.6).
+  - Rapid navigation during a refresh (3.1, visual part).
+  - Scans of the contact vCard and all six repository QRs, each opening the
+    expected destination (10.6, 10.7). This does **not** establish the
+    two-phone test in §8.
+  - USB unplugged and reconnected: settings survived and the unpowered
+    display kept its image.
+- **Not confirmed:** `badgerctl.py push local/profile.json` (10.3) was not
+  separately confirmed. Do not infer it from the content seen on the badge.
+- **Still pending (needs a desk session):**
+  - `version`, `selftest`, `diag all`, `diag mem` and `diag refresh` output.
+  - Malformed CLI input (§4).
+  - Controlled crashes and watchdog recovery, safe mode and real reset
+    classification (§9).
+  - Interrupted-commit recovery (5.4) and measured refresh timings (10.9).
+  - Two-phone QR testing (§8).
+  - Battery and APDS-9960 tests (sections at the end).
+
+### Before first flash (September 2026)
+
+Status before the first flash: **all steps pending**; 0.1 done read-only.
 The badge on COM19 identified itself as `Pimoroni Badger2040 2MB with RP2040`,
 MicroPython v1.18 (2022-04-01) with BadgerOS,
 filesystem 1 MiB with `badge.txt`, `main.py` and `state` at the top level.
@@ -38,9 +81,11 @@ Flashing (step 1) replaces MicroPython and needs the owner's explicit go-ahead.
 
 ## 1. Flash, startup and identity
 
-- [ ] 1.1 BOOTSEL, copy `badger_badge.uf2` to `RPI-RP2`. **Expect**: one full
+- [x] 1.1 BOOTSEL, copy `badger_badge.uf2` to `RPI-RP2`. **Expect**: one full
       refresh to the photo badge (layout **A**, portrait left) within ~3 s
       (estimate; record the measured time).
+      *2026-10-01, local `023b3c6`: installed and started (reported); time
+      not measured.*
 - [ ] 1.2 Port enumerates as `2E8A:000A`. `> version` shows `BHIHKH!`, the commit
       (`git describe`, 12 hex digits) and `pico-sdk 2.2.0`.
 - [ ] 1.3 `> selftest` → fonts ok, built-in assets ok, settings ok, event
@@ -52,15 +97,20 @@ Flashing (step 1) replaces MicroPython and needs the owner's explicit go-ahead.
 
 ## 2. Buttons, screens and layout selection
 
-- [ ] 2.1 A / B / C short: badge / card / projects. One refresh each, no
-      double refresh.
-- [ ] 2.2 Projects: DOWN/UP step 1/2 ↔ 2/2 and wrap. The Dragon-family page
-      shows the tagline on two full lines and the body
-      "DragonBreath · DragonSniff · DragonBench · dragon-core."; Jump Jet
-      reads "Work in progress".
+- [x] 2.1 A / B / C short: badge / card / projects. One refresh each, no
+      double refresh. *2026-10-01, local `023b3c6`: passed (reported).*
+- [x] 2.2 Projects: DOWN/UP step through `PROJECT 1/7` … `7/7` and wrap, in
+      the configured order (Jump Jet, DragonBreath, DragonSniff, DragonBench,
+      dragon-core, CatScan-MS, BHIHKH! last). Jump Jet's tag reads "Work in
+      progress"; CatScan-MS shows only its banner, with no link or QR hint.
+      (Before the BHIHKH! update this step checked a two-page portfolio.)
+      *2026-10-01, local `023b3c6`: passed (reported).*
 - [ ] 2.3 Long presses: A = slow clean refresh; B = full-screen QR (card if no
       QR); C = diagnostics; USR = layout **B** (portrait right) for this
       session, USR again = A.
+      *2026-10-01, local `023b3c6`: both layouts and the long-B QR screens
+      seen (reported); A long, C long and the USR toggle not individually
+      reported. Still open.*
 - [ ] 2.4 `> set layout 1`, `> commit`, `> reboot`: boots in B. `> set layout 0`,
       `> commit`: back to A (the default).
 - [ ] 2.5 Glancing tap (< 20 ms): no action. A+B held together, released in
@@ -75,6 +125,8 @@ Flashing (step 1) replaces MicroPython and needs the owner's explicit go-ahead.
       B, C, A, B, C quickly. **Expect**: exactly one further refresh, showing
       projects. `> diag display`: `coalesced` grew, `event overflow 0`,
       `panel ok`.
+      *2026-10-01, local `023b3c6`: rapid navigation during a refresh behaved
+      correctly (reported, visual). The `diag display` counters are pending.*
 - [ ] 3.2 A while on the badge: no refresh; `renders suppressed` +1.
 - [ ] 3.3 `> refresh clean` idle and during a refresh: no hang, no garbled image.
 - [ ] 3.4 `> set title X`, `> set title Y`, …: partial refreshes, then a full one
@@ -105,6 +157,9 @@ Flashing (step 1) replaces MicroPython and needs the owner's explicit go-ahead.
 
 - [ ] 5.1 `> set name Test Person`, `> commit`: prints slot, sequence and a
       duration of tens of ms. Unplug, replug: "Test Person".
+      *2026-10-01, local `023b3c6`: after unplugging and reconnecting USB,
+      the settings in use survived and the unpowered display kept its image
+      (reported). The `commit` output and this exact procedure are still open.*
 - [ ] 5.2 Two more commits: slots alternate A/B, sequence increases
       (`> diag settings`).
 - [ ] 5.3 `> set name Other` (no commit), `> reboot`: old committed name.
@@ -137,6 +192,10 @@ Flashing (step 1) replaces MicroPython and needs the owner's explicit go-ahead.
       board keeps running; any button reboots; `> diag reset` → `wake from USB sleep`.
 
 ## 8. QR scanning with two phones
+
+*2026-10-01, local `023b3c6`: the contact vCard and all six repository QRs
+were scanned successfully and opened the expected destinations (reported).
+This was not the two-phone matrix below, which is still open.*
 
 Use the provisional local default (trimmed offline vCard) and the GitHub-link
 alternative. Final QR selection is pending this test.
@@ -179,20 +238,31 @@ that only 9.7 reaches the three-in-a-row safe-mode threshold.
 - [ ] 10.2 Flash the new UF2. **Expect**: the old name/contacts/projects are
       still shown; `> status` shows settings `v1 (migrate on commit)`;
       `> diag settings` names the legacy slot; contacts show text labels (no icons yet).
-- [ ] 10.3 `badgerctl.py push local/profile.json`. **Expect**: commit to
+- [ ] 10.3 `badgerctl.py push local/profile.json`. *(Not confirmed as of
+      2026-10-01: do not infer from the content on the badge.)* **Expect**: commit to
       **slot A**, sequence continues; `> reboot`: the new 7-entry portfolio and
       the GitHub/Discord icons persist; `> status` shows `slot A`.
 - [ ] 10.4 Two more commits alternate B/A; reboot after each loads the newest.
 - [ ] 10.5 C opens `PROJECT 1/7`; DOWN ×3, A, C: reopens at `PROJECT 4/7`.
       UP from 1/7 wraps to 7/7. No flash write while browsing (`> diag settings`
       commit count unchanged).
+      *2026-10-01, local `023b3c6`: navigation, wrap and the remembered project
+      position passed (reported). The commit-count check is pending.*
 - [ ] 10.6 Long B on each linked project: the QR shows that repository; scan
       with both phones and compare against the footer URL. Long B again and UP/DOWN
       return to the same project. CatScan-MS (6/7): banner only, long B does nothing.
+      *2026-10-01, local `023b3c6`: QR entry and return, and all six
+      repository QRs scanned to the right destination (reported). The
+      CatScan-MS banner was shown with no QR hint. Still open: the two-phone
+      comparison and confirming that long B on CatScan-MS does nothing.*
 - [ ] 10.7 Short B from a project: contact card; long B there: the contact QR
       (unchanged payload), not a project QR.
-- [ ] 10.8 Icons at arm's length: GitHub and Discord marks recognisable,
+      *2026-10-01, local `023b3c6`: the contact vCard scanned successfully
+      (reported); the short-B-from-a-project path was not individually
+      reported.*
+- [x] 10.8 Icons at arm's length: GitHub and Discord marks recognisable,
       aligned with their usernames; no "GitHub"/"Discord" words beside them.
+      *2026-10-01, local `023b3c6`: icons checked on the panel (reported).*
 - [ ] 10.9 Browse 5 screens, then `> diag refresh`: one entry per press, no
       unrequested entries. Record the measured `busy` time at speed 1 (estimated
       ≈ 2.5 s, see REFRESH.md) and update REFRESH.md with it. Record a

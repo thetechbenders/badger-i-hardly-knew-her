@@ -108,8 +108,9 @@ keeps `firmware/generated/icons.cpp` reproducible.
 - At 12 px the GitHub mark reduces to its round silhouette with the
   Octocat's tail at the lower left, and Discord's to the rounded "controller"
   face with two eyes. Both read as their platforms on the native-resolution
-  previews. Legibility at arm's length on the panel is still to be checked
-  (pending: physical test).
+  previews. On 2026-10-01 the owner reported both icons checked on the
+  physical panel, on local build `023b3c6` (USB_HARDWARE_CHECKLIST.md,
+  test record).
 
 ## Project portfolio
 

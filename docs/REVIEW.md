@@ -5,7 +5,9 @@ pinned Pico SDK 2.2.0, pimoroni-pico v1.29.0-2 and the linked ELF. No
 battery, gesture sensor or badge hardware was used: everything below was
 established on the host, in the RP2040 cross-build, or by reading SDK and
 driver sources. Hardware checks are in
-[USB_HARDWARE_CHECKLIST.md](USB_HARDWARE_CHECKLIST.md) (pending).
+[USB_HARDWARE_CHECKLIST.md](USB_HARDWARE_CHECKLIST.md). It was still
+pending at the time of this review; a first USB run on a later local build
+is recorded there.
 
 ## Defects found and fixed
 
