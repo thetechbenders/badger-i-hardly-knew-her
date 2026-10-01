@@ -37,10 +37,10 @@ TEST(utf8_decode_and_validate) {
 
 TEST(fit_text_picks_largest_font_that_fits) {
   const Font *chain[] = {&fonts::sans_bold_24, &fonts::sans_bold_20, &fonts::sans_bold_17};
-  FitResult r = fit_text(chain, 3, "Dan Brown", 178);
+  FitResult r = fit_text(chain, 3, "Alex Kim", 178);
   CHECK(r.font == &fonts::sans_bold_24);
   CHECK(!r.ellipsized);
-  r = fit_text(chain, 3, "Maximilian Alexander Brown", 178);
+  r = fit_text(chain, 3, "Maximilian Alexander Example", 178);
   CHECK(r.font != &fonts::sans_bold_24);
   CHECK(r.width <= 178);
 }

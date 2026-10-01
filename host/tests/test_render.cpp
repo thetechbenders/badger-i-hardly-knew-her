@@ -147,9 +147,9 @@ TEST(render_without_portrait_uses_full_width) {
 
 TEST(qr_geometry_integer_modules_and_quiet_zone) {
   settings_defaults(&g_s);
-  const char *payloads[] = {"https://example.com/dan",
+  const char *payloads[] = {"https://example.com/alex",
                             "https://example.org/a/really/quite/long/path/for/a/contact/page?x=1",
-                            "BEGIN:VCARD\nVERSION:3.0\nN:Brown;Dan;;;\nFN:Dan Brown\nTITLE:Engineer\nEMAIL:dan@example.com\nURL:https://example.com\nEND:VCARD"};
+                            "BEGIN:VCARD\nVERSION:3.0\nN:Example;Alex;;;\nFN:Alex Example\nTITLE:Engineer\nEMAIL:alex@example.com\nURL:https://example.com\nEND:VCARD"};
   for (const char *p : payloads) {
     set("qr.payload", p);
     for (int full = 0; full < 2; ++full) {
@@ -272,7 +272,7 @@ TEST(render_card_six_contacts_with_vcard) {
     set(("contact" + std::to_string(i + 1) + ".label").c_str(), labels[i]);
     set(("contact" + std::to_string(i + 1) + ".value").c_str(), vals[i]);
   }
-  set("qr.payload", "BEGIN:VCARD\nVERSION:3.0\nN:Brown;Dan;;;\nFN:Dan Brown\nEND:VCARD");
+  set("qr.payload", "BEGIN:VCARD\nVERSION:3.0\nN:Example;Alex;;;\nFN:Alex Example\nEND:VCARD");
   RenderContext c = ctx_with();
   View v;
   v.screen = Screen::Card;
@@ -374,13 +374,13 @@ TEST(render_maximum_content_all_screens_and_states) {
 
 // The end of a realistic project tagline and body must be visible: if the
 // renderer ellipsized them, changing the last character would not change
-// the frame. (Regression: the Dragon-family tagline was cut to "validati...".)
+// the frame. (Regression: a long sample tagline was cut to "validati...".)
 TEST(render_project_page_shows_full_tagline_and_body) {
   settings_defaults(&g_s);
   const std::string tagline = "Tools for embedded development and validation.";
-  const std::string body = "DragonBreath \xC2\xB7 DragonSniff \xC2\xB7 DragonBench \xC2\xB7 dragon-core.";
-  set("project1.title", "Jump Jet");
-  set("project2.title", "Dragon family");
+  const std::string body = "Bench Logger \xC2\xB7 Load Tester \xC2\xB7 Shared Components \xC2\xB7 Quiet Duct.";
+  set("project1.title", "Quiet Duct");
+  set("project2.title", "Lab tools");
   set("project2.tagline", tagline.c_str());
   set("project2.body", body.c_str());
   RenderContext c = ctx_with();
@@ -535,8 +535,8 @@ TEST(render_twelve_projects_distinct_pages_and_qrs) {
 TEST(repo_label_is_compact_and_exact) {
   char b[80];
   const struct { const char *in, *out; } cases[] = {
-      {"https://github.com/thetechbenders/JumpJet", "thetechbenders/JumpJet"},
-      {"https://github.com/danielbrownjr/DragonBreath/", "danielbrownjr/DragonBreath"},
+      {"https://github.com/example-maker/QuietDuct", "example-maker/QuietDuct"},
+      {"https://github.com/example-maker/ChamberHeater/", "example-maker/ChamberHeater"},
       {"https://www.github.com/a/b.git", "a/b"},
       {"https://github.com/a/b/tree/main/docs", "a/b"},
       {"https://github.com/a/b?tab=readme", "a/b"},
@@ -550,8 +550,8 @@ TEST(repo_label_is_compact_and_exact) {
     CHECK_EQ(repo_label(t.in, b, sizeof b), std::strlen(t.out));
     CHECK_STR(b, t.out);
   }
-  CHECK_EQ(repo_label("https://github.com/thetechbenders/JumpJet", b, 6), 5u);  // bounded
-  CHECK_STR(b, "thete");
+  CHECK_EQ(repo_label("https://github.com/example-maker/QuietDuct", b, 6), 5u);  // bounded
+  CHECK_STR(b, "examp");
 }
 
 // The configured (sample) portfolio is shown completely: no ellipsis in any
@@ -564,13 +564,14 @@ TEST(render_sample_portfolio_fits_without_ellipsis) {
   CHECK(n >= 7);
   for (int i = 0; i < n; ++i) {
     const ProjectFit f = project_fit(g_fb, c, i);
-    CHECK(f.title && f.tagline && f.status && f.body && f.link);
+    CHECK(f.title && f.tagline && f.status && f.body && f.link && f.banner && f.qr_title && f.index_title);
     const Project &p = g_s.profile.projects[nth_configured_project(g_s.profile, i)];
     if (!str_empty(p.body)) CHECK_EQ(f.body_px, int(fonts::sans_11.line_height));
     if (!str_empty(p.status)) CHECK(std::strpbrk(p.status, "0123456789") == nullptr);  // no version boxes
   }
-  // The badge project is last, under its short name.
-  CHECK_STR(g_s.profile.projects[nth_configured_project(g_s.profile, n - 1)].title, "BHIHKH!");
+  // Configured order: the sample's teaser is sixth and its last entry last.
+  CHECK_STR(g_s.profile.projects[nth_configured_project(g_s.profile, 5)].title, "Secret Project");
+  CHECK_STR(g_s.profile.projects[nth_configured_project(g_s.profile, n - 1)].title, "Weather Station");
 }
 
 // A teaser without a link shows no footer: no URL, no QR glyph, no "hold B".
@@ -588,4 +589,124 @@ TEST(render_teaser_has_no_qr_hint) {
   set("project1.link", "https://github.com/a/b");
   render(g_fb, v, c);
   CHECK(!region_white(g_fb, {8, 128 - 14, 296 - 30, 14}));
+}
+
+// ------------------------------------------------- identity-screen fit report
+// screen_fit() feeds the personalisation gate (badger_preview --fit): every
+// supplied field must be drawn whole, or the build stops before flashing.
+
+namespace {
+bool all_complete(const ScreenFit &f) {
+  bool ok = f.name && f.title && f.affiliation && f.interests && f.event && f.caption && f.caption_shown;
+  for (int i = 0; i < kMaxContacts; ++i) ok = ok && f.contact_label[i] && f.contact_value[i];
+  return ok;
+}
+}  // namespace
+
+TEST(screen_fit_sample_is_complete_and_draws_like_render) {
+  settings_defaults(&g_s);
+  set("qr.payload", "https://example.com/alex");
+  RenderContext c = ctx_with();
+  const struct { Screen s; uint8_t layout; } cases[] = {
+      {Screen::Badge, 0}, {Screen::Badge, 1}, {Screen::Card, 0}, {Screen::QrFull, 0}};
+  for (const auto &k : cases) {
+    CHECK(all_complete(screen_fit(g_fb2, c, k.s, k.layout)));
+    // The report only observes: its scratch render equals the real screen.
+    View v;
+    v.screen = k.s;
+    v.layout = k.layout;
+    render(g_fb, v, c);
+    screen_fit(g_fb2, c, k.s, k.layout);
+    CHECK(region_white(g_fb2, status_rect(v, c)));  // no status area in the scratch render
+    Framebuffer a;
+    a.copy_from(g_fb);
+    a.fill_rect(status_rect(v, c), Ink::White);
+    CHECK(a.equals(g_fb2));
+  }
+}
+
+TEST(screen_fit_reports_cut_identity_fields) {
+  settings_defaults(&g_s);
+  RenderContext c = ctx_with();
+  set("name", "Wilhelmina Featherstonehaugh-Cholmondeley");
+  ScreenFit f = screen_fit(g_fb, c, Screen::Badge, 0);
+  CHECK(!f.name);
+  CHECK(f.title && f.interests && f.event);
+  CHECK(!screen_fit(g_fb, c, Screen::Card, 0).name);
+  settings_defaults(&g_s);
+  set("event", "International WWWWWWWWWWWWWWWW");
+  CHECK(!screen_fit(g_fb, c, Screen::Badge, 0).event);
+  CHECK(!screen_fit(g_fb, c, Screen::Badge, 1).event);
+  CHECK(screen_fit(g_fb, c, Screen::Card, 0).event);  // the card does not show the event
+  // Interests need four lines: layout A has three, layout B's band two.
+  settings_defaults(&g_s);
+  set("interests", "printing, electronics, embedded systems, sensors, firmware, e-paper displays, robotics, metrology");
+  CHECK(!screen_fit(g_fb, c, Screen::Badge, 0).interests);
+  CHECK(!screen_fit(g_fb, c, Screen::Badge, 1).interests);
+}
+
+TEST(screen_fit_reports_cut_and_dropped_contacts) {
+  settings_defaults(&g_s);
+  clear_contacts();
+  RenderContext c = ctx_with();
+  set("contact1.label", "Email");
+  set("contact1.value", "a.very.long.address.that.cannot.fit@subdomain.example.com");
+  set("contact2.label", "Mobile phone");  // wider than the 52 px label column
+  set("contact2.value", "+1 555 0100");
+  ScreenFit f = screen_fit(g_fb, c, Screen::Card, 0);
+  CHECK(!f.contact_value[0] && f.contact_label[0]);
+  CHECK(!f.contact_label[1] && f.contact_value[1]);
+  // Typed GitHub lines show the icon, never the label: nothing to cut there.
+  set("contact2.label", "Mobile phone");
+  set("contact2.type", "github");
+  CHECK(screen_fit(g_fb, c, Screen::Card, 0).contact_label[1]);
+  // Six lines under a two-line title and an affiliation: the last are dropped.
+  clear_contacts();
+  set("title", "Principal Instrumentation Engineer");
+  set("affiliation", "Example Laboratories");
+  for (int i = 1; i <= kMaxContacts; ++i) {
+    set(("contact" + std::to_string(i) + ".label").c_str(), "Web");
+    set(("contact" + std::to_string(i) + ".value").c_str(), "example.com");
+  }
+  f = screen_fit(g_fb, c, Screen::Card, 0);
+  CHECK(f.contact_value[0]);
+  CHECK(!f.contact_value[kMaxContacts - 1] && !f.contact_label[kMaxContacts - 1]);
+}
+
+TEST(screen_fit_card_caption_gives_way_but_is_not_cut) {
+  settings_defaults(&g_s);
+  RenderContext c = ctx_with();
+  set("qr.payload", "https://example.com/alex");
+  set("qr.caption", "Scan to save my contact");
+  CHECK(all_complete(screen_fit(g_fb, c, Screen::Card, 0)));  // two contacts: room for it
+  for (int i = 1; i <= 5; ++i) {
+    set(("contact" + std::to_string(i) + ".label").c_str(), "Web");
+    set(("contact" + std::to_string(i) + ".value").c_str(), "example.com");
+  }
+  ScreenFit f = screen_fit(g_fb, c, Screen::Card, 0);
+  CHECK(!f.caption_shown);  // contact lines win, by design
+  CHECK(f.caption);
+  CHECK(screen_fit(g_fb, c, Screen::QrFull, 0).caption);  // shown in full there
+  set("qr.caption", "");
+  CHECK(screen_fit(g_fb, c, Screen::Card, 0).caption_shown);  // nothing configured, nothing missing
+}
+
+TEST(project_fit_covers_banner_qr_title_and_index_row) {
+  settings_defaults(&g_s);
+  clear_projects();
+  RenderContext c = ctx_with();
+  set("project1.title", "Teaser");
+  set("project1.banner", "TOP SECRET - COMING SOON");
+  set("project2.title", "Linked");
+  set("project2.link", "https://github.com/a/b");
+  ProjectFit f = project_fit(g_fb, c, 0);
+  CHECK(f.banner && f.qr_title && f.index_title);
+  f = project_fit(g_fb, c, 1);
+  CHECK(f.qr_title && f.index_title);
+  set("project1.banner", "WWWWWWWWWWWWWWWWWWWWWWWWWWWWWW");
+  CHECK(!project_fit(g_fb, c, 0).banner);
+  // 20 px wide glyphs: fits the page at 14 px, not the column beside the QR.
+  set("project2.title", "WWWWWWWWWWWWWWWWW");
+  f = project_fit(g_fb, c, 1);
+  CHECK(!f.qr_title);
 }

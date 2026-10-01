@@ -5,7 +5,8 @@
 //                  [--set key=value ...] [--screens badge,card,...]
 //                  [--battery none|usb|invalid|low|0..4] [--gesture off|on|fault]
 //                  [--faults]   diagnostics show fault states (host diagnostic sample)
-//   badger_preview --fit [--set ...]   per-project report: text drawn without ellipsis?
+//   badger_preview --fit [--pack FILE] [--set ...]   per-screen and per-project report:
+//                                    was each configured text drawn without ellipsis?
 //   badger_preview --dump-fields     (key type size min max, for tests)
 #include <cstdio>
 #include <cstdlib>
@@ -149,12 +150,29 @@ int main(int argc, char **argv) {
 
   static Framebuffer fb;
   if (fit_report) {
-    // One line per configured project: which parts were drawn completely.
+    // One line per identity screen, then one per configured project: which
+    // parts were drawn completely (1) or ellipsized/dropped (0).
+    struct { const char *name; Screen screen; uint8_t layout; } idents[] = {
+        {"badge_layoutA", Screen::Badge, 0}, {"badge_layoutB", Screen::Badge, 1},
+        {"card", Screen::Card, 0}, {"qr", Screen::QrFull, 0}};
+    for (const auto &id : idents) {
+      const ScreenFit f = screen_fit(fb, ctx, id.screen, id.layout);
+      char lab[kMaxContacts + 1], val[kMaxContacts + 1];
+      for (int k = 0; k < kMaxContacts; ++k) {
+        lab[k] = f.contact_label[k] ? '1' : '0';
+        val[k] = f.contact_value[k] ? '1' : '0';
+      }
+      lab[kMaxContacts] = val[kMaxContacts] = 0;
+      std::printf("screen %s name=%d title=%d affiliation=%d interests=%d event=%d caption=%d caption_shown=%d "
+                  "label=%s value=%s\n",
+                  id.name, f.name, f.title, f.affiliation, f.interests, f.event, f.caption, f.caption_shown, lab, val);
+    }
     const int n = configured_project_count(s.profile);
     for (int i = 0; i < n; ++i) {
       const ProjectFit f = project_fit(fb, ctx, i);
-      std::printf("project %d title=%d tagline=%d status=%d body=%d link=%d body_px=%d %s\n", i + 1, f.title,
-                  f.tagline, f.status, f.body, f.link, f.body_px,
+      std::printf("project %d title=%d tagline=%d status=%d body=%d link=%d banner=%d qr_title=%d index_title=%d "
+                  "body_px=%d %s\n",
+                  i + 1, f.title, f.tagline, f.status, f.body, f.link, f.banner, f.qr_title, f.index_title, f.body_px,
                   s.profile.projects[nth_configured_project(s.profile, i)].title);
     }
     return 0;

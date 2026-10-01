@@ -16,12 +16,15 @@ BADGER_PREVIEW="$build/badger_preview" python3 -m unittest discover -s "$root/te
 python3 "$root/tools/render_previews.py" --preview "$build/badger_preview" --out "$root/build/previews/sample" \
   --profile "$root/config/sample-profile.json"
 python3 "$root/tools/render_previews.py" --preview "$build/badger_preview" --out "$root/build/previews/sample-qr" \
-  --profile "$root/config/sample-profile.json" --qr "https://example.com/dan" --screens card,qr
+  --profile "$root/config/sample-profile.json" --qr "https://example.com/alex" --screens card,qr
 # Project index at its maximum size: the sample portfolio padded to 12 entries
-# with labelled placeholders (BHIHKH! stays last).
+# with labelled placeholders (its last entry stays last).
 python3 "$root/tools/render_previews.py" --preview "$build/badger_preview" --out "$root/build/previews/index-12" \
   --profile "$root/config/sample-profile.json" --example-projects 12 --screens index,projects
 # Host diagnostic samples (labelled on screen): worst-case lengths with every
 # status/fault state, and the fault-state diagnostics screens.
 python3 "$root/tools/render_previews.py" --preview "$build/badger_preview" --out "$root/build/previews/diagnostic-max" \
   --diagnostic-max --preview-arg=--faults --preview-arg=--battery --preview-arg=low --preview-arg=--gesture --preview-arg=fault
+# The public fill-in form template, through the same pipeline a user runs
+# (validation, portrait, fit and QR gates, previews); generic content only.
+python3 "$root/tools/badge_form.py" preview "$root/config/badge-form.toml" --out "$root/build/previews/form-template"

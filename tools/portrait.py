@@ -121,14 +121,14 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("source", type=Path)
     ap.add_argument("--settings", type=Path, help="JSON with crop/size/tone/method keys")
-    ap.add_argument("--crop", help="x,y,w,h in source pixels")
+    ap.add_argument("--crop", help="x,y,w,h in source pixels (default: the largest centred area)")
     ap.add_argument("--size", help="WxH output size")
     ap.add_argument("--method", choices=METHODS)
     ap.add_argument("--out", type=Path, help="1-bit PNG to write for the chosen method")
     ap.add_argument("--compare", type=Path, help="directory for per-method PNGs and a comparison sheet")
     args = ap.parse_args(argv)
 
-    cfg = {"crop": [95, 40, 410, 505], "size": [104, 128], "gamma": 1.0,
+    cfg = {"crop": None, "size": [104, 128], "gamma": 1.0,
            "black_pct": 1.0, "white_pct": 2.0, "sharpen": 0.6, "method": "atkinson"}
     if args.settings:
         cfg.update(json.loads(args.settings.read_text()))
@@ -141,6 +141,13 @@ def main(argv: list[str] | None = None) -> int:
     w, h = cfg["size"]
     if not (8 <= w <= 296 and 8 <= h <= 128):
         raise SystemExit(f"size {w}x{h} does not fit the 296x128 panel")
+    if cfg["crop"] is None:  # default: the largest centred area at the output aspect
+        with Image.open(args.source) as src:
+            W, H = ImageOps.exif_transpose(src).size
+        cw, ch = W, round(W * h / w)
+        if ch > H:
+            cw, ch = round(H * w / h), H
+        cfg["crop"] = [(W - cw) // 2, (H - ch) // 2, cw, ch]
 
     g = load_gray(args.source, tuple(cfg["crop"]), (w, h), cfg["gamma"],
                   cfg["black_pct"], cfg["white_pct"], cfg["sharpen"])

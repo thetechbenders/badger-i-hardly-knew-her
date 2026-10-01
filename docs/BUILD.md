@@ -39,6 +39,8 @@ before running `fetch-deps.sh`.
 
 - Build inside **WSL2** (Ubuntu 24.04) with the commands above. Keep the
   clone on the Linux filesystem (`~/src/...`), not `/mnt/c`; it is much faster.
+- A personalised build from a form works the same way:
+  `scripts/build-badge.sh local/badge.toml` (see PERSONALIZE.md, Windows).
 - Copy the UF2 to Windows through `\\wsl$\Ubuntu-24.04\home\<you>\...`, or with
   `cp build/fw/badger_badge.uf2 /mnt/c/Users/<you>/Downloads/`, then drag it
   onto the `RPI-RP2` drive in Explorer. Flashing needs no USB passthrough.
@@ -53,10 +55,14 @@ before running `fetch-deps.sh`.
 
 | CMake option | Default |
 |---|---|
-| `-DBADGER_PROFILE=<json>` | `local/profile.json` if present, else `config/sample-profile.json` |
+| `-DBADGER_PROFILE=<json>` | `local/profile.json` if present, else `config/sample-profile.json` (a `.toml` form needs `-DBADGER_PORTRAIT` too: configuring fails without it) |
 | `-DBADGER_PORTRAIT=<png>` | `local/portrait.png` if present, else `assets/sample/portrait_placeholder.png`; `none` = no built-in portrait |
 
-CMake prints which files were used. The profile only supplies **factory
+CMake prints which files were used. For a filled-in form, use
+`scripts/build-badge.sh local/badge.toml` instead
+([PERSONALIZE.md](PERSONALIZE.md)): it converts the photo, runs the fit and
+QR gates on the previews, then calls `build-firmware.sh` with the generated
+profile and portrait (build directory `local/out/<form name>/fw/`). The profile only supplies **factory
 defaults**. Values committed over USB take precedence, and `defaults` + `commit`
 returns to these defaults.
 
@@ -113,7 +119,7 @@ UF2/BIN/ELF/asset UF2 byte for byte. The `.elf.map` lists absolute object
 paths and is not expected to match; it is a size-analysis aid, not a
 release artifact.
 
-Current sample build: 191.6 KiB flash (of 1920 KiB available before the
+Current sample build: 192.6 KiB flash (of 1920 KiB available before the
 asset region), 86.7 KiB static RAM of 264 KiB, 4 KiB stack per core. Each
 copy of the settings (staged, committed, store work buffers) holds the
 12-entry portfolio, which accounts for most of the RAM growth.
@@ -140,4 +146,5 @@ python3 tools/iconsgen.py --out firmware/generated/icons.cpp [--check]   # Simpl
 python3 tools/portrait.py local/private/<photo> --settings local/private/portrait.json --out local/portrait.png --compare local/previews/portrait
 python3 tools/assetpack.py build --portrait local/portrait.png --out local/build/assets.bin --uf2 local/build/assets.uf2
 python3 tools/render_previews.py --profile local/profile.json --pack local/build/assets.bin --out local/previews/screens
+scripts/build-badge.sh --preview local/badge.toml      # the same steps for a fill-in form, in one command
 ```

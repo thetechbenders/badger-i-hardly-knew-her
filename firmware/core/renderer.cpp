@@ -77,18 +77,18 @@ int col_wrapped(Framebuffer &fb, Column &c, const Font &f, const char *s, int ma
 
 // Title: one line of bold 12 px if it fits, else wrapped onto two lines of
 // the same font (keeps long job titles whole instead of shrinking them).
-void col_title(Framebuffer &fb, Column &c, const char *s, int gap_after) {
+void col_title(Framebuffer &fb, Column &c, const char *s, int gap_after, bool *cut = nullptr) {
   if (str_empty(s)) return;
   const Font &f = fonts::sans_bold_12;
   if (text_width(f, s) <= c.w) {
-    col_line(fb, c, kTitleChain, 1, s, gap_after);
+    col_line(fb, c, kTitleChain, 1, s, gap_after, Align::Left, Ink::Black, cut);
     return;
   }
   if (c.y + 2 * f.line_height > c.bottom) {
-    col_line(fb, c, kTitleChain, 2, s, gap_after);
+    col_line(fb, c, kTitleChain, 2, s, gap_after, Align::Left, Ink::Black, cut);
     return;
   }
-  col_wrapped(fb, c, f, s, 2, gap_after);
+  col_wrapped(fb, c, f, s, 2, gap_after, Ink::Black, cut);
 }
 
 void draw_portrait(Framebuffer &fb, const MonoBitmap &p, int x, int y) {
@@ -164,18 +164,23 @@ void draw_triangle(Framebuffer &fb, int cx, int y, int dir) {
   }
 }
 
-void draw_event_bar(Framebuffer &fb, int x, int w, const char *event) {
+// Returns whether the event name had to be ellipsized.
+bool draw_event_bar(Framebuffer &fb, int x, int w, const char *event) {
   // Black strip at the bottom of the text column with the event name in white.
   const int h = 16;
   fb.fill_rect({int16_t(x), int16_t(H - h), int16_t(w), int16_t(h)}, Ink::Black);
   const Font *chain[] = {&fonts::sans_bold_10};
   FitResult r = fit_text(chain, 1, event, w - 12);
   draw_fitted(fb, r, event, x + 6, H - h + 2, w - 12, Align::Left, Ink::White);
+  return r.ellipsized;
 }
 
 // ------------------------------------------------------------------ badge
 
-void render_badge(Framebuffer &fb, const View &v, const RenderContext &ctx) {
+void render_badge(Framebuffer &fb, const View &v, const RenderContext &ctx, ScreenFit *fit = nullptr) {
+  ScreenFit local;
+  ScreenFit &f = fit ? *fit : local;
+  bool cut = false;
   const Profile &p = ctx.settings->profile;
   const bool has_portrait = ctx.portrait.valid();
   const int pw = has_portrait ? ctx.portrait.width : 0;
@@ -193,17 +198,26 @@ void render_badge(Framebuffer &fb, const View &v, const RenderContext &ctx) {
     const int bar_x = has_portrait ? pw : 0;
     const int bottom = has_event ? H - 16 - 4 : H - 6;
     Column c{cx, cw, 10, bottom};
-    col_line(fb, c, kNameChain, 3, p.name, 2);
-    col_title(fb, c, p.title, 1);
-    col_line(fb, c, kBodyChain, 2, p.affiliation, 0);
+    col_line(fb, c, kNameChain, 3, p.name, 2, Align::Left, Ink::Black, &cut);
+    f.name = !cut;
+    cut = false;
+    col_title(fb, c, p.title, 1, &cut);
+    f.title = !cut;
+    cut = false;
+    col_line(fb, c, kBodyChain, 2, p.affiliation, 0, Align::Left, Ink::Black, &cut);
+    f.affiliation = !cut;
     if (!str_empty(p.interests) && c.y + 6 + fonts::sans_10.line_height <= bottom) {
       c.y += 4;
       fb.hline(cx, c.y, 24, Ink::Black);
       fb.hline(cx, c.y + 1, 24, Ink::Black);
       c.y += 6;
-      col_wrapped(fb, c, fonts::sans_10, p.interests, 3, 0);
+      cut = false;
+      col_wrapped(fb, c, fonts::sans_10, p.interests, 3, 0, Ink::Black, &cut);
+      f.interests = !cut;
+    } else if (!str_empty(p.interests)) {
+      f.interests = false;  // no room left below the title
     }
-    if (has_event) draw_event_bar(fb, bar_x, W - bar_x, p.event);
+    if (has_event) f.event = !draw_event_bar(fb, bar_x, W - bar_x, p.event);
   } else {
     // Candidate B: portrait right, event kicker on top, interests in a band.
     Column c{cx, cw, 7, H - 4};
@@ -212,20 +226,27 @@ void render_badge(Framebuffer &fb, const View &v, const RenderContext &ctx) {
       fb.fill_rect({int16_t(cx), int16_t(c.y + 3), 3, 7}, Ink::Black);
       const Font *ev[] = {&fonts::sans_bold_10};
       r = fit_text(ev, 1, p.event, cw - 7);
+      f.event = !r.ellipsized;
       draw_fitted(fb, r, p.event, cx + 7, c.y, cw - 7);
       c.y += fonts::sans_bold_10.line_height + 3;
     } else {
       c.y += 4;
     }
-    col_line(fb, c, kNameChain, 3, p.name, 1);
-    col_title(fb, c, p.title, 1);
-    col_line(fb, c, kBodyChain, 2, p.affiliation, 0);
+    col_line(fb, c, kNameChain, 3, p.name, 1, Align::Left, Ink::Black, &cut);
+    f.name = !cut;
+    cut = false;
+    col_title(fb, c, p.title, 1, &cut);
+    f.title = !cut;
+    cut = false;
+    col_line(fb, c, kBodyChain, 2, p.affiliation, 0, Align::Left, Ink::Black, &cut);
+    f.affiliation = !cut;
     if (!str_empty(p.interests)) {
       // Interests band: white text on black, anchored to the bottom edge.
       WrapLine lines[3];
       const int n = wrap_text(fonts::sans_10, p.interests, cw + 10 - 12, lines, 2);
       const int band_h = n * fonts::sans_10.line_height + 6;
       const int band_y = H - band_h;
+      f.interests = band_y >= c.y + 2 && n > 0 && !lines[n - 1].ellipsized;
       if (band_y >= c.y + 2) {
         fb.fill_rect({0, int16_t(band_y), int16_t(cx + cw), int16_t(band_h)}, Ink::Black);
         for (int i = 0; i < n; ++i)
@@ -293,7 +314,10 @@ void draw_qr_too_long(Framebuffer &fb, Rect r) {
   draw_fitted(fb, f3, l3, r.x + 4, y + 2 * b.line_height + 4, r.w - 8, Align::Center);
 }
 
-void render_card(Framebuffer &fb, const RenderContext &ctx) {
+void render_card(Framebuffer &fb, const RenderContext &ctx, ScreenFit *fit = nullptr) {
+  ScreenFit local;
+  ScreenFit &f = fit ? *fit : local;
+  bool cut = false;
   const Profile &p = ctx.settings->profile;
   const CardGeometry g = card_geometry_impl(ctx, false);
   if (g.qr_status == QrStatus::Ok) qr_draw(fb, g_qr, g.qr.x, g.qr.y);
@@ -305,14 +329,22 @@ void render_card(Framebuffer &fb, const RenderContext &ctx) {
   const int left_w = g.qr_status == QrStatus::Empty ? W - 16
                                                     : g.qr.x - (g.qr_status == QrStatus::Ok ? 2 : 8) - 8;
   Column c{8, left_w, 9, H - 2};
-  col_line(fb, c, kNameChainSmall, 2, p.name, 0);
-  col_line(fb, c, kBodyChain, 2, p.title, 2);
+  col_line(fb, c, kNameChainSmall, 2, p.name, 0, Align::Left, Ink::Black, &cut);
+  f.name = !cut;
+  cut = false;
+  col_line(fb, c, kBodyChain, 2, p.title, 2, Align::Left, Ink::Black, &cut);
+  f.title = !cut;
+  cut = false;
   if (!str_empty(p.affiliation) && !str_empty(p.title)) {
     // Title and affiliation share the line budget: affiliation only if room.
-    if (c.y + fonts::sans_10.line_height + 4 * 14 <= H) col_line(fb, c, kSmallChain, 1, p.affiliation, 2);
+    if (c.y + fonts::sans_10.line_height + 4 * 14 <= H)
+      col_line(fb, c, kSmallChain, 1, p.affiliation, 2, Align::Left, Ink::Black, &cut);
+    else
+      cut = true;
   } else {
-    col_line(fb, c, kBodyChain, 2, p.affiliation, 2);
+    col_line(fb, c, kBodyChain, 2, p.affiliation, 2, Align::Left, Ink::Black, &cut);
   }
+  f.affiliation = !cut;
   fb.hline(c.x, c.y + 1, 24, Ink::Black);
   fb.hline(c.x, c.y + 2, 24, Ink::Black);
   c.y += 6;
@@ -337,38 +369,53 @@ void render_card(Framebuffer &fb, const RenderContext &ctx) {
   const bool has_caption = !str_empty(p.qr_caption) && g.qr_status == QrStatus::Ok &&
                            c.y + lines * pitch <= H - 2 - caption_h;
   const int bottom = has_caption ? H - 2 - caption_h : H - 1;
-  for (const auto &cl : p.contacts) {
+  for (int i = 0; i < kMaxContacts; ++i) {
+    const ContactLine &cl = p.contacts[i];
     if (str_empty(cl.value)) continue;
-    if (c.y + pitch > bottom) break;
+    if (c.y + pitch > bottom) {  // out of room: this and every later line is dropped
+      f.contact_label[i] = f.contact_value[i] = false;
+      continue;
+    }
     if (const Icon *ic = contact_icon(cl)) {
       // 12 px icon centred on the value's cap height (caps span top+3..top+10).
       draw_icon(fb, *ic, c.x, c.y + 1);
     } else if (!str_empty(cl.label)) {
       const Font *lc[] = {&fonts::sans_bold_10};
       FitResult lr = fit_text(lc, 1, cl.label, label_w);
+      f.contact_label[i] = !lr.ellipsized;
       draw_fitted(fb, lr, cl.label, c.x, c.y + 1, label_w);
     }
     FitResult vr = fit_text(kBodyChain, 2, cl.value, value_w);
+    f.contact_value[i] = !vr.ellipsized;
     draw_fitted(fb, vr, cl.value, value_x, c.y + (vr.font == &fonts::sans_10 ? 1 : 0), value_w);
     c.y += pitch;
   }
+  if (!str_empty(p.qr_caption) && g.qr_status == QrStatus::Ok) f.caption_shown = has_caption;
   if (has_caption) {
     char buf[48];
     std::snprintf(buf, sizeof buf, "%s \xE2\x86\x92", p.qr_caption);  // caption + arrow
     FitResult r = fit_text(kSmallChain, 1, buf, c.w);
+    f.caption = !r.ellipsized;
     draw_fitted(fb, r, buf, c.x, H - fonts::sans_10.line_height - 1, c.w);
   }
 }
 
-void render_qr_full(Framebuffer &fb, const RenderContext &ctx) {
+void render_qr_full(Framebuffer &fb, const RenderContext &ctx, ScreenFit *fit = nullptr) {
+  ScreenFit local;
+  ScreenFit &f = fit ? *fit : local;
+  bool cut = false;
   const Profile &p = ctx.settings->profile;
   const CardGeometry g = card_geometry_impl(ctx, true);
   if (g.qr_status == QrStatus::Ok) qr_draw(fb, g_qr, g.qr.x, g.qr.y);
   else draw_qr_too_long(fb, g.qr);
   const int x = g.qr.right() + 6;
   Column c{x, W - x - 8, 10, H - 6};
-  col_line(fb, c, kNameChainSmall, 2, p.name, 4);
-  col_wrapped(fb, c, fonts::sans_11, str_empty(p.qr_caption) ? "Scan with your phone camera" : p.qr_caption, 3, 6);
+  col_line(fb, c, kNameChainSmall, 2, p.name, 4, Align::Left, Ink::Black, &cut);
+  f.name = !cut;
+  cut = false;
+  col_wrapped(fb, c, fonts::sans_11, str_empty(p.qr_caption) ? "Scan with your phone camera" : p.qr_caption, 3, 6,
+              Ink::Black, &cut);
+  if (!str_empty(p.qr_caption)) f.caption = !cut;
   // Show what the code opens so people can type it if scanning fails.
   const char *shown = p.qr_payload;
   if (std::strncmp(shown, "https://", 8) == 0) shown += 8;
@@ -497,6 +544,7 @@ void render_projects(Framebuffer &fb, const View &v, const RenderContext &ctx, P
     const Font *bc[] = {&fonts::sans_bold_14, &fonts::sans_bold_12, &fonts::sans_bold_10};
     FitResult r = fit_text(bc, 3, pr.banner, c.w - 12);
     const int bh = r.font->line_height + 8;
+    f.banner = !r.ellipsized && c.y + bh <= c.bottom;
     if (c.y + bh <= c.bottom) {
       fb.fill_rect({int16_t(c.x), int16_t(c.y + 2), int16_t(c.w), int16_t(bh)}, Ink::Black);
       draw_fitted(fb, r, pr.banner, c.x + 6, c.y + 6, c.w - 12, Align::Center, Ink::White);
@@ -554,7 +602,7 @@ CardGeometry project_qr_geometry_impl(const RenderContext &ctx, int n) {
   return qr_geometry_impl(project_url(ctx.settings->profile, n), true);
 }
 
-void render_project_qr(Framebuffer &fb, const View &v, const RenderContext &ctx) {
+void render_project_qr(Framebuffer &fb, const View &v, const RenderContext &ctx, ProjectFit *fit = nullptr) {
   const Profile &p = ctx.settings->profile;
   const int total = configured_project_count(p);
   const int n = v.project < total ? v.project : 0;
@@ -569,7 +617,10 @@ void render_project_qr(Framebuffer &fb, const View &v, const RenderContext &ctx)
   const int x = g.qr.right() + 6;
   Column c{x, W - x - 8, 3, H - 2};
   project_header(fb, c, n, total);
-  col_line(fb, c, kNameChainSmall, 2, p.projects[nth_configured_project(p, n)].title, 4);
+  bool cut = false;
+  col_line(fb, c, kNameChainSmall, 2, p.projects[nth_configured_project(p, n)].title, 4, Align::Left, Ink::Black,
+           &cut);
+  if (fit) fit->qr_title = !cut;
   col_wrapped(fb, c, fonts::sans_11, "Scan to open the repository", 2, 4);
   Column u = c;
   u.bottom = H - fonts::sans_10.line_height - 3;
@@ -607,6 +658,9 @@ IndexGeometry index_geometry_impl(const View &v, const RenderContext &ctx) {
   return g;
 }
 
+// Width available to a project title in an index row (after its number).
+int index_title_width(const IndexGeometry &g) { return g.list.right() - 4 - (g.list.x + 24); }
+
 // A list of project names: one per row, the highlighted one white on black,
 // "n/N" in the header, a scrollbar when it does not fit, hints at the bottom.
 void render_index(Framebuffer &fb, const View &v, const RenderContext &ctx) {
@@ -641,7 +695,7 @@ void render_index(Framebuffer &fb, const View &v, const RenderContext &ctx) {
     std::snprintf(num, sizeof num, "%d", n + 1);
     const int text_top = y + (kIndexRowH - rf.line_height) / 2;
     draw_text(fb, rf, g.list.x + 18 - text_width(rf, num), text_top, num, ink);
-    const int tx = g.list.x + 24, tw = g.list.right() - 4 - tx;
+    const int tx = g.list.x + 24, tw = index_title_width(g);
     FitResult r = fit_text(rc, 1, p.projects[idx].title, tw);
     draw_fitted(fb, r, p.projects[idx].title, tx, text_top, tw, Align::Left, ink);
   }
@@ -742,6 +796,36 @@ ProjectFit project_fit(Framebuffer &scratch, const RenderContext &ctx, int proje
   v.project = uint8_t(project);
   scratch.clear(Ink::White);
   render_projects(scratch, v, ctx, &fit);
+  const Profile &p = ctx.settings->profile;
+  if (project_url(p, project)) {
+    scratch.clear(Ink::White);
+    render_project_qr(scratch, v, ctx, &fit);
+  }
+  View iv;
+  iv.screen = Screen::Index;
+  iv.index_sel = uint8_t(project);
+  const Font *const rc[] = {&fonts::sans_11};
+  const int idx = nth_configured_project(p, project);
+  if (idx >= 0)
+    fit.index_title = !fit_text(rc, 1, p.projects[idx].title, index_title_width(index_geometry_impl(iv, ctx))).ellipsized;
+  return fit;
+}
+
+ScreenFit screen_fit(Framebuffer &scratch, const RenderContext &ctx, Screen screen, uint8_t layout) {
+  ScreenFit fit;
+  View v;
+  v.screen = screen;
+  v.layout = layout;
+  scratch.reset_clip();
+  scratch.clear(Ink::White);
+  switch (screen) {
+    case Screen::Badge: render_badge(scratch, v, ctx, &fit); break;
+    case Screen::Card: render_card(scratch, ctx, &fit); break;
+    case Screen::QrFull:
+      if (qr_configured(ctx.settings->profile)) render_qr_full(scratch, ctx, &fit);
+      break;
+    default: break;
+  }
   return fit;
 }
 

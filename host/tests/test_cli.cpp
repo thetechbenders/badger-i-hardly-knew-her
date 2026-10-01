@@ -78,7 +78,7 @@ TEST(cli_rejects_invalid_values) {
   CHECK(has_err(run(cli, h, std::string("set name ctl\x01x\n"))));
   CHECK(has_err(run(cli, h, "frobnicate\n")));
   CHECK_EQ(h.changes, 0);  // nothing staged by failed commands
-  CHECK(ends_ok(run(cli, h, "set qr.payload https://example.com/dan\n")));
+  CHECK(ends_ok(run(cli, h, "set qr.payload https://example.com/alex\n")));
 }
 
 TEST(cli_quotes_and_escapes) {

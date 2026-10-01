@@ -3,8 +3,8 @@
 ![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/thetechbenders/badger-i-hardly-knew-her?utm_source=oss&utm_medium=github&utm_campaign=thetechbenders%2Fbadger-i-hardly-knew-her&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
 
 **Badger? I hardly knew her! (BHIHKH!)**, occasionally BadgHer, is a photo badge,
-digital business card and project portfolio for **Formnext 2026**, written as native
-C/C++ firmware for the **original Pimoroni Badger 2040** (RP2040, 296 × 128
+digital business card and project portfolio for conferences, trade shows and
+meetups, written as native C/C++ firmware for the **original Pimoroni Badger 2040** (RP2040, 296 × 128
 monochrome e-paper, five front buttons, USB-C, battery connector). It uses the
 Raspberry Pi Pico SDK and Pimoroni's C++ UC8151 driver. No MicroPython, no
 Arduino.
@@ -13,9 +13,11 @@ Arduino.
 |---|---|
 | ![badge](docs/previews/x3/badge_layoutA.png) | ![card](docs/previews/x3/card_example_qr.png) |
 
-The previews above use the public sample content: a placeholder silhouette
-instead of a photo, and an `example.com` QR destination. The real portrait and
-contact details are kept out of Git (see [Private content](#private-content)).
+The previews above use the public sample content: a fictional person, a
+placeholder silhouette instead of a photo, fictional projects and
+`example.com` destinations. Your name, portrait, event label, contacts and
+portfolio are your own configuration ([Make it yours](#make-it-yours)), kept
+out of Git (see [Private content](#private-content)).
 
 ## Screens and controls
 
@@ -94,28 +96,54 @@ python3 tools/badgerctl.py cmd "set qr.payload https://example.com/you"
 python3 tools/badgerctl.py cmd commit
 ```
 
+## Make it yours
+
+Fill in a form, add your photo, build. No C++ or JSON editing:
+
+```bash
+scripts/build-badge.sh --new                       # 1. copy the template to local/badge.toml (private)
+#   2. fill in local/badge.toml: name, title, contacts, QR, projects (every field is explained there)
+#   3. put your photo next to it (local/photo.jpg) and set: [portrait] photo = "photo.jpg"
+scripts/build-badge.sh --preview local/badge.toml  # 4. check every screen: local/out/badge/previews/contact_sheet.png
+scripts/build-badge.sh local/badge.toml            # 5. firmware: local/out/badge/fw/badger_badge.uf2
+```
+
+The one command validates the form (errors name the field and the fix),
+converts the photo (the original is only read), checks that every field
+is drawn whole on every screen, decodes every QR code from the rendered
+screens, and only then cross-compiles and checks the firmware. On Windows,
+run it in WSL2 and open the form and previews through `\\wsl$\...`. See
+[docs/PERSONALIZE.md](docs/PERSONALIZE.md) for the details, Windows notes and
+moving an existing `local/profile.json` to a form (`badge_form.py export`).
+
 ## Private content
 
 Git ignores `local/`. Put these there:
 
+- `local/badge.toml`: your filled-in form, and your photo next to it.
+  Generated files (profile, portrait, previews, firmware) go to
+  `local/out/<form name>/`.
 - `local/private/`: original photos. Never modified by the tools.
 - `local/portrait.png`: the processed 1-bit portrait
   (`tools/portrait.py`, see [docs/DESIGN.md](docs/DESIGN.md)).
-- `local/profile.json`: your real profile. Copy
-  `config/sample-profile.json` as a starting point.
-- `local/backups/`: `scripts/private-backup.sh create` writes a private
-  archive here. It holds the inputs, the personalised firmware built from a
+- `local/profile.json`: a profile written as JSON (the previous workflow,
+  still supported). Copy `config/sample-profile.json` as a starting point.
+- `local/backups/`: `scripts/private-backup.sh create [local/badge.toml]`
+  writes a private archive here. It holds the inputs, the personalised firmware built from a
   clean commit, a `git bundle` of the source, checksums and RESTORE.md.
   `scripts/private-backup.sh verify <archive>` restores it into a temporary
   directory, rebuilds, and confirms the firmware is byte-identical.
 
-If these files exist, a local build embeds them automatically; CI always
-builds the public sample. The portrait can also be shipped separately as
+If `local/profile.json` and `local/portrait.png` exist, a plain
+`scripts/build-firmware.sh` embeds them automatically; a form is built with
+`scripts/build-badge.sh`. CI always builds the public sample and the
+generic form template. The portrait can also be shipped separately as
 `badger_badge-assets.uf2`, so a public firmware image never needs to contain
 the photo.
 
 ## Documentation
 
+- [docs/PERSONALIZE.md](docs/PERSONALIZE.md): the fill-in form, one-command build, previews, Windows/WSL
 - [docs/BUILD.md](docs/BUILD.md): Linux and Windows/WSL builds, pinned versions, CI
 - [docs/INSTALL.md](docs/INSTALL.md): backup, flashing, BadgerOS impact, configuration, battery, recovery
 - [docs/USB_CLI.md](docs/USB_CLI.md): serial commands and every configurable key
@@ -126,6 +154,7 @@ the photo.
 - [docs/BATTERY.md](docs/BATTERY.md): battery circuit, thresholds, sampling, multimeter validation
 - [docs/REFRESH.md](docs/REFRESH.md): why a full refresh flashes, refresh timing and `diag refresh`
 - [docs/HARDWARE_SMOKE_TEST.md](docs/HARDWARE_SMOKE_TEST.md): checks to run on a physical badge
-- [docs/USB_HARDWARE_CHECKLIST.md](docs/USB_HARDWARE_CHECKLIST.md): USB-only checklist (no battery / sensor), with pending items
+- [docs/USB_HARDWARE_CHECKLIST.md](docs/USB_HARDWARE_CHECKLIST.md): blank USB-only checklist (no battery / sensor) for any badge
+- [docs/test-records/](docs/test-records/README.md): dated hardware test results, each with its firmware commit, provenance and limits
 - [docs/REVIEW.md](docs/REVIEW.md): code-review findings, fixes and remaining limitations
 - [docs/LICENSES.md](docs/LICENSES.md): dependency, font and asset licence inventory

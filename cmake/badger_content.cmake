@@ -3,6 +3,9 @@
 #
 # Content selection (first match wins):
 #   -DBADGER_PROFILE=<json>      else local/profile.json if present, else config/sample-profile.json
+#                                A .toml form supplies the profile only (its [portrait] needs
+#                                converting first): -DBADGER_PORTRAIT is then required, and
+#                                configuring fails without it. scripts/build-badge.sh does both.
 #   -DBADGER_PORTRAIT=<png>      else local/portrait.png if present, else assets/sample/portrait_placeholder.png
 #   -DBADGER_PORTRAIT=none       build without a compiled-in portrait
 get_filename_component(_BADGER_ROOT ${CMAKE_CURRENT_LIST_DIR}/.. ABSOLUTE)
@@ -39,7 +42,9 @@ function(badger_generate_content OUT_DIR)
       set(BADGER_PROFILE ${_BADGER_ROOT}/config/sample-profile.json)
     endif()
   endif()
+  set(_portrait_defaulted FALSE)
   if(NOT BADGER_PORTRAIT)
+    set(_portrait_defaulted TRUE)
     if(EXISTS ${_BADGER_ROOT}/local/portrait.png)
       set(BADGER_PORTRAIT ${_BADGER_ROOT}/local/portrait.png)
     else()
@@ -51,11 +56,33 @@ function(badger_generate_content OUT_DIR)
   set(BADGER_PROFILE ${BADGER_PROFILE} PARENT_SCOPE)
   set(BADGER_PORTRAIT ${BADGER_PORTRAIT} PARENT_SCOPE)
 
+  # A fill-in form reads other files (vCard, portrait settings): regenerate
+  # the profile when any of them changes, and re-configure when the form does.
+  set(_profile_deps ${BADGER_PROFILE})
+  if(BADGER_PROFILE MATCHES "\\.toml$")
+    if(_portrait_defaulted)
+      message(FATAL_ERROR "BADGER_PROFILE is a form (${BADGER_PROFILE}). CMake reads only its profile; "
+                          "the form's [portrait] must be converted first, so a default portrait "
+                          "(${BADGER_PORTRAIT}) is not used. Build with scripts/build-badge.sh <form>, "
+                          "or pass -DBADGER_PORTRAIT=<1-bit png> explicitly.")
+    endif()
+    execute_process(COMMAND ${Python3_EXECUTABLE} ${_BADGER_ROOT}/tools/badge_form.py inputs ${BADGER_PROFILE}
+                    OUTPUT_VARIABLE _form_inputs ERROR_VARIABLE _form_err RESULT_VARIABLE _form_rc
+                    OUTPUT_STRIP_TRAILING_WHITESPACE)
+    if(NOT _form_rc EQUAL 0)
+      message(FATAL_ERROR "form ${BADGER_PROFILE} does not validate:${_form_err}")
+    endif()
+    string(REPLACE "\n" ";" _form_inputs "${_form_inputs}")
+    list(APPEND _profile_deps ${_form_inputs})
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${BADGER_PROFILE})
+  endif()
+
   file(MAKE_DIRECTORY ${OUT_DIR})
   add_custom_command(
     OUTPUT ${OUT_DIR}/profile_defaults.cpp
     COMMAND ${Python3_EXECUTABLE} ${_BADGER_ROOT}/tools/profilegen.py ${BADGER_PROFILE} --out ${OUT_DIR}/profile_defaults.cpp
-    DEPENDS ${BADGER_PROFILE} ${_BADGER_ROOT}/tools/profilegen.py ${_BADGER_ROOT}/tools/badge_profile.py
+    DEPENDS ${_profile_deps} ${_BADGER_ROOT}/tools/profilegen.py ${_BADGER_ROOT}/tools/badge_profile.py
+            ${_BADGER_ROOT}/tools/badge_form.py
     COMMENT "Generating profile defaults from ${BADGER_PROFILE}")
   set(_portrait_args)
   set(_portrait_deps)

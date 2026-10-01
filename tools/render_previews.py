@@ -9,7 +9,7 @@ sheet, and a QR decode report.
 
 --example-projects N pads the portfolio to N entries with labelled
 placeholders ("Example project k") inserted before the last entry, so the
-configured order is kept and the last entry (BHIHKH!) stays last. It shows
+configured order is kept and the last entry stays last. It shows
 the project index at its maximum size; the placeholders are never content.
 
 --diagnostic-max renders a HOST DIAGNOSTIC SAMPLE: every text field filled
@@ -53,34 +53,100 @@ def render(preview: Path, out: Path, pairs, pack: Path | None, screens: str, ext
     cmd = [str(preview), "--out", str(out), "--screens", screens]
     if pack:
         cmd += ["--pack", str(pack)]
-    for k, v in pairs:
-        cmd += ["--set", f"{k}={v.replace(chr(10), chr(92) + 'n')}"]
+    cmd += _set_args(pairs)
     cmd += list(extra)
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode:
         raise SystemExit(f"badger_preview failed: {res.stderr}")
     if res.stderr:
         print(res.stderr.strip(), file=sys.stderr)
-    return [Path(line) for line in res.stdout.split()]
+    return [Path(line) for line in res.stdout.splitlines() if line]  # one path per line; spaces allowed
 
 
-def fit_report(preview: Path, pairs) -> list[dict]:
-    """Per configured project: was each text part drawn without ellipsis?"""
-    cmd = [str(preview), "--fit"]
+def _set_args(pairs) -> list[str]:
+    out = []
     for k, v in pairs:
-        cmd += ["--set", f"{k}={v.replace(chr(10), chr(92) + 'n')}"]
+        out += ["--set", f"{k}={v.replace(chr(10), chr(92) + 'n')}"]
+    return out
+
+
+PROJECT_FIT_KEYS = ("title", "tagline", "status", "body", "link", "banner", "qr_title", "index_title")
+SCREEN_FIT_KEYS = ("name", "title", "affiliation", "interests", "event", "caption", "caption_shown")
+
+
+def fit_reports(preview: Path, pairs, pack: Path | None = None) -> tuple[dict, list[dict]]:
+    """badger_preview --fit: (per identity screen, per configured project) whether
+    each configured text was drawn completely (1) or ellipsized/dropped (0)."""
+    cmd = [str(preview), "--fit"] + (["--pack", str(pack)] if pack else []) + _set_args(pairs)
     res = subprocess.run(cmd, capture_output=True, text=True)
     if res.returncode:
         raise SystemExit(f"badger_preview --fit failed: {res.stderr}")
-    out = []
-    keys = ("title", "tagline", "status", "body", "link", "body_px")
-    pat = re.compile(r"project (\d+) " + " ".join(fr"{k}=(\d+)" for k in keys) + r" (.*)")
+    screens, projects = {}, []
+    keys = PROJECT_FIT_KEYS + ("body_px",)
+    ppat = re.compile(r"project (\d+) " + " ".join(fr"{k}=(\d+)" for k in keys) + r" (.*)")
+    spat = re.compile(r"screen (\S+) " + " ".join(fr"{k}=([01])" for k in SCREEN_FIT_KEYS)
+                      + r" label=([01]+) value=([01]+)")
     for line in res.stdout.splitlines():
-        m = pat.fullmatch(line)
-        if not m:
+        if m := spat.fullmatch(line):
+            screens[m[1]] = {**{k: m[i + 2] == "1" for i, k in enumerate(SCREEN_FIT_KEYS)},
+                             "label": [c == "1" for c in m[len(SCREEN_FIT_KEYS) + 2]],
+                             "value": [c == "1" for c in m[len(SCREEN_FIT_KEYS) + 3]]}
+        elif m := ppat.fullmatch(line):
+            projects.append({"project": int(m[1]), **{k: int(m[i + 2]) for i, k in enumerate(keys)},
+                             "name": m[len(keys) + 2]})
+        else:
             raise SystemExit(f"unexpected --fit line: {line!r}")
-        out.append({"project": int(m[1]), **{k: int(m[i + 2]) for i, k in enumerate(keys)}, "name": m[8]})
+    return screens, projects
+
+
+def fit_report(preview: Path, pairs, pack: Path | None = None) -> list[dict]:
+    """Per configured project: was each text part drawn without ellipsis?"""
+    return fit_reports(preview, pairs, pack)[1]
+
+
+SCREEN_LABELS = {"badge_layoutA": "photo badge, layout A", "badge_layoutB": "photo badge, layout B",
+                 "card": "business card", "qr": "full-screen contact QR"}
+PROJECT_PLACES = {"title": "project page", "tagline": "project page", "status": "project page",
+                  "body": "project page", "link": "project page footer", "banner": "project page",
+                  "qr_title": "repository QR page", "index_title": "project index"}
+
+
+def fit_problems(screens: dict, projects: list[dict], pairs) -> list[tuple[str, str]]:
+    """Every configured field that was not drawn completely, as (settings key,
+    where it was cut). An empty list means everything supplied is visible."""
+    d = dict(pairs)
+    out = []
+    for name, f in screens.items():
+        if name == "qr" and not d.get("qr.payload"):
+            continue
+        where = SCREEN_LABELS.get(name, name)
+        for k in SCREEN_FIT_KEYS[:-1]:  # caption_shown: see fit_notes()
+            key = "qr.caption" if k == "caption" else k
+            if not f[k] and d.get(key):
+                out.append((key, where))
+        for i, (lab, val) in enumerate(zip(f["label"], f["value"]), 1):
+            if not val and d.get(f"contact{i}.value"):
+                out.append((f"contact{i}.value", where))
+            elif not lab and d.get(f"contact{i}.label"):
+                out.append((f"contact{i}.label", where))
+    slots = [i for i in range(1, prof.MAX_PROJECTS + 1) if d.get(f"project{i}.title")]
+    for f in projects:
+        slot = slots[f["project"] - 1]
+        for k in PROJECT_FIT_KEYS:
+            field = {"qr_title": "title", "index_title": "title"}.get(k, k)
+            if not f[k] and d.get(f"project{slot}.{field}"):
+                out.append((f"project{slot}.{field}", PROJECT_PLACES[k]))
     return out
+
+
+def fit_notes(screens: dict, pairs) -> list[str]:
+    """Documented, intentional omissions (not errors): the card's QR caption
+    gives way to contact lines and stays on the full-screen QR."""
+    d = dict(pairs)
+    if d.get("qr.caption") and d.get("qr.payload") and not screens.get("card", {}).get("caption_shown", True):
+        return ["the QR caption has no room on the business card next to the contact lines; "
+                "it is shown in full on the full-screen contact QR (hold B)"]
+    return []
 
 
 def diagnostic_max_pairs() -> list[tuple[str, str]]:
@@ -165,14 +231,26 @@ def main(argv=None) -> int:
     big = args.out / f"x{args.scale}"
     native.mkdir(parents=True, exist_ok=True)
     big.mkdir(parents=True, exist_ok=True)
-    fits = fit_report(args.preview, pairs)
-    cut = [f for f in fits if not all(f[k] for k in ("title", "tagline", "status", "body", "link"))]
-    for f in fits:
-        print(f"FIT project {f['project']}: {'complete' if f not in cut else 'CUT'} (body {f['body_px']} px) {f['name']}")
-    if cut and not args.diagnostic_max:
-        raise SystemExit(f"project text does not fit (ellipsized or dropped): {[f['name'] for f in cut]}")
+    screen_fits, fits = fit_reports(args.preview, pairs, args.pack)
+    problems = fit_problems(screen_fits, fits, pairs)
+    for name in screen_fits:
+        bad = [k for k, w in problems if w == SCREEN_LABELS[name]]
+        print(f"FIT {name}: {'complete' if not bad else 'CUT ' + ', '.join(bad)}")
+    slots = [i for i in range(1, prof.MAX_PROJECTS + 1) if dict(pairs).get(f"project{i}.title")]
+    for f, slot in zip(fits, slots):
+        bad = sorted({f"{k.split('.')[1]} ({w})" for k, w in problems if k.startswith(f"project{slot}.")})
+        print(f"FIT project {f['project']}: {'complete' if not bad else 'CUT ' + ', '.join(bad)}"
+              f" (body {f['body_px']} px) {f['name']}")
+    for note in fit_notes(screen_fits, pairs):
+        print(f"NOTE {note}")
+    if problems and not args.diagnostic_max:
+        raise SystemExit("text does not fit (ellipsized or dropped): "
+                         + "; ".join(f"{k} on the {w}" for k, w in problems))
+    unshown = prof.text_problems(pairs)
+    if unshown and not args.diagnostic_max:
+        raise SystemExit("text the badge cannot show as written: " + "; ".join(f"{k}: {why}" for k, why in unshown))
     pbms = render(args.preview, native, pairs, args.pack, args.screens, args.preview_arg)
-    report = {"payload": payload, "screens": {}, "fit": fits}
+    report = {"payload": payload, "screens": {}, "fit": fits, "screen_fit": screen_fits}
     pngs = []
     for pbm in pbms:
         im = Image.open(pbm).convert("1")

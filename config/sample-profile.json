@@ -1,72 +1,82 @@
 {
   "format": 1,
-  "_comment": "Public sample profile. Values in [brackets] are placeholders; copy to local/profile.json (git-ignored) for your real details.",
+  "_comment": "Public sample profile with fictional details (example.com destinations). Make your own with scripts/build-badge.sh --new (docs/PERSONALIZE.md), or copy this to local/profile.json (git-ignored).",
   "profile": {
-    "name": "Dan Brown",
-    "title": "Engineer + Maker",
+    "name": "Alex Example",
+    "title": "Mechanical Engineer",
     "affiliation": "",
     "interests": "3D printing · electronics · embedded systems",
-    "event": "Formnext 2026",
+    "event": "Example Expo 2026",
     "contacts": [
       {
         "label": "Email",
-        "value": "[email not configured]",
+        "value": "alex@example.com",
         "type": "email"
       },
       {
         "label": "Web",
-        "value": "[website not configured]",
+        "value": "example.com/alex",
         "type": "web"
+      },
+      {
+        "label": "GitHub",
+        "value": "alex-example",
+        "type": "github"
+      },
+      {
+        "label": "Discord",
+        "value": "alex.example",
+        "type": "discord"
       }
     ],
     "qr": {
       "payload": "",
-      "caption": "Scan for contact details"
+      "caption": "Scan for my website"
     },
     "projects": [
       {
-        "title": "Jump Jet",
-        "tagline": "Chamber heater for the Prusa CORE One family",
-        "body": "With Mauker: ESP32-S3 redesign of Philip Sørensen's Jetpack. PCBWay-sponsored.",
+        "title": "Quiet Duct",
+        "tagline": "Low-noise part cooling for desktop printers",
+        "body": "Printable duct for a 5015 blower. Measured 6 dB quieter at the same airflow.",
         "status": "Work in progress",
-        "link": "https://github.com/thetechbenders/JumpJet"
+        "link": "https://example.com/alex/quiet-duct"
       },
       {
-        "title": "DragonBreath",
-        "tagline": "Open firmware for the BTT Panda Breath heater",
-        "body": "My merged PRs: opt-in Bambu chamber regulation, chamber PID, PID duty telemetry.",
-        "status": "Fork of plastikman/DragonBreath",
-        "link": "https://github.com/danielbrownjr/DragonBreath"
+        "title": "Chamber Heater",
+        "tagline": "Open firmware for an enclosure heater",
+        "body": "Contributed chamber regulation, a PID loop and duty telemetry to an upstream project.",
+        "status": "Contributor to an upstream project",
+        "link": "https://example.com/alex/chamber-heater"
       },
       {
-        "title": "DragonSniff",
-        "tagline": "Read-only observability for Dragon devices",
-        "body": "Inspect Dragon HTTP APIs, follow event streams and export timestamped evidence. Never part of a control loop.",
-        "link": "https://github.com/thetechbenders/DragonSniff"
+        "title": "Bench Logger",
+        "tagline": "Read-only logging for lab instruments",
+        "body": "Polls instruments, follows event streams and exports timestamped CSV files. Never part of a control loop.",
+        "link": "https://example.com/alex/bench-logger"
       },
       {
-        "title": "DragonBench",
-        "tagline": "ESP32-S3 characterization instrument",
-        "body": "Deterministic module workloads while external equipment measures current, voltage, rails and resets. No actuators.",
-        "link": "https://github.com/thetechbenders/DragonBench"
+        "title": "Load Tester",
+        "tagline": "ESP32-S3 characterization rig",
+        "body": "Repeatable module workloads while external meters record current, voltage, rails and resets. No actuators.",
+        "link": "https://example.com/alex/load-tester"
       },
       {
-        "title": "dragon-core",
-        "tagline": "Shared ESP-IDF components",
-        "body": "My merged PRs: the dc_pid primitive, stale-data expiry, log redaction.",
-        "status": "Fork of justinh-rahb/dragon-core",
-        "link": "https://github.com/danielbrownjr/dragon-core"
+        "title": "Shared Components",
+        "tagline": "Reusable ESP-IDF components",
+        "body": "A PID primitive, stale-data expiry and log redaction, shared by the projects above.",
+        "status": "Library",
+        "link": "https://example.com/alex/components"
       },
       {
-        "title": "CatScan-MS",
+        "title": "Secret Project",
         "banner": "TOP SECRET - COMING SOON"
       },
       {
-        "title": "BHIHKH!",
-        "tagline": "Badger? I hardly knew her!",
-        "body": "BadgHer for short: native Pico SDK badge, card and portfolio for Badger 2040.",
-        "status": "In development · hardware checks pending",
-        "link": "https://github.com/thetechbenders/badger-i-hardly-knew-her"
+        "title": "Weather Station",
+        "tagline": "Solar e-paper weather display",
+        "body": "Runs for a year on one charge. Readings every ten minutes, shown on a 2.9 inch panel.",
+        "status": "Finished",
+        "link": "https://example.com/alex/weather-station"
       }
     ]
   },

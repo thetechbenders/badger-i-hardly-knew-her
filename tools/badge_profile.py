@@ -40,8 +40,38 @@ FIELD_LIMITS: dict[str, tuple] = {
 }
 
 
+# Characters the badge fonts can draw (tools/fontgen.py CODEPOINTS; a test
+# keeps the two equal). Anything else is drawn as "?", so the form rejects it.
+GLYPHS = frozenset(list(range(0x20, 0x7F)) + list(range(0xA0, 0x100)) +
+                   [0x2013, 0x2014, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2026, 0x20AC, 0x2192])
+
+# Fields the renderer wraps over several lines; a line break anywhere else
+# would hide the text after it.
+MULTILINE_FIELDS = ("interests", "tagline", "body")
+
+
 class ProfileError(ValueError):
     pass
+
+
+def is_multiline(key: str) -> bool:
+    return key.rsplit(".", 1)[-1] in MULTILINE_FIELDS
+
+
+def text_problems(pairs) -> list[tuple[str, str]]:
+    """Displayed text the badge cannot show as written: characters without a
+    glyph, and line breaks in single-line fields. Returns (key, reason)."""
+    out = []
+    for key, value in pairs:
+        if FIELD_LIMITS.get(key, ("",))[0] != "str" or key == "qr.payload" or key.endswith(".type"):
+            continue
+        missing = sorted({ch for ch in value if ch != "\n" and ord(ch) not in GLYPHS})
+        if missing:
+            shown = ", ".join(f"'{ch}' (U+{ord(ch):04X})" for ch in missing)
+            out.append((key, f"the badge font has no glyph for {shown}; it would be drawn as '?'"))
+        if "\n" in value and not is_multiline(key):
+            out.append((key, "line break in a single-line field: the text after it would not be shown"))
+    return out
 
 
 def _check_text(key: str, value: str, cap: int) -> str:
@@ -135,4 +165,10 @@ def flatten(doc: dict) -> list[tuple[str, str]]:
 
 
 def load(path: Path) -> list[tuple[str, str]]:
+    """Validated pairs from a profile JSON, or from a fill-in form (.toml,
+    tools/badge_form.py), which produces the same profile document."""
+    path = Path(path)
+    if path.suffix.lower() == ".toml":
+        import badge_form  # noqa: PLC0415 (needs tomllib; JSON users never import it)
+        return flatten(badge_form.load_doc(path))
     return flatten(json.loads(path.read_text(encoding="utf-8")))

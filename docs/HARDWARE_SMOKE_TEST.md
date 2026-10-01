@@ -65,8 +65,8 @@ Keep `status` handy: on the index it prints `index highlight n (drawn m)`.
 9. Pending C (tap C, then the other input within 0.35 s), with
    `set refresh.speed 0` so an extra refresh would be obvious:
    - C then hold B: **one** refresh, straight to the remembered project's
-     QR. Scan it: that project's link, not the contact vCard. On CatScan-MS
-     (no link): its teaser page.
+     QR. Scan it: that project's link, not the contact vCard. On a project
+     without a link (e.g. a teaser): its page instead.
    - C then A: **one** refresh, to the badge. No project page in between.
    - C then B short: the card; C then USR short: diagnostics.
    - C then DOWN short: the project after the remembered one, one refresh.
@@ -74,8 +74,8 @@ Keep `status` handy: on the index it prints `index highlight n (drawn m)`.
    - `diag refresh` lists one frame per case. `revert` afterwards.
 10. Double-press C, then let the badge power off on battery (or `sleep`).
     Wake with A. **Expect**: the badge; no delayed index or project action.
-11. CatScan-MS in the index opens its teaser page: "TOP SECRET - COMING
-    SOON", no QR hint, and long B there does nothing.
+11. A teaser (a project with a banner and no link) opened from the index
+    shows its banner page, no QR hint, and long B there does nothing.
 
 ## C. Busy-panel behaviour
 

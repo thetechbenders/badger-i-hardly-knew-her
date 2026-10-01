@@ -53,7 +53,7 @@ const FieldDesc kFields[] = {
     STR_FIELD("title", 0x002, profile.title, "role / subtitle"),
     STR_FIELD("affiliation", 0x003, profile.affiliation, "company or group; optional"),
     STR_FIELD("interests", 0x004, profile.interests, "interests line; optional"),
-    STR_FIELD("event", 0x005, profile.event, "event tag, e.g. Formnext 2026; optional"),
+    STR_FIELD("event", 0x005, profile.event, "event tag, e.g. Example Expo 2026; optional"),
     CONTACT(1), CONTACT(2), CONTACT(3), CONTACT(4), CONTACT(5), CONTACT(6),
     STR_FIELD("qr.payload", 0x010, profile.qr_payload, "QR content: https:// URL or BEGIN:VCARD...; empty = not configured"),
     STR_FIELD("qr.caption", 0x011, profile.qr_caption, "text next to the QR code"),

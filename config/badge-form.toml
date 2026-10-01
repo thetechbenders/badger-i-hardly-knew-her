@@ -1,0 +1,204 @@
+# =====================================================================
+#  BHIHKH! personal badge form
+# =====================================================================
+#
+#  Fill this in, add your photo, and build your own badge firmware:
+#
+#    1. Make your private copy (git ignores local/, so it stays private):
+#         scripts/build-badge.sh --new           -> creates local/badge.toml
+#    2. Edit local/badge.toml: replace the example values below.
+#    3. Put your photo next to it, e.g. local/photo.jpg, and set
+#       [portrait] photo = "photo.jpg".
+#    4. Check the result on screen, without flashing anything:
+#         scripts/build-badge.sh --preview local/badge.toml
+#       then open local/out/badge/previews/contact_sheet.png
+#    5. Build the firmware:
+#         scripts/build-badge.sh local/badge.toml
+#       -> local/out/badge/fw/badger_badge.uf2
+#
+#  How to write values
+#  -------------------
+#  * Lines starting with # are comments; they are ignored.
+#  * Text goes in "double quotes". Text with line breaks goes in
+#    triple quotes:  description = """First line
+#                    Second line"""
+#    Spaces and blank lines at the very start and end are removed.
+#  * Leave an optional field empty ("") or delete its line: it then
+#    disappears from the badge with no gap or label left behind.
+#  * Limits are in bytes: letters and digits count 1, accented
+#    letters such as é or ü count 2, symbols such as · or → count 2-3.
+#    The badge draws Latin letters (including accents such as é, ñ,
+#    ø), digits, punctuation and – — ‘ ’ “ ” • … € →. Other characters
+#    (other scripts, emoji) are refused, because they cannot be drawn.
+#  * Nothing is ever cut off silently. If a value is too long for its
+#    screen, the build stops and names the field to shorten.
+#  * Paths (photo, vCard file) are relative to this file. On Windows,
+#    use forward slashes, or single quotes for a Windows path:
+#    photo = 'C:\Users\you\Pictures\me.jpg'  (works in WSL as /mnt/c/...).
+
+form = 1                        # format version of this file; leave it at 1
+
+
+# ---------------------------------------------------------------------
+#  You: the photo badge and the top of the business card
+# ---------------------------------------------------------------------
+[person]
+name = "Alex Example"           # required, up to 47 bytes; shrinks to fit, never cut
+title = "Mechanical Engineer"   # required, up to 55 bytes; may wrap onto two lines
+affiliation = ""                # optional, up to 55 bytes (company, lab, school)
+event = "Example Expo 2026"     # optional, up to 31 bytes; the strip along the badge
+
+# Optional, up to 111 bytes in total. Either a list, shown joined with " · " ...
+interests = ["3D printing", "electronics", "embedded systems"]
+# ... or one piece of text:  interests = "Printing things, mostly"
+
+
+# ---------------------------------------------------------------------
+#  Contact lines on the business card (B button), top to bottom
+# ---------------------------------------------------------------------
+#  Up to 6 [[contacts]] blocks; each one is a line on the card.
+#   type  = required, one of:
+#           "email"   name@example.com
+#           "phone"   +1 555 0100   (digits, spaces, + ( ) - . /)
+#           "web"     example.com/you
+#           "github"  your GitHub user name only, e.g. "octocat";
+#                     the card shows the GitHub icon instead of a label
+#           "discord" your Discord user name only; shown with its icon
+#           "text"    anything else (a handle, a booth number ...)
+#   label = up to 15 bytes, shown in bold before the value. Optional;
+#           github and discord lines show their icon instead.
+#   value = required, up to 71 bytes
+#   hidden = optional, true keeps the line's slot with an empty value; it
+#           is never drawn (e.g. a label to fill in over USB later)
+#  Delete a whole block to remove a line. Blocks with every field empty
+#  are left out.
+
+[[contacts]]
+type = "email"
+label = "Email"
+value = "alex@example.com"
+
+[[contacts]]
+type = "web"
+label = "Web"
+value = "example.com/alex"
+
+[[contacts]]
+type = "github"
+label = ""
+value = "alex-example"
+
+
+# ---------------------------------------------------------------------
+#  QR code on the business card (long press B shows it full screen)
+# ---------------------------------------------------------------------
+#   show = "none"                no QR code at all (nothing is drawn)
+#          "link"                a web address: set link below
+#          "vcard"               a contact card: set vcard or vcard_file
+#          "vcard-from-contacts" a contact card made from your name, title,
+#                                affiliation and contact lines above
+#   link       = https:// address, up to 383 bytes (shorter scans easier)
+#   vcard      = the vCard text in triple quotes, BEGIN:VCARD ... END:VCARD
+#   vcard_file = or a .vcf file next to this form, e.g. "me.vcf"
+#   caption    = optional, up to 39 bytes, e.g. "Scan to save my contact".
+#                Shown on the full-screen QR; on the card only if there is
+#                room below the contact lines.
+#  Every build scans the drawn code and stops if it does not read back
+#  exactly. A placeholder code is never drawn.
+[qr]
+show = "link"
+link = "https://example.com/alex"
+caption = "Scan for my website"
+# Example vCard (show = "vcard"):
+# vcard = """
+# BEGIN:VCARD
+# VERSION:3.0
+# N:Example;Alex;;;
+# FN:Alex Example
+# EMAIL:alex@example.com
+# END:VCARD
+# """
+
+
+# ---------------------------------------------------------------------
+#  Portrait (left of the name on the photo badge)
+# ---------------------------------------------------------------------
+#  Set exactly one of:
+#   photo     = an ordinary picture (JPEG or PNG). It is converted for the
+#               black-and-white screen; the original file is only read,
+#               never changed. Head and shoulders, light background, at
+#               least 104 x 128 pixels after cropping (more is better).
+#   processed = a ready black-and-white portrait (PNG, 104 x 128, only
+#               pure black and white pixels), used as is.
+#
+#  Optional settings for photo (start without them, then adjust while
+#  looking at local/out/badge/portrait-methods_x3.png and the previews):
+#   crop      = [x, y, width, height] in photo pixels. Default: the
+#               largest centred area. Keep width:height at 104:128
+#               (13:16), e.g. [120, 40, 800, 985]; the face is never
+#               stretched.
+#   method    = "atkinson" (default; clean highlights), "floyd" (more
+#               tone, more speckle), "bayer8" (cross-hatch), "threshold"
+#   gamma     = 1.0 default; below 1 lightens mid-tones, above 1 darkens
+#   black_pct = 1.0 default; percent of the darkest pixels made black
+#   white_pct = 2.0 default; percent of the brightest pixels made white
+#   sharpen   = 0.6 default; 0 = off, up to 3
+#   settings  = or a tools/portrait.py settings JSON file with these keys
+[portrait]
+# photo = "photo.jpg"
+processed = "../assets/sample/portrait_placeholder.png"  # sample silhouette: replace it
+
+
+# ---------------------------------------------------------------------
+#  Project portfolio (C button), in this order
+# ---------------------------------------------------------------------
+#  Up to 12 [[projects]] blocks. Each is one page; the order here is the
+#  order on the badge and in the project index (double press C).
+#   title       = required, up to 39 bytes
+#   tagline     = optional, up to 63 bytes, bold, up to two lines
+#   description = optional, up to 199 bytes, wraps over several lines;
+#                 line breaks are kept
+#   status      = optional, up to 47 bytes, in a small outlined tag, e.g.
+#                 "Work in progress" (no version numbers: they go stale)
+#   banner      = optional, up to 39 bytes, white on black, for teasers
+#   link        = optional https:// address, up to 71 bytes. It is shown
+#                 short (owner/repo for GitHub) and offered as a QR code (hold B). Without
+#                 a link the page has no QR code and no footer.
+#  With no [[projects]] blocks at all, the portfolio is simply empty.
+
+[[projects]]
+title = "Example Printer Mod"
+tagline = "A quieter fan duct for desktop printers"
+description = """
+Printable duct with a 5015 blower.
+Measured 6 dB quieter at the same cooling."""
+status = "Work in progress"
+link = "https://example.com/alex/printer-mod"
+
+[[projects]]
+title = "Secret Project"
+banner = "TOP SECRET - COMING SOON"
+# No link, tagline or description: a teaser page with no QR code.
+
+[[projects]]
+title = "Weather Station"
+tagline = "Solar e-paper weather display"
+description = """
+Runs a year on one charge. In triple quotes, a backslash at the end \
+of a line joins it to the next one, for long single paragraphs."""
+status = ""                     # empty: no status tag on this page
+link = ""                       # empty: no QR code, no footer
+
+
+# ---------------------------------------------------------------------
+#  Preferences (optional; delete the section to keep the defaults)
+# ---------------------------------------------------------------------
+#  The same settings as the USB command line (docs/USB_CLI.md), e.g.:
+#   layout          = 0 portrait left (default), 1 portrait right
+#   refresh.speed   = 0 cleanest/slowest .. 3 fastest
+#   sleep.timeout_s = seconds on battery before powering off (0 = never,
+#                     otherwise 15..3600; default 120)
+[preferences]
+layout = 0
+refresh.speed = 1
+sleep.timeout_s = 120
