@@ -46,6 +46,9 @@ if(GIT_FOUND)
   execute_process(COMMAND ${GIT_EXECUTABLE} log -1 --format=%cI
                   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} OUTPUT_VARIABLE BADGER_BUILD_DATE
                   OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+  # Git versions disagree on how %cI writes UTC ("+00:00" or "Z"); one
+  # spelling keeps the image byte-identical across build machines.
+  string(REGEX REPLACE "[+-]00:00$" "Z" BADGER_BUILD_DATE "${BADGER_BUILD_DATE}")
 endif()
 file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/deps.lock _tag REGEX "^PIMORONI_PICO_TAG=")
 string(REPLACE "PIMORONI_PICO_TAG=" "" PIMORONI_PICO_VERSION "${_tag}")
