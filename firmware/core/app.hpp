@@ -8,7 +8,14 @@
 //                                                project page: that project's QR
 //                                                (only if it has a URL); again: back
 //   C short   portfolio at the last-viewed project (this session); acts once
-//             the double-press window (kDoublePressMs) has passed
+//             the double-press window (kDoublePressMs) has passed. Another
+//             button pressed in that window decides what happens to it:
+//               applies first (one frame): B long -> that project's QR (or
+//                 its page if it has no link), UP/DOWN short -> step from it,
+//                 A long -> clean refresh of it, UP long / USR long -> still
+//                 toggles gesture mode / layout
+//               dropped (never drawn): A short, B short, USR short, DOWN
+//                 long (power off), any swipe, any USB screen/content change
 //   C double  project index, highlighting the current / last-viewed project
 //   C long    project 1 (from anywhere, including a project QR)
 //   UP/DOWN   previous/next project on the portfolio; from a QR screen,
@@ -20,6 +27,9 @@
 //
 // Project index (modal list of project names; session-only state)
 //   UP/DOWN   move the highlight (wraps); holding repeats (stops at the ends)
+//   DOWN held kHoldPowerOffMs (3 s): power off (1 s is taken by scrolling);
+//             the highlight is not confirmed. Holds begun before the index
+//             opened are ignored.
 //   C short   open the highlighted project at once (it becomes the
 //             remembered project)
 //   C long    project 1               A short   cancel: back to the previous
@@ -120,6 +130,7 @@ class App {
   int index_selection() const { return index_sel_; }
   bool index_redraw_pending() const { return index_dirty_; }
   bool click_pending() const { return click_.pending(); }
+  bool click_frozen() const { return c_frozen_; }
   bool sleeping() const { return sleep_pending_; }
   bool gesture_mode() const { return gesture_on_ && !sleep_pending_; }
   // View to show right before power-off (badge or the current one).
@@ -130,6 +141,9 @@ class App {
   uint32_t go(Screen s);
   uint32_t on_click(Click c);
   uint32_t on_index_button(const ButtonEvent &e);
+  uint32_t poll_click(uint32_t now_ms);
+  static bool pending_c_applies_first(const ButtonEvent &e);
+  uint32_t power_off();
   uint32_t open_project(int n);
   uint32_t open_index(int sel);
   uint32_t publish_index();
@@ -144,6 +158,11 @@ class App {
   bool gesture_on_ = false;
   uint32_t last_activity_ms_ = 0;
   ClickRecognizer click_;
+  // A pending single C is frozen while another button decides its fate.
+  static constexpr uint32_t kPendingCSlackMs = 250;
+  bool c_frozen_ = false;
+  uint32_t c_frozen_until_ = 0;
+  bool nav_fresh_[2] = {false, false};  // UP, DOWN: hold began in the index
   // Index (session-only, never saved): live highlight, screen to return to
   // on cancel, and the quiet-browsing redraw timer.
   uint8_t index_sel_ = 0;

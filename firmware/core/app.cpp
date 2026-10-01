@@ -41,6 +41,8 @@ void App::boot(const AppConfig &cfg, int wake_button, uint32_t now_ms) {
   gesture_on_ = cfg.gesture_default_on && !cfg.safe_mode;
   last_activity_ms_ = now_ms;
   click_.reset();
+  c_frozen_ = false;
+  nav_fresh_[0] = nav_fresh_[1] = false;
   index_sel_ = 0;
   index_return_ = Screen::Badge;
   index_dirty_ = false;
@@ -88,6 +90,7 @@ uint32_t App::open_index(int sel) {
   if (view_.screen != Screen::Index) index_return_ = view_.screen;
   index_sel_ = uint8_t(n > 0 && sel >= 0 && sel < n ? sel : 0);
   index_dirty_ = false;
+  nav_fresh_[0] = nav_fresh_[1] = false;  // UP/DOWN holds from before do not scroll it
   view_.index_sel = index_sel_;
   view_.index_top = uint8_t(index_viewport_top(view_.index_top, index_sel_, n));
   view_.screen = Screen::Index;
@@ -129,16 +132,31 @@ uint32_t App::on_click(Click c) {
   }
 }
 
+uint32_t App::power_off() {
+  sleep_pending_ = true;
+  click_.cancel();
+  c_frozen_ = false;
+  index_dirty_ = false;  // nothing queued may be drawn after this
+  return kActSleep | (gesture_on_ ? kActGestureMode : kActNone);
+}
+
 uint32_t App::on_index_button(const ButtonEvent &e) {
   switch (e.button) {
     case Button::Up:
     case Button::Down: {
-      // Any UP/DOWN activity (press, repeat, release) postpones the redraw.
+      bool &fresh = nav_fresh_[e.button == Button::Up ? 0 : 1];
+      if (e.gesture == Gesture::Press) fresh = true;
+      if (!fresh) return kActNone;  // a hold that began before the index opened
+      if (e.gesture == Gesture::Short) fresh = false;
+      // DOWN held for kHoldPowerOffMs: the usual power-off sequence. The
+      // highlight is not confirmed and nothing queued is drawn.
+      if (e.gesture == Gesture::Hold) return power_off();
+      // Any other UP/DOWN activity (press, repeat, release) postpones the redraw.
       index_quiet_until_ = e.t_ms + kIndexSettleMs;
       const int d = e.button == Button::Up ? -1 : 1;
       if (e.gesture == Gesture::Repeat) index_step(d, false);  // blind hold: stop at the ends
       else if (e.gesture == Gesture::Short && e.count == 0) index_step(d, true);  // a tap
-      // Long: no gesture toggle / power-off while browsing.
+      // Long (1 s): taken by scrolling here, so no gesture toggle / power-off.
       return kActNone;
     }
     case Button::A:
@@ -149,14 +167,50 @@ uint32_t App::on_index_button(const ButtonEvent &e) {
   }
 }
 
+// What a pending single C does when another button's gesture resolves before
+// the double-press window has passed (see app.hpp).
+bool App::pending_c_applies_first(const ButtonEvent &e) {
+  if (e.gesture == Gesture::Long) return !(e.button == Button::Down);  // DOWN long: power off
+  if (e.gesture == Gesture::Short) return e.button == Button::Up || e.button == Button::Down;
+  return false;
+}
+
+uint32_t App::poll_click(uint32_t now_ms) {
+  if (c_frozen_ && !click_.pending()) c_frozen_ = false;
+  if (c_frozen_) {
+    // Another button is down: the C waits for its outcome. If that never
+    // arrives (lost events), drop the C rather than fire it late.
+    if (int32_t(now_ms - c_frozen_until_) >= 0) {
+      c_frozen_ = false;
+      click_.cancel();
+    }
+    return kActNone;
+  }
+  return on_click(click_.poll(now_ms));
+}
+
 uint32_t App::on_button(const ButtonEvent &e) {
   last_activity_ms_ = e.t_ms;
   if (sleep_pending_) return kActNone;  // committed to powering off
-  uint32_t a = on_click(click_.poll(e.t_ms));  // an expired single C acts first
-  if (e.button == Button::C) return a | on_click(click_.on_event(e.gesture, e.t_ms, view_.screen == Screen::Index));
-  // Another button while a single C waits for its window: the C happened
-  // first, so it acts now, then this button on the screen it opened.
-  a |= on_click(click_.flush());
+  uint32_t a = poll_click(e.t_ms);  // an expired single C acts first
+  if (e.button == Button::C) {
+    // C itself decides: a second press inside the window is a double, a
+    // later one starts a new interaction (the frozen single is dropped).
+    c_frozen_ = false;
+    return a | on_click(click_.on_event(e.gesture, e.t_ms, view_.screen == Screen::Index));
+  }
+  // Another button while a single C waits for its window: freeze the window
+  // on its press, then let its gesture decide (pending_c_applies_first).
+  if (click_.pending()) {
+    if (e.gesture == Gesture::Press && !c_frozen_) {
+      c_frozen_ = true;
+      c_frozen_until_ = e.t_ms + kLongPressMs + kPendingCSlackMs;
+    } else if (e.gesture == Gesture::Short || e.gesture == Gesture::Long) {
+      c_frozen_ = false;
+      if (pending_c_applies_first(e)) a |= on_click(click_.flush());
+      else click_.cancel();  // superseded: the C is never drawn
+    }
+  }
   if (view_.screen == Screen::Recovery) {
     // Safe mode stays up until fixed over USB and rebooted; only allow
     // viewing diagnostics.
@@ -164,7 +218,7 @@ uint32_t App::on_button(const ButtonEvent &e) {
     return a;
   }
   if (view_.screen == Screen::Index) return a | on_index_button(e);
-  if (e.gesture == Gesture::Press || e.gesture == Gesture::Repeat) return a;
+  if (e.gesture == Gesture::Press || e.gesture == Gesture::Repeat || e.gesture == Gesture::Hold) return a;
   if (e.gesture == Gesture::Short) {
     switch (e.button) {
       case Button::A: return a | go(Screen::Badge);
@@ -189,9 +243,7 @@ uint32_t App::on_button(const ButtonEvent &e) {
     case Button::Up:
       return a | set_gesture_mode(!gesture_on_);
     case Button::Down:
-      sleep_pending_ = true;
-      click_.cancel();
-      return a | kActSleep | (gesture_on_ ? kActGestureMode : kActNone);
+      return a | power_off();
     case Button::User:
       layout_toggled_ = !layout_toggled_;
       view_.layout = uint8_t(cfg_.layout ^ (layout_toggled_ ? 1 : 0));
@@ -205,7 +257,7 @@ uint32_t App::on_poll(uint32_t now_ms) {
     click_.cancel();
     return kActNone;
   }
-  uint32_t a = on_click(click_.poll(now_ms));
+  uint32_t a = poll_click(now_ms);
   if (view_.screen == Screen::Index && index_dirty_ && int32_t(now_ms - index_quiet_until_) >= 0) a |= publish_index();
   return a;
 }
@@ -213,6 +265,7 @@ uint32_t App::on_poll(uint32_t now_ms) {
 uint32_t App::on_screen_request(Screen s, int project) {
   if (s == Screen::Recovery && !cfg_.safe_mode) return kActNone;
   click_.cancel();  // a USB request changes the context: no late C action
+  c_frozen_ = false;
   if (s == Screen::Index) {
     if (view_.screen != Screen::Index) return open_index(project >= 0 ? project : view_.project);
     if (project >= 0 && project < cfg_.project_count) {
@@ -263,8 +316,9 @@ uint32_t App::on_swipe(Swipe s, uint32_t now_ms) {
   if (!gesture_on_ || sleep_pending_ || cfg_.safe_mode || view_.screen == Screen::Recovery) return kActNone;
   last_activity_ms_ = now_ms;
   if (view_.screen == Screen::Index) return kActNone;  // the index is modal: a stray wave never leaves it
-  // A single C still waiting for its window happened first.
-  const uint32_t pre = on_click(click_.flush());
+  // A swipe picks a screen of its own: a pending single C is dropped.
+  click_.cancel();
+  c_frozen_ = false;
   // Cycle of main screens; a QR screen counts as the page it belongs to.
   Screen cycle[3] = {Screen::Badge, Screen::Card, Screen::Projects};
   const int n = cfg_.project_count > 0 ? 3 : 2;
@@ -274,13 +328,13 @@ uint32_t App::on_swipe(Swipe s, uint32_t now_ms) {
   for (int i = 0; i < n; ++i)
     if (cycle[i] == cur) idx = i;
   switch (s) {
-    case Swipe::Right: return pre | go(cycle[idx < 0 ? 0 : (idx + 1) % n]);
-    case Swipe::Left: return pre | go(cycle[idx < 0 ? 0 : (idx + n - 1) % n]);
+    case Swipe::Right: return go(cycle[idx < 0 ? 0 : (idx + 1) % n]);
+    case Swipe::Left: return go(cycle[idx < 0 ? 0 : (idx + n - 1) % n]);
     case Swipe::Up:
-      if (view_.screen == Screen::Card && cfg_.qr_configured) return pre | go(Screen::QrFull);
-      return pre | go(Screen::Card);
-    case Swipe::Down: return pre | go(Screen::Badge);
-    default: return pre;
+      if (view_.screen == Screen::Card && cfg_.qr_configured) return go(Screen::QrFull);
+      return go(Screen::Card);
+    case Swipe::Down: return go(Screen::Badge);
+    default: return kActNone;
   }
 }
 
@@ -288,6 +342,7 @@ uint32_t App::on_config_changed(const AppConfig &cfg) {
   const bool leaving_safe = cfg_.safe_mode && !cfg.safe_mode;
   cfg_ = cfg;
   click_.cancel();
+  c_frozen_ = false;
   view_.layout = uint8_t(cfg.layout ^ (layout_toggled_ ? 1 : 0));
   if (view_.project >= cfg.project_count) view_.project = 0;
   if (view_.screen == Screen::Projects && cfg.project_count == 0) view_.screen = Screen::Badge;
@@ -321,6 +376,8 @@ uint32_t App::on_tick_power(uint32_t now_ms, bool on_battery, bool display_settl
   if (now_ms - last_activity_ms_ >= uint32_t(cfg_.sleep_timeout_s) * 1000u) {
     sleep_pending_ = true;
     click_.cancel();
+    c_frozen_ = false;
+    index_dirty_ = false;
     return kActSleep;
   }
   return kActNone;

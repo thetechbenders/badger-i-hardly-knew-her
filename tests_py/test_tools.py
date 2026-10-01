@@ -279,5 +279,94 @@ class Fonts(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
 
 
+class FirmwarePackage(unittest.TestCase):
+    """scripts/package_firmware.py: the ZIP's manifest matches its contents."""
+
+    def setUp(self):
+        sys.path.insert(0, str(ROOT / "scripts"))
+        import package_firmware
+        self.pf = package_firmware
+        self.tmp = tempfile.TemporaryDirectory()
+        self.build = Path(self.tmp.name) / "fw"
+        self.build.mkdir()
+        self.files = {"badger_badge.uf2": b"uf2" * 100, "badger_badge-assets.uf2": b"assets",
+                      "badger_badge.elf": b"elf" * 50, "badger_badge.bin": b"bin",
+                      "badger_badge.elf.map": b"map", "memory-report.txt": b"report\n"}
+        for n, d in self.files.items():
+            (self.build / n).write_bytes(d)
+        self.write_sums()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def write_sums(self):
+        import hashlib
+        (self.build / "SHA256SUMS").write_text("".join(
+            f"{hashlib.sha256((self.build / n).read_bytes()).hexdigest()}  {n}\n" for n in sorted(self.files)))
+
+    def zip_names(self, path):
+        import zipfile
+        with zipfile.ZipFile(path) as z:
+            return sorted(i.filename for i in z.infolist())
+
+    def test_full_package_lists_exactly_its_contents(self):
+        out = Path(self.tmp.name) / "pkg.zip"
+        got = self.pf.package(self.build, out, "pkg")
+        self.assertEqual(set(got), set(self.files))
+        self.assertEqual(self.zip_names(out), sorted([f"pkg/{n}" for n in self.files] + ["pkg/SHA256SUMS"]))
+        self.assertEqual(self.pf.verify_zip(out.read_bytes()), got)
+        self.assertEqual(self.pf.main(["--verify", str(out)]), 0)
+
+    def test_subset_gets_its_own_manifest(self):
+        out = Path(self.tmp.name) / "uf2.zip"
+        got = self.pf.package(self.build, out, "uf2", ["badger_badge.uf2", "badger_badge-assets.uf2"])
+        self.assertEqual(set(got), {"badger_badge.uf2", "badger_badge-assets.uf2"})
+        import zipfile
+        with zipfile.ZipFile(out) as z:
+            listed = z.read("uf2/SHA256SUMS").decode()
+        self.assertNotIn("badger_badge.elf", listed)  # the 8f27ad9 ZIP's defect
+        self.assertEqual(len(listed.splitlines()), 2)
+        with self.assertRaises(self.pf.PackageError):
+            self.pf.package(self.build, out, "x", ["not-an-artifact.bin"])
+
+    def test_reproducible(self):
+        a, b = Path(self.tmp.name) / "a.zip", Path(self.tmp.name) / "b.zip"
+        self.pf.package(self.build, a, "pkg")
+        self.pf.package(self.build, b, "pkg")
+        self.assertEqual(a.read_bytes(), b.read_bytes())
+
+    def test_build_manifest_problems_are_refused(self):
+        out = Path(self.tmp.name) / "p.zip"
+        (self.build / "badger_badge.elf").unlink()  # listed but missing
+        with self.assertRaises(self.pf.PackageError):
+            self.pf.package(self.build, out, "p")
+        (self.build / "badger_badge.elf").write_bytes(b"different")  # present but changed
+        with self.assertRaises(self.pf.PackageError):
+            self.pf.package(self.build, out, "p")
+        self.assertFalse(out.exists())
+
+    def test_verify_rejects_mismatched_packages(self):
+        import hashlib
+        import zipfile
+
+        def make(entries):
+            p = Path(self.tmp.name) / "bad.zip"
+            with zipfile.ZipFile(p, "w") as z:
+                for n, d in entries.items():
+                    z.writestr(f"bad/{n}", d)
+            return p.read_bytes()
+
+        uf2 = b"uf2"
+        line = f"{hashlib.sha256(uf2).hexdigest()}  badger_badge.uf2\n"
+        elf = f"{hashlib.sha256(b'elf').hexdigest()}  badger_badge.elf\n"
+        self.pf.verify_zip(make({"badger_badge.uf2": uf2, "SHA256SUMS": line}))
+        for entries in ({"badger_badge.uf2": uf2, "SHA256SUMS": line + elf},          # listed, missing
+                        {"badger_badge.uf2": uf2, "x.bin": b"x", "SHA256SUMS": line},  # unlisted
+                        {"badger_badge.uf2": b"changed", "SHA256SUMS": line},          # mismatch
+                        {"badger_badge.uf2": uf2}):                                     # no manifest
+            with self.assertRaises(self.pf.PackageError):
+                self.pf.verify_zip(make(entries))
+
+
 if __name__ == "__main__":
     unittest.main()

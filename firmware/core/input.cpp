@@ -29,6 +29,7 @@ int ButtonTracker::sample(uint32_t pressed_mask, uint32_t now_ms, ButtonEvent *o
     if (!s.pressed && s.integrator == kSteps) {
       s.pressed = true;
       s.long_fired = false;
+      s.hold_fired = false;
       s.repeats = 0;
       s.down_ms = now_ms;
       s.next_repeat_ms = now_ms + kRepeatDelayMs;
@@ -52,6 +53,10 @@ int ButtonTracker::sample(uint32_t pressed_mask, uint32_t now_ms, ButtonEvent *o
     if (!s.long_fired && now_ms - s.down_ms >= kLongPressMs) {
       s.long_fired = true;
       emit(i, Gesture::Long, 0);
+    }
+    if ((kHoldMask & (1u << i)) && !s.hold_fired && now_ms - s.down_ms >= kHoldPowerOffMs) {
+      s.hold_fired = true;
+      emit(i, Gesture::Hold, 0);
     }
   }
   return n;
@@ -108,6 +113,7 @@ Click ClickRecognizer::on_event(Gesture g, uint32_t t_ms, bool immediate) {
       state_ = State::Idle;  // also discards the pending single of a double attempt
       return Click::Long;
     case Gesture::Repeat:
+    case Gesture::Hold:
       return Click::None;
   }
   return Click::None;

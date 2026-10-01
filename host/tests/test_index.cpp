@@ -80,6 +80,7 @@ struct Drive {
         next += kRepeatIntervalMs;
       }
       if (held == kLongPressMs) ev(b, Gesture::Long);
+      if (held == kHoldPowerOffMs && (kHoldMask & (1u << int(b)))) ev(b, Gesture::Hold);
     }
     if (held < kLongPressMs) ev(b, Gesture::Short, reps);
   }
@@ -252,9 +253,10 @@ TEST(index_hold_repeats_without_redraws_and_stops_at_the_end) {
   CHECK_EQ(d.redraws.size(), 1u);
   CHECK_EQ(d.redraws[0].index_sel, 4);
   // A long hold runs to the last entry and stops there (no wrap, no power
-  // off at the long-press threshold, no redraw while held).
+  // off at the long-press threshold, no redraw while held). Power-off needs
+  // kHoldPowerOffMs (index_down_hold_powers_off).
   d.redraws.clear();
-  d.hold_nav(Button::Down, 4000);
+  d.hold_nav(Button::Down, kHoldPowerOffMs - 5);
   CHECK_EQ(d.a.index_selection(), 11);
   CHECK(!d.a.sleeping());
   CHECK(d.redraws.empty());
@@ -418,8 +420,9 @@ TEST(index_pending_single_c_and_context_changes) {
   d.ev(Button::C, Gesture::Short);
   d.wait(2000);
   CHECK(d.a.view().screen == Screen::Card);
-  // Another button while C waits: the C happened first, then that button acts
-  // on the project page it opened (long B: that project's QR, not the contact QR).
+  // Long B while C waits: the C applies first, then B acts on the project
+  // page it opened (that project's QR, not the contact QR). See also
+  // pending_c_* below.
   d.tap(Button::C);
   d.wait(100);
   d.hold(Button::B);
@@ -674,6 +677,8 @@ struct System {
   App app;
   RenderContext ctx;
   std::vector<View> rendered;  // every frame the renderer produced
+  std::vector<uint32_t> hashes;  // and its framebuffer hash
+  bool sleeping = false;          // main.cpp: kActSleep -> render the sleep view
   uint32_t mask = 0;
   uint8_t speed = 0;  // slowest waveform: 4.5 s per refresh
 
@@ -688,11 +693,22 @@ struct System {
   }
   static void draw(Framebuffer &fb, void *p) {
     System *s = static_cast<System *>(p);
-    s->rendered.push_back(s->app.view());
-    render(fb, s->app.view(), s->ctx);
+    const View v = s->sleeping ? s->app.sleep_view() : s->app.view();
+    s->rendered.push_back(v);
+    render(fb, v, s->ctx);
+    s->hashes.push_back(fb.hash());
   }
+  // Same handling as apply() in firmware/platform/main.cpp.
   void apply(uint32_t a) {
     if (a & kActRedraw) sched.invalidate(a & kActCleanRefresh);
+    if (a & kActSleep) {
+      sleeping = true;
+      sched.invalidate();
+    }
+  }
+  void clear() {
+    rendered.clear();
+    hashes.clear();
   }
   void run(uint32_t ms) {
     for (uint32_t i = 0; i < ms; i += kSampleMs) {
@@ -817,4 +833,356 @@ TEST(pipeline_existing_short_c_and_project_qr_unchanged) {
   CHECK_EQ(s.app.view().project, 0);
   s.settle();
   CHECK_EQ(s.panel.violations, 0);
+}
+
+// ------------------------------------------------- long DOWN in the index
+
+TEST(index_down_hold_powers_off_without_confirming) {
+  for (bool to_badge : {true, false}) {
+    Drive d;
+    AppConfig c = icfg(7);
+    c.sleep_to_badge = to_badge;
+    d.boot(c);
+    d.a.on_screen_request(Screen::Projects, 2);
+    d.double_c();
+    d.tap(Button::Down);
+    d.wait(kIndexSettleMs + 10);  // highlight 4 drawn
+    d.redraws.clear();
+    d.take();
+    // Hold DOWN: scrolls (undrawn), then powers off at kHoldPowerOffMs.
+    d.ev(Button::Down, Gesture::Press);
+    uint32_t held = 0, next = kRepeatDelayMs;
+    uint8_t reps = 0;
+    while (held < kHoldPowerOffMs) {
+      d.wait(5);
+      held += 5;
+      if (held == next) {
+        d.ev(Button::Down, Gesture::Repeat, ++reps);
+        next += kRepeatIntervalMs;
+      }
+      if (held == kLongPressMs) d.ev(Button::Down, Gesture::Long);
+      if (held == kHoldPowerOffMs - 5) CHECK(!d.a.sleeping());  // not one sample early
+    }
+    CHECK(d.a.index_redraw_pending() && d.a.index_selection() > 3);  // scrolled, not yet drawn
+    d.ev(Button::Down, Gesture::Hold);
+    CHECK(d.a.sleeping());
+    CHECK(d.take() & kActSleep);
+    CHECK(!d.a.index_redraw_pending());  // the scrolled highlight is discarded
+    CHECK_EQ(d.a.view().project, 2);     // not confirmed: remembered project kept
+    CHECK(d.a.view().screen == Screen::Index);
+    CHECK(d.redraws.empty());            // no index or project frame before the sleep view
+    // The sleep view: the badge, or the index as last drawn (not the scrolled one).
+    const View sv = d.a.sleep_view();
+    if (to_badge) CHECK(sv.screen == Screen::Badge);
+    else CHECK(sv.screen == Screen::Index && sv.index_sel == 3);
+    // Nothing fires afterwards: no quiet redraw, no C, no buttons.
+    d.wait(3000);
+    d.tap(Button::C);
+    d.wait(1000);
+    CHECK(d.redraws.empty());
+  }
+}
+
+TEST(index_holds_begun_before_the_index_are_ignored) {
+  Drive d;
+  d.boot(icfg(7));
+  d.a.on_screen_request(Screen::Projects, 2);
+  d.ev(Button::Down, Gesture::Press);  // DOWN goes down on the project page ...
+  d.wait(50);
+  d.double_c();  // ... and the index opens while it is still held
+  CHECK(d.a.view().screen == Screen::Index);
+  d.wait(1000 - 50 - 400);
+  d.ev(Button::Down, Gesture::Long);   // would be power-off outside the index
+  d.ev(Button::Down, Gesture::Repeat, 1);
+  d.ev(Button::Down, Gesture::Hold);
+  d.ev(Button::Down, Gesture::Short, 1);  // (a stray release)
+  CHECK(!d.a.sleeping());
+  CHECK_EQ(d.a.index_selection(), 2);  // did not scroll
+  // A fresh press in the index works normally.
+  d.tap(Button::Down);
+  CHECK_EQ(d.a.index_selection(), 3);
+}
+
+TEST(pipeline_index_down_hold_runs_the_power_off_sequence) {
+  System s;
+  s.settle();
+  s.press(Button::C, 80, 100);
+  s.press(Button::C, 80, 20);  // double C -> index
+  s.settle();
+  s.clear();
+  s.mask = 1u << int(Button::Down);
+  s.run(kDebounceMs + kHoldPowerOffMs - 10);
+  CHECK(!s.app.sleeping());
+  CHECK(s.rendered.empty());  // the scrolled highlight is never drawn
+  s.run(20);
+  CHECK(s.app.sleeping());
+  s.run(500);
+  s.mask = 0;
+  s.run(1000);
+  s.settle();
+  // Exactly one more frame: the sleep view (badge), fully on the panel.
+  CHECK_EQ(s.rendered.size(), 1u);
+  CHECK(s.rendered[0].screen == Screen::Badge);
+  CHECK(s.sched.settled());
+  CHECK_EQ(s.app.view().project, 0);
+  CHECK_EQ(s.panel.violations, 0);
+}
+
+// ------------------------------------------------------------ USR
+
+TEST(pipeline_usr_short_diagnostics_long_layout_without_diagnostics) {
+  System s;
+  s.settle();
+  const uint8_t layout0 = s.app.view().layout;
+  // Long USR on the badge: layout toggles; diagnostics never opens, not even
+  // briefly (the tracker sends no Short after a Long).
+  s.clear();
+  s.press(Button::User, kLongPressMs + 300, 200);
+  s.settle();
+  CHECK(s.app.view().screen == Screen::Badge);
+  CHECK(s.app.view().layout != layout0);
+  CHECK_EQ(s.rendered.size(), 1u);
+  CHECK(s.rendered[0].screen == Screen::Badge && s.rendered[0].layout != layout0);
+  // Just below the long threshold: diagnostics, layout unchanged.
+  s.clear();
+  s.press(Button::User, kLongPressMs - 10, 100);
+  s.settle();
+  CHECK(s.app.view().screen == Screen::Info);
+  CHECK(s.app.view().layout != layout0);
+  CHECK_EQ(s.rendered.size(), 1u);
+  // Long USR on diagnostics: still no extra frame of anything, layout back.
+  s.clear();
+  s.press(Button::User, kLongPressMs + 50, 100);
+  s.settle();
+  CHECK(s.app.view().screen == Screen::Info);
+  CHECK_EQ(s.app.view().layout, layout0);
+  for (const View &v : s.rendered) CHECK(v.screen == Screen::Info);
+  // Short USR from the card: diagnostics.
+  s.press(Button::B, 80, 100);
+  s.press(Button::User, 80, 100);
+  CHECK(s.app.view().screen == Screen::Info);
+}
+
+// ------------------------------------------------ pending single C policy
+
+namespace {
+// Single C tapped on the card with project `remembered`, then `fn` within
+// the double-press window. Returns the redraws that followed.
+template <typename F>
+std::vector<View> after_c(Drive &d, int remembered, F fn, uint32_t gap = 100) {
+  d.a.on_screen_request(Screen::Projects, remembered);
+  d.a.on_screen_request(Screen::Card);
+  d.redraws.clear();
+  d.take();
+  d.tap(Button::C);
+  CHECK(d.a.click_pending());
+  d.wait(gap);
+  fn();
+  d.wait(2000);
+  CHECK(!d.a.click_pending());
+  CHECK(!d.a.click_frozen());
+  return d.redraws;
+}
+bool has_projects(const std::vector<View> &r) {
+  for (const View &v : r)
+    if (v.screen == Screen::Projects) return true;
+  return false;
+}
+}  // namespace
+
+TEST(pending_c_dropped_by_screen_choices) {
+  Drive d;
+  d.boot(icfg(7));
+  // A short: the badge, and the project page is never requested.
+  auto r = after_c(d, 3, [&] { d.tap(Button::A); });
+  CHECK(d.a.view().screen == Screen::Badge);
+  CHECK_EQ(r.size(), 1u);
+  CHECK(!has_projects(r));
+  // B short: the card (already there: nothing at all).
+  r = after_c(d, 3, [&] { d.tap(Button::B); });
+  CHECK(d.a.view().screen == Screen::Card);
+  CHECK(r.empty());
+  // USR short: diagnostics.
+  r = after_c(d, 3, [&] { d.tap(Button::User); });
+  CHECK(d.a.view().screen == Screen::Info);
+  CHECK_EQ(r.size(), 1u);
+  CHECK(!has_projects(r));
+  // DOWN long: power off, no project first.
+  r = after_c(d, 3, [&] { d.hold(Button::Down); });
+  CHECK(d.a.sleeping());
+  CHECK(!has_projects(r));
+  // A swipe: its own screen choice, from where the visitor was.
+  d.boot(icfg(7));
+  d.a.set_gesture_mode(true);
+  r = after_c(d, 3, [&] { d.note(d.a.on_swipe(Swipe::Right, d.t)); });
+  CHECK(d.a.view().screen == Screen::Projects);  // card -> next screen
+  CHECK_EQ(r.size(), 1u);
+  r = after_c(d, 3, [&] { d.note(d.a.on_swipe(Swipe::Down, d.t)); });
+  CHECK(d.a.view().screen == Screen::Badge);
+  CHECK(!has_projects(r));
+  CHECK_EQ(d.a.view().project, 3);  // remembered project untouched throughout
+}
+
+TEST(pending_c_applies_first_for_actions_on_its_page) {
+  Drive d;
+  d.boot(icfg(7, 0x5F));  // project 6 (index 5) has no link
+  // Long B: the remembered project's QR, in one step (no project frame first),
+  // even though B was pressed inside the window and held past it.
+  auto r = after_c(d, 3, [&] { d.hold(Button::B); });
+  CHECK(d.a.view().screen == Screen::ProjectQr);
+  CHECK_EQ(d.a.view().project, 3);
+  CHECK_EQ(r.size(), 1u);
+  CHECK(r[0].screen == Screen::ProjectQr && r[0].project == 3);
+  // ... and for a project without a link: its page, never the contact QR.
+  r = after_c(d, 5, [&] { d.hold(Button::B); });
+  CHECK(d.a.view().screen == Screen::Projects);
+  CHECK_EQ(d.a.view().project, 5);
+  // DOWN / UP short: step from the remembered project, one frame.
+  r = after_c(d, 3, [&] { d.tap(Button::Down); });
+  CHECK(d.a.view().screen == Screen::Projects);
+  CHECK_EQ(d.a.view().project, 4);
+  CHECK_EQ(r.size(), 1u);
+  CHECK_EQ(r[0].project, 4);
+  r = after_c(d, 3, [&] { d.tap(Button::Up); });
+  CHECK_EQ(d.a.view().project, 2);
+  // A long: the project page with a clean refresh.
+  d.a.on_screen_request(Screen::Projects, 3);
+  d.a.on_screen_request(Screen::Card);
+  d.tap(Button::C);
+  d.wait(100);
+  d.take();
+  d.hold(Button::A);
+  CHECK((d.take() & (kActRedraw | kActCleanRefresh)) == (kActRedraw | kActCleanRefresh));
+  CHECK(d.a.view().screen == Screen::Projects);
+  // UP long / USR long: the project opens and the toggle still happens.
+  r = after_c(d, 3, [&] { d.hold(Button::Up); });
+  CHECK(d.a.view().screen == Screen::Projects && d.a.gesture_mode());
+  const uint8_t l = d.a.view().layout;
+  r = after_c(d, 3, [&] { d.hold(Button::User); });
+  CHECK(d.a.view().screen == Screen::Projects && d.a.view().layout != l);
+}
+
+TEST(pending_c_window_freezes_while_another_button_decides) {
+  Drive d;
+  d.boot(icfg(7));
+  d.a.on_screen_request(Screen::Projects, 3);
+  d.a.on_screen_request(Screen::Card);
+  d.redraws.clear();
+  d.tap(Button::C);
+  d.wait(kDoublePressMs - 50);
+  d.ev(Button::B, Gesture::Press);  // inside the window
+  d.wait(500);                      // the window would have expired here
+  CHECK(d.redraws.empty());
+  CHECK(d.a.click_frozen());
+  d.wait(kLongPressMs - 500);
+  d.ev(Button::B, Gesture::Long);
+  CHECK(d.a.view().screen == Screen::ProjectQr);
+  CHECK_EQ(d.redraws.size(), 1u);
+  // A press after the window expired: the C has already acted (one frame),
+  // then the button acts on that page as usual.
+  d.a.on_screen_request(Screen::Card);
+  d.redraws.clear();
+  d.tap(Button::C);
+  d.wait(kDoublePressMs + 10);
+  CHECK(d.a.view().screen == Screen::Projects);
+  d.tap(Button::A);
+  CHECK(d.a.view().screen == Screen::Badge);
+  CHECK_EQ(d.redraws.size(), 2u);
+  // The deciding gesture never arrives (lost events): the C is dropped, not
+  // fired late.
+  d.a.on_screen_request(Screen::Card);
+  d.redraws.clear();
+  d.tap(Button::C);
+  d.wait(100);
+  d.ev(Button::B, Gesture::Press);
+  d.wait(kLongPressMs + 400);
+  CHECK(!d.a.click_frozen());
+  CHECK(!d.a.click_pending());
+  d.wait(2000);
+  CHECK(d.redraws.empty());
+  CHECK(d.a.view().screen == Screen::Card);
+}
+
+TEST(pipeline_rapid_c_then_a_never_submits_a_project_frame) {
+  System s;
+  s.settle();
+  s.press(Button::B, 80, 100);  // card
+  s.settle();
+  s.clear();
+  const uint32_t submitted = s.sched.submitted();
+  s.press(Button::C, 80, 120);  // C, then A well inside the double-press window
+  s.press(Button::A, 80, 100);
+  s.run(2000);
+  s.settle();
+  CHECK(s.app.view().screen == Screen::Badge);
+  CHECK_EQ(s.rendered.size(), 1u);
+  CHECK(s.rendered[0].screen == Screen::Badge);
+  for (const View &v : s.rendered) CHECK(v.screen != Screen::Projects);
+  CHECK_EQ(s.sched.submitted() - submitted, 1u);
+  CHECK_EQ(s.panel.violations, 0);
+}
+
+TEST(pipeline_c_then_long_b_shows_the_remembered_projects_qr) {
+  System s;
+  CHECK(settings_set(&g_is, *find_field("qr.payload"), "https://example.com/contact") == SetResult::Ok);
+  s.settle();
+  // Remember project 2 (DragonBreath), then go to the card.
+  s.press(Button::C, 80, kDoublePressMs + 20);
+  s.press(Button::Down, 80, 100);
+  s.press(Button::B, 80, 100);
+  s.settle();
+  CHECK_EQ(s.app.view().project, 1);
+  s.clear();
+  s.press(Button::C, 80, 150);              // tap C, then within the window ...
+  s.press(Button::B, kLongPressMs + 50, 100);  // ... hold B
+  s.settle();
+  CHECK(s.app.view().screen == Screen::ProjectQr);
+  CHECK_EQ(s.rendered.size(), 1u);  // straight to the QR, no project page first
+  // Its payload is that project's own link, not the contact QR.
+  const char *url = project_url(g_is.profile, 1);
+  CHECK(url != nullptr);
+  CHECK_STR(url, "https://github.com/danielbrownjr/DragonBreath");
+  CHECK(project_qr_geometry(s.ctx, 1).qr_status == QrStatus::Ok);
+  Framebuffer want, contact;
+  View v;
+  v.screen = Screen::ProjectQr;
+  v.project = 1;
+  v.layout = s.app.view().layout;
+  render(want, v, s.ctx);
+  v.screen = Screen::QrFull;
+  render(contact, v, s.ctx);
+  CHECK_EQ(s.hashes.back(), want.hash());
+  CHECK(s.hashes.back() != contact.hash());
+  CHECK(s.panel.image.equals(want));
+  settings_defaults(&g_is);
+}
+
+TEST(pending_c_frozen_then_c_again) {
+  Drive d;
+  d.boot(icfg(7));
+  d.a.on_screen_request(Screen::Projects, 3);
+  d.a.on_screen_request(Screen::Card);
+  // C, B goes down (freezes), C again long after the window: a new single C
+  // interaction, which the stale freeze deadline must not cancel.
+  d.tap(Button::C);
+  d.wait(100);
+  d.ev(Button::B, Gesture::Press);
+  d.wait(600);
+  d.redraws.clear();
+  d.tap_c();
+  CHECK(d.a.view().screen == Screen::Projects);
+  CHECK_EQ(d.a.view().project, 3);
+  CHECK_EQ(d.redraws.size(), 1u);
+  d.wait(kLongPressMs + 500);  // past the old freeze deadline: nothing more
+  CHECK_EQ(d.redraws.size(), 1u);
+  // C, B down, C inside the window: still a double press (the index).
+  d.a.on_screen_request(Screen::Card);
+  d.tap(Button::C);
+  d.wait(50);
+  d.ev(Button::B, Gesture::Press);
+  d.wait(50);
+  d.tap(Button::C);
+  CHECK(d.a.view().screen == Screen::Index);
+  d.wait(kLongPressMs + 500);
+  CHECK(d.a.view().screen == Screen::Index);
 }

@@ -348,3 +348,37 @@ TEST(click_end_to_end_from_raw_samples) {
   CHECK_EQ(out.size(), 3u);
   CHECK(out[2] == Click::Long);
 }
+
+TEST(input_down_hold_event_for_index_power_off) {
+  Rig r;
+  r.bt.reset(0);
+  r.run(DOWN, kDebounceMs);
+  const uint32_t down = r.t;
+  r.run(DOWN, kHoldPowerOffMs - kSampleMs);
+  CHECK_EQ(r.count(Button::Down, Gesture::Long), 1);  // at 1 s, as before
+  CHECK_EQ(r.count(Button::Down, Gesture::Hold), 0);  // not one sample early
+  r.run(DOWN, kSampleMs);
+  CHECK_EQ(r.count(Button::Down, Gesture::Hold), 1);
+  CHECK_EQ(r.all.back().t_ms - down, kHoldPowerOffMs);
+  r.run(DOWN, 3000);
+  r.run(0, 100);
+  CHECK_EQ(r.count(Button::Down, Gesture::Hold), 1);   // once
+  CHECK_EQ(r.count(Button::Down, Gesture::Short), 0);  // nothing on release
+  // Only DOWN has it; a wake-suppressed DOWN never sends it.
+  Rig o;
+  o.bt.reset(DOWN);
+  o.run(A | B | C | UP | DOWN | (1u << int(Button::User)), 5000);
+  int holds = 0;
+  for (const auto &e : o.all) holds += e.gesture == Gesture::Hold;
+  CHECK_EQ(holds, 0);
+}
+
+TEST(input_long_usr_sends_no_short) {
+  Rig r;
+  r.bt.reset(0);
+  const uint32_t USR = 1u << int(Button::User);
+  r.run(USR, kLongPressMs + 200);
+  r.run(0, 100);
+  CHECK_EQ(r.count(Button::User, Gesture::Long), 1);
+  CHECK_EQ(r.count(Button::User, Gesture::Short), 0);
+}

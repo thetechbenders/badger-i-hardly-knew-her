@@ -14,6 +14,9 @@
 //   Repeat  - UP/DOWN only (kRepeatMask): while held, first after
 //             kRepeatDelayMs, then every kRepeatIntervalMs, also past the
 //             long-press threshold. `count` is 1, 2, ... (saturating).
+//   Hold    - DOWN only (kHoldMask): emitted once, while still held, when
+//             the hold reaches kHoldPowerOffMs (after Long). The project
+//             index uses it for power-off, where Long is taken by scrolling.
 // Buttons already held at boot (the wake button on battery) are ignored
 // until they have been released once, so waking never triggers a long press.
 //
@@ -28,8 +31,8 @@ namespace badge {
 enum class Button : uint8_t { A = 0, B, C, Up, Down, User, Count };
 constexpr int kButtonCount = int(Button::Count);
 
-// Values are stable (tests); Press and Repeat were appended.
-enum class Gesture : uint8_t { Short, Long, Press, Repeat };
+// Values are stable (tests); Press, Repeat and Hold were appended.
+enum class Gesture : uint8_t { Short, Long, Press, Repeat, Hold };
 
 struct ButtonEvent {
   Button button;
@@ -56,10 +59,17 @@ constexpr uint32_t kRepeatIntervalMs = 150;
 // press, short next to an e-paper refresh.
 constexpr uint32_t kDoublePressMs = 350;
 
+// Power-off hold inside the project index: three long presses. Holding DOWN
+// scrolls all 12 entries in kRepeatDelayMs + 11 * kRepeatIntervalMs (2.15 s),
+// so a scroll to the end does not power off by itself.
+constexpr uint32_t kHoldPowerOffMs = 3 * kLongPressMs;
+static_assert(kHoldPowerOffMs > kRepeatDelayMs + 11 * kRepeatIntervalMs, "scrolling 12 entries must not power off");
+
 constexpr uint32_t kRepeatMask = (1u << int(Button::Up)) | (1u << int(Button::Down));
-// Upper bound of events one sample() call can produce (Press or Short, plus
-// Long or Repeat, per button).
-constexpr int kMaxEventsPerSample = 2 * kButtonCount;
+constexpr uint32_t kHoldMask = 1u << int(Button::Down);
+// Upper bound of events one sample() call can produce per button: Press or
+// Short, plus Repeat, Long and Hold (which can coincide).
+constexpr int kMaxEventsPerSample = 4 * kButtonCount;
 
 class ButtonTracker {
  public:
@@ -76,6 +86,7 @@ class ButtonTracker {
     uint8_t integrator = 0;  // 0 .. kSteps
     bool pressed = false;
     bool long_fired = false;
+    bool hold_fired = false;
     bool suppressed = false;
     uint8_t repeats = 0;
     uint32_t down_ms = 0;
