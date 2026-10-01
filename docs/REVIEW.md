@@ -4,10 +4,10 @@ This is a review of the actual code at `4756d0e` (after CI went green) against t
 pinned Pico SDK 2.2.0, pimoroni-pico v1.29.0-2 and the linked ELF. No
 battery, gesture sensor or badge hardware was used: everything below was
 established on the host, in the RP2040 cross-build, or by reading SDK and
-driver sources. Hardware checks are in
+driver sources. The hardware checklist is
 [USB_HARDWARE_CHECKLIST.md](USB_HARDWARE_CHECKLIST.md). It was still
 pending at the time of this review; a first USB run on a later local build
-is recorded there.
+is recorded in [test-records/](test-records/README.md).
 
 ## Defects found and fixed
 
@@ -21,7 +21,7 @@ is recorded there.
 | 6 | CLI malformed input | A NUL byte truncated the line silently (`set name Ada<NUL>X` stored `Ada`); ESC sequences and other control bytes reached the parser. | Any control byte except TAB rejects the whole line with `ERR control character 0x..`. | `cli_rejects_control_bytes_without_side_effects` |
 | 7 | CLI recovery | A partial line left by a dead session was glued onto the next command. | A partial line idle for 30 s is dropped; `badgerctl.py` sends Ctrl-C before talking. | `cli_stale_partial_line_is_dropped_after_idle` (incl. timer wrap) |
 | 8 | Unconfigured QR | An empty `qr.payload` drew a dashed "QR NOT CONFIGURED" box on the public card, and an empty contact list printed "Contact details not configured". | Nothing is drawn; the text column takes the full width. The too-long box stays (a configuration error). | `render_unconfigured_qr_leaves_no_trace`, `render_card_without_contacts_is_clean`, Python `test_unconfigured_qr_draws_no_symbol` |
-| 9 | Project taglines | A tagline wider than one line was ellipsized: the Dragon-family tagline showed as "…validati…". | Taglines wrap onto two lines of bold 10 when one line is not enough. | `render_project_page_shows_full_tagline_and_body` |
+| 9 | Project taglines | A tagline wider than one line was ellipsized: a long sample tagline showed as "…validati…". | Taglines wrap onto two lines of bold 10 when one line is not enough. | `render_project_page_shows_full_tagline_and_body` |
 | 10 | Checkout portability | With Git's `core.autocrlf=true` (Git for Windows default), every script became CRLF and would not run under bash/WSL; build inputs differed per checkout. | `.gitattributes`: `* text=auto eol=lf`, binaries marked. | CI (Linux) + local WSL build from a Windows checkout |
 | 11 | Reproducibility | Absolute source paths could enter the image. The `git describe` abbreviation grows with the object count, so a fresh clone or bundle can embed a different version string. | `-ffile-prefix-map=<src>=.`, `--abbrev=12`. | CI rebuilds from a second checkout path and `cmp`s UF2/BIN/ELF; `verify_artifacts.py` rejects absolute paths |
 | 12 | Reproducibility | The embedded commit date came from `git log --format=%cI`, which writes UTC as `+00:00` with some Git versions and `Z` with others. The same commit built on two machines then differed after that string. Found by rebuilding the `82636e68ce00` personalised package on Git 2.43. | CMake normalises the UTC suffix to `Z`. | Rebuild of that package: UF2 and BIN byte-identical (its ELF differs only in `.debug_line`, not flashed) |
