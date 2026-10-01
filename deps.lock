@@ -1,0 +1,15 @@
+# Pinned build dependencies. scripts/fetch-deps.sh checks out exactly these
+# commits and fails if a tag has moved. Update deliberately, then re-run CI.
+PICO_SDK_URL=https://github.com/raspberrypi/pico-sdk
+PICO_SDK_TAG=2.2.0
+PICO_SDK_COMMIT=a1438dff1d38bd9c65dbd693f0e5db4b9ae91779
+TINYUSB_COMMIT=86ad6e56c1700e85f1c5678607a762cfe3aa2f47
+PIMORONI_PICO_URL=https://github.com/pimoroni/pimoroni-pico
+PIMORONI_PICO_TAG=v1.29.0-2
+PIMORONI_PICO_COMMIT=39b017a30717ed68e5ff15163bac89489acd09df
+PICOTOOL_URL=https://github.com/raspberrypi/picotool
+PICOTOOL_TAG=2.2.0
+PICOTOOL_COMMIT=a7eb3988f0645239185fadb4e25d8279478c2dbb
+# Arm GNU toolchain: Ubuntu 24.04 package gcc-arm-none-eabi 15:13.2.rel1-2
+# (Arm GNU Toolchain 13.2.Rel1), the version CI uses.
+ARM_GCC_VERSION=13.2.1

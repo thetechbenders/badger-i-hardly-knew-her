@@ -1,0 +1,78 @@
+{
+  "format": 1,
+  "_comment": "Public sample profile. Values in [brackets] are placeholders; copy to local/profile.json (git-ignored) for your real details.",
+  "profile": {
+    "name": "Dan Brown",
+    "title": "Engineer + Maker",
+    "affiliation": "",
+    "interests": "3D printing · electronics · embedded systems",
+    "event": "Formnext 2026",
+    "contacts": [
+      {
+        "label": "Email",
+        "value": "[email not configured]",
+        "type": "email"
+      },
+      {
+        "label": "Web",
+        "value": "[website not configured]",
+        "type": "web"
+      }
+    ],
+    "qr": {
+      "payload": "",
+      "caption": "Scan for contact details"
+    },
+    "projects": [
+      {
+        "title": "Jump Jet",
+        "tagline": "Chamber heater for the Prusa CORE One family",
+        "body": "With Mauker: ESP32-S3 redesign of Philip Sørensen's Jetpack. PCBWay-sponsored.",
+        "status": "Work in progress",
+        "link": "https://github.com/thetechbenders/JumpJet"
+      },
+      {
+        "title": "DragonBreath",
+        "tagline": "Open firmware for the BTT Panda Breath heater",
+        "body": "My merged PRs: opt-in Bambu chamber regulation, chamber PID, PID duty telemetry.",
+        "status": "Fork of plastikman/DragonBreath",
+        "link": "https://github.com/danielbrownjr/DragonBreath"
+      },
+      {
+        "title": "DragonSniff",
+        "tagline": "Read-only observability for Dragon devices",
+        "body": "Inspect Dragon HTTP APIs, follow event streams and export timestamped evidence. Never part of a control loop.",
+        "link": "https://github.com/thetechbenders/DragonSniff"
+      },
+      {
+        "title": "DragonBench",
+        "tagline": "ESP32-S3 characterization instrument",
+        "body": "Deterministic module workloads while external equipment measures current, voltage, rails and resets. No actuators.",
+        "link": "https://github.com/thetechbenders/DragonBench"
+      },
+      {
+        "title": "dragon-core",
+        "tagline": "Shared ESP-IDF components",
+        "body": "My merged PRs: the dc_pid primitive, stale-data expiry, log redaction.",
+        "status": "Fork of justinh-rahb/dragon-core",
+        "link": "https://github.com/danielbrownjr/dragon-core"
+      },
+      {
+        "title": "CatScan-MS",
+        "banner": "TOP SECRET - COMING SOON"
+      },
+      {
+        "title": "BHIHKH!",
+        "tagline": "Badger? I hardly knew her!",
+        "body": "BadgHer for short: native Pico SDK badge, card and portfolio for Badger 2040.",
+        "status": "In development · hardware checks pending",
+        "link": "https://github.com/thetechbenders/badger-i-hardly-knew-her"
+      }
+    ]
+  },
+  "prefs": {
+    "layout": 0,
+    "refresh.speed": 1,
+    "sleep.timeout_s": 120
+  }
+}

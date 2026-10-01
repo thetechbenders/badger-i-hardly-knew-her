@@ -1,0 +1,12 @@
+# Build output and fetched dependencies
+/build/
+/deps
+__pycache__/
+*.pyc
+
+# Private, never committed: original photos, personal profile/contact
+# details, processed personal portrait and previews made from them.
+/local/
+*.jpeg
+*.jpg
+!docs/**/*.jpg
