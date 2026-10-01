@@ -26,6 +26,10 @@ were not observed or reproduced by the tooling that maintains this file.
   was still `766aede`. These results therefore apply to that local build and
   do **not** validate the remote head. The `> version` line that would
   confirm the flashed commit on the badge is still pending (1.2).
+  *Update, later on 2026-10-01:* these commits were then pushed unchanged to
+  `feature/formnext-2026-badge` (fast-forward to `7e26f30`, which adds only
+  this record). The results still apply to the firmware built from
+  `023b3c6`; later commits are not covered by them.
 - **Passed (reported):**
   - Personalized firmware installed (1.1); startup time not measured.
   - Both badge layouts, the updated portrait and title, and the GitHub and
