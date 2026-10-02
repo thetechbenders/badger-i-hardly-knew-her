@@ -90,14 +90,24 @@ jobs:
       - name: Verify artifacts (UF2 regions, linker placement, metadata, checksums)
         run: '"$BADGER_PYTHON" scripts/verify_artifacts.py ${{ matrix.build }} --require-clean --target "$BHIHKH_TARGET"'
       # The other board's facts must reject this build: a package can never
-      # pass as firmware for the wrong badge.
+      # pass as firmware for the wrong badge. Checked on a copy of the
+      # artifacts without CMakeCache.txt, so the refusal has to come from the
+      # UF2s and image themselves, not from the cache naming the other target.
       - name: Artifacts are refused as the other board's
         run: |
-          if "$BADGER_PYTHON" scripts/verify_artifacts.py ${{ matrix.build }} --target ${{ matrix.other }} \
+          stage="$RUNNER_TEMP/cross-artifacts"
+          mkdir -p "$stage/generated"
+          (cd ${{ matrix.build }} && cp $(awk '{print $2}' SHA256SUMS) SHA256SUMS "$stage/")
+          cp ${{ matrix.build }}/generated/builtin_assets.bin "$stage/generated/"
+          test ! -e "$stage/CMakeCache.txt"
+          if "$BADGER_PYTHON" scripts/verify_artifacts.py "$stage" --target ${{ matrix.other }} \
                --name ${{ matrix.prefix }} > "$RUNNER_TEMP/cross.txt"; then
             cat "$RUNNER_TEMP/cross.txt"; echo "::error::accepted as ${{ matrix.other }}"; exit 1
           fi
-          grep FAIL "$RUNNER_TEMP/cross.txt"
+          cat "$RUNNER_TEMP/cross.txt"
+          grep -q "^skip  CMakeCache.txt" "$RUNNER_TEMP/cross.txt"
+          if grep -q "build directory configured" "$RUNNER_TEMP/cross.txt"; then exit 1; fi
+          grep -E "^FAIL  ${{ matrix.prefix }}(-assets)?\.uf2: every block tagged family" "$RUNNER_TEMP/cross.txt"
       - name: Package and verify the release ZIP
         run: |
           "$BADGER_PYTHON" scripts/package_firmware.py ${{ matrix.build }} "$RUNNER_TEMP/${{ matrix.prefix }}.zip"

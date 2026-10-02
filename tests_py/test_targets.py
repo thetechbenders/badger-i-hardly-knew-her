@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
 import re
 import shutil
 import subprocess
@@ -83,6 +84,71 @@ class TargetSelection(unittest.TestCase):
         self.assertIn("this build directory is configured for BHIHKH_TARGET=badger2040", out)
         self.assertIn("build badger2350 in a separate directory", out)
         self.assertEqual(generated, [])
+
+
+FAKE_CMAKE = """#!/usr/bin/env bash
+# Records each call; "--build" leaves both boards' artifact names behind.
+printf '%s\\n' "$*" >> "$CMAKE_LOG"
+if [ "$1" = --build ]; then
+  for p in badger_badge badger2350_badge; do
+    touch "$2/$p.uf2" "$2/$p-assets.uf2" "$2/$p.elf" "$2/$p.elf.map"
+  done
+  touch "$2/memory-report.txt" "$2/SHA256SUMS"
+else
+  while [ $# -gt 0 ]; do [ "$1" = -B ] && mkdir -p "$2"; shift; done
+fi
+"""
+
+
+@unittest.skipUnless(shutil.which("bash"), "bash not installed")
+class BuildWrapperTarget(unittest.TestCase):
+    """scripts/build-firmware.sh picks the build directory and artifact names
+    from the same target CMake is given (run against a stub cmake)."""
+
+    def run_wrapper(self, *args, env_target: str | None = None):
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            (root / "scripts").mkdir()
+            shutil.copy(ROOT / "scripts/build-firmware.sh", root / "scripts")
+            (root / "deps/pico-sdk").mkdir(parents=True)
+            (root / "bin").mkdir()
+            (root / "bin/cmake").write_text(FAKE_CMAKE)
+            (root / "bin/cmake").chmod(0o755)
+            log = root / "cmake.log"
+            env = {k: v for k, v in os.environ.items() if k not in ("BHIHKH_TARGET", "BUILD_DIR")}
+            env.update(PATH=f"{root / 'bin'}{os.pathsep}{env['PATH']}", CMAKE_LOG=str(log))
+            if env_target:
+                env["BHIHKH_TARGET"] = env_target
+            res = subprocess.run(["bash", str(root / "scripts/build-firmware.sh"), *args],
+                                 capture_output=True, text=True, env=env)
+            calls = log.read_text().splitlines() if log.exists() else []
+            return res, calls, str(root)
+
+    def test_untyped_and_typed_assignments_agree_with_cmake(self):
+        cases = ((["-DBHIHKH_TARGET=badger2350"], None, "badger2350", "build/fw-badger2350"),
+                 (["-DBHIHKH_TARGET:STRING=badger2350"], None, "badger2350", "build/fw-badger2350"),
+                 (["-DBHIHKH_TARGET:STRING=badger2040"], "badger2350", "badger2040", "build/fw"),
+                 (["-DBHIHKH_TARGET=badger2350", "-DBHIHKH_TARGET:STRING=badger2040"], None, "badger2040",
+                  "build/fw"),
+                 ([], None, "badger2040", "build/fw"))
+        for args, env_target, target, build in cases:
+            with self.subTest(args=args, env=env_target):
+                res, calls, root = self.run_wrapper(*args, env_target=env_target)
+                self.assertEqual(res.returncode, 0, res.stderr)
+                configure = calls[0].split()
+                self.assertEqual(configure[configure.index("-B") + 1], f"{root}/{build}")
+                given = [a.split("=", 1)[1] for a in configure if re.match(r"-DBHIHKH_TARGET(:\w+)?=", a)]
+                self.assertEqual(given[-1], target)  # CMake keeps the last -D
+                self.assertEqual(calls[1], f"--build {root}/{build}")
+                self.assertIn(f"Artifacts for {target} in {root}/{build}:", res.stdout)
+
+    def test_unknown_targets_fail_before_cmake_in_either_form(self):
+        for arg in ("-DBHIHKH_TARGET=pico2", "-DBHIHKH_TARGET:STRING=pico2", "-DBHIHKH_TARGET:STRING="):
+            with self.subTest(arg=arg):
+                res, calls, _ = self.run_wrapper(arg)
+                self.assertEqual(res.returncode, 2)
+                self.assertIn("unknown BHIHKH_TARGET", res.stderr)
+                self.assertEqual(calls, [])
 
 
 class TargetFacts(unittest.TestCase):

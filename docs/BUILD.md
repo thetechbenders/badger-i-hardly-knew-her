@@ -158,12 +158,16 @@ copy of the settings (staged, committed, store work buffers) holds the
 1. **host**: the C++ unit tests (ASan/UBSan), Python tool tests, zbar QR
    decoding of the rendered screens, a font reproducibility check and the
    previews (uploaded as an artifact).
-2. **firmware**: a real RP2040 cross-build for `BHIHKH_TARGET=badger2040`
-   with the pinned toolchain and dependencies, using the public sample
-   content. It then runs `verify_artifacts.py --require-clean --target
-   badger2040`, runs the second-checkout reproducibility check (configured
-   without the option, so it also checks the default target), and uploads
-   the UF2, ELF, map, bin, memory report and SHA256SUMS.
+2. **firmware**: a matrix over both targets, `badger2040` (RP2040) and
+   `badger2350` (RP2350), each a real cross-build with the pinned toolchain
+   and dependencies and the public sample content; any compiler warning
+   fails the job. Each runs `verify_artifacts.py --require-clean --target
+   <target>`, checks that a copy of its artifacts without the CMake cache is
+   refused as the other board's (wrong UF2 family), packages and verifies
+   the release ZIP, runs the second-checkout reproducibility check (the
+   badger2040 one is configured without the option, so it also checks the
+   default target), and uploads the UF2s, ELF, map, bin, memory report and
+   SHA256SUMS.
 
 ## Regenerating assets
 

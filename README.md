@@ -91,10 +91,16 @@ scripts/build-firmware.sh      # Badger 2040 (RP2040) cross-build -> build/fw/ba
 # Badger 2350: scripts/build-firmware.sh -DBHIHKH_TARGET=badger2350 -> build/fw-badger2350/badger2350_badge.uf2
 ```
 
-Then hold **BOOT/USR**, tap **RST**, and copy `build/fw/badger_badge.uf2`
-onto the `RPI-RP2` drive. **Read [docs/INSTALL.md](docs/INSTALL.md) first:
-this replaces MicroPython/BadgerOS, and the badge's settings writes
-eventually overwrite BadgerOS files.**
+Then, on a **Badger 2040**, hold **BOOT/USR**, tap **RST**, and copy
+`build/fw/badger_badge.uf2` onto the `RPI-RP2` drive. **Read
+[docs/INSTALL.md](docs/INSTALL.md) first: this replaces MicroPython/BadgerOS,
+and the badge's settings writes eventually overwrite BadgerOS files.**
+
+On a **Badger 2350**, hold **BOOT** on the back, tap **RESET**, release BOOT,
+and copy `build/fw-badger2350/badger2350_badge.uf2` onto the `RP2350` drive
+(Pimoroni's procedure). This target is not yet validated on a physical badge:
+read [docs/INSTALL.md](docs/INSTALL.md#badger-2350) first, back up the stock
+flash, and see [docs/BADGER2350_SMOKE_TEST.md](docs/BADGER2350_SMOKE_TEST.md).
 
 Configure over USB (see [docs/USB_CLI.md](docs/USB_CLI.md)):
 

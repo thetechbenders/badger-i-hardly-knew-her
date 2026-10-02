@@ -29,6 +29,12 @@ crop follows the taller portrait; an explicit `crop` must have that
 portrait's proportions (104:176). The Badger 2350 build is not yet validated
 on a physical badge ([INSTALL.md](INSTALL.md#badger-2350)).
 
+The rest of this page, the flashing step above included, describes the
+default Badger 2040 target: `local/out/badge/`, `badger_badge.uf2`, the
+296×128 panel and the 13:16 portrait crop. With `--target badger2350`, use
+the output directory, file names, 264×176 panel and 104:176 crop given
+above instead, and flash as in [INSTALL.md](INSTALL.md#badger-2350).
+
 `local/` is ignored by Git, so the form, the photo and everything made from
 them stay on your computer. The template in `config/` holds only generic
 example content; don't put your details there.
