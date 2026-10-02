@@ -7,17 +7,22 @@ badge_profile.flatten validates) plus a processed portrait, previews every
 screen with the firmware renderer, and builds the personalised firmware:
 
   badge_form.py new [local/badge.toml]          copy the template (never overwrites)
-  badge_form.py check   FORM                    validate the form and its files
-  badge_form.py preview FORM [--out DIR]        + portrait, profile, previews (fit and QR gates)
-  badge_form.py build   FORM [--out DIR]        + RP2040 firmware and artifact checks
+  badge_form.py check   FORM [--target T]       validate the form and its files
+  badge_form.py preview FORM [--out DIR] [--target T]   + portrait, profile, previews (fit and QR gates)
+  badge_form.py build   FORM [--out DIR] [--target T]   + firmware and artifact checks
   badge_form.py export  PROFILE.json --form OUT.toml [--processed PNG | --photo IMG [--settings JSON]]
                                                 write an equivalent form for an existing JSON profile
 
 scripts/build-badge.sh wraps `build` (and `preview` with --preview).
 
-Outputs go to local/out/<form name>/ (git-ignored) unless --out is given:
-profile.json (generated; never edit it), portrait.png, assets.bin, previews/
-and fw/. The directory must be new, empty or this tool's own (manifest
+--target is the hardware (BHIHKH_TARGET): badger2040 (the default, the
+original Badger 2040) or badger2350. It decides the portrait size (104x128 or
+104x176), the screens the previews render and the firmware built. One form
+serves both badges.
+
+Outputs go to local/out/<form name>/ (git-ignored; local/out/<form
+name>-badger2350/ for the Badger 2350) unless --out is given: profile.json
+(generated; never edit it), portrait.png, assets.bin, previews/ and fw/. The directory must be new, empty or this tool's own (manifest
 .badge-form-output); every output path is checked before anything is
 written or deleted, and nothing outside the output directory is written.
 
@@ -41,7 +46,9 @@ from pathlib import Path
 TOOLS = Path(__file__).resolve().parent
 ROOT = TOOLS.parent
 sys.path.insert(0, str(TOOLS))
+sys.path.insert(0, str(ROOT / "scripts"))
 import badge_profile as prof  # noqa: E402
+from bhihkh_targets import DEFAULT as DEFAULT_TARGET, TARGETS  # noqa: E402
 
 try:
     import tomllib
@@ -60,7 +67,7 @@ GENERATED_MARK = "_generated_by"
 CONTACT_TYPES = ("email", "phone", "web", "github", "discord", "text")
 QR_CHOICES = ("none", "link", "vcard", "vcard-from-contacts")
 PORTRAIT_METHODS = ("atkinson", "floyd", "bayer8", "threshold")
-PORTRAIT_SIZE = (104, 128)
+PORTRAIT_SIZE = (104, 128)  # the Badger 2040's; per target: TARGETS[...].portrait_w/_h
 INTERESTS_SEPARATOR = " \u00b7 "
 
 SECTIONS = {
@@ -100,6 +107,7 @@ class Form:
     inputs: list[Path] = field(default_factory=list)   # every file the form reads
     refs: list[tuple[str, str]] = field(default_factory=list)  # (form field, path as written)
     blocks: dict = field(default_factory=dict)  # "contact"/"project" -> form block number of each kept entry
+    target: str = DEFAULT_TARGET   # BHIHKH_TARGET the portrait and outputs are for
 
 
 # ------------------------------------------------------------------ parsing
@@ -199,9 +207,10 @@ def parse_form(path: Path, text: str | None = None) -> dict:
     return data
 
 
-def load_form(path: Path, text: str | None = None) -> Form:
+def load_form(path: Path, text: str | None = None, target: str = DEFAULT_TARGET) -> Form:
     """Validate a form and return the profile document it describes. Every
-    problem found is reported at once, each naming its field."""
+    problem found is reported at once, each naming its field. `target` is
+    the badge it is checked for (portrait size limits)."""
     path = Path(path)
     form_dir = path.resolve().parent
     data = parse_form(path, text)
@@ -394,7 +403,7 @@ def load_form(path: Path, text: str | None = None) -> Form:
             continue
         prefs[key] = v
 
-    portrait = _portrait(problems, notes, form_dir, data.get("portrait"))
+    portrait = _portrait(problems, notes, form_dir, data.get("portrait"), target)
     if portrait:
         inputs.append(portrait.path)
         refs.append((f"portrait.{portrait.kind}", data["portrait"][portrait.kind].strip()))
@@ -410,7 +419,8 @@ def load_form(path: Path, text: str | None = None) -> Form:
         prof.flatten(doc)
     except prof.ProfileError as e:
         raise FormError([f"profile: {e}"]) from None
-    return Form(path=path, doc=doc, portrait=portrait, notes=notes, inputs=inputs, refs=refs, blocks=blocks)
+    return Form(path=path, doc=doc, portrait=portrait, notes=notes, inputs=inputs, refs=refs, blocks=blocks,
+                target=target)
 
 
 def load_doc(path: Path) -> dict:
@@ -494,7 +504,8 @@ def make_vcard(person: dict, contacts: list[dict]) -> str:
 
 # ----------------------------------------------------------------- portrait
 
-def _portrait(problems: list[str], notes: list[str], form_dir: Path, table) -> Portrait | None:
+def _portrait(problems: list[str], notes: list[str], form_dir: Path, table, target: str = DEFAULT_TARGET) -> Portrait | None:
+    tgt = TARGETS[target]
     if table is None:
         problems.append("portrait: missing; add a [portrait] section with photo = \"your-photo.jpg\"")
         return None
@@ -515,11 +526,13 @@ def _portrait(problems: list[str], notes: list[str], form_dir: Path, table) -> P
     if kind == "processed":
         for k in tone_keys:
             problems.append(f"portrait.{k}: only applies to photo = \"...\"; remove it")
-        _check_processed(problems, path)
-        if path.resolve() == PLACEHOLDER.resolve():
+        if path.resolve() == PLACEHOLDER.resolve() and target != DEFAULT_TARGET:
+            path = placeholder(target)  # the sample silhouette at this badge's size, not a 104x128 one
+        _check_processed(problems, path, target)
+        if path.resolve() == placeholder(target).resolve():
             notes.append("portrait: using the sample silhouette; set portrait.photo to your own picture")
         return Portrait("processed", path)
-    settings = {"size": list(PORTRAIT_SIZE), "gamma": 1.0, "black_pct": 1.0, "white_pct": 2.0,
+    settings = {"size": [tgt.portrait_w, tgt.portrait_h], "gamma": 1.0, "black_pct": 1.0, "white_pct": 2.0,
                 "sharpen": 0.6, "method": "atkinson"}
     if "settings" in t:
         sraw = t["settings"]
@@ -549,7 +562,7 @@ def _portrait(problems: list[str], notes: list[str], form_dir: Path, table) -> P
     else:
         settings.update({k: t[k] for k in tone_keys})
         where = "portrait"
-    _check_photo(problems, where, path, settings)
+    _check_photo(problems, where, path, settings, target)
     return Portrait("photo", path, settings)
 
 
@@ -584,14 +597,21 @@ def _open_image(problems, name, path: Path):
         return None
 
 
-def _check_processed(problems, path: Path):
+def placeholder(target: str = DEFAULT_TARGET) -> Path:
+    """The sample silhouette at the target's portrait size."""
+    return PLACEHOLDER if target == "badger2040" else PLACEHOLDER.with_name(f"portrait_placeholder_{target}.png")
+
+
+def _check_processed(problems, path: Path, target: str = DEFAULT_TARGET):
+    t = TARGETS[target]
     im = _open_image(problems, "portrait.processed", path)
     if im is None:
         return
     w, h = im.size
-    if not (8 <= w <= 148 and 8 <= h <= 128):
-        problems.append(f"portrait.processed: {w}x{h} pixels; it must be at most 148x128 "
-                        f"(104x128 is the designed size) so the text keeps its room")
+    if not (8 <= w <= t.portrait_max_w and 8 <= h <= t.display_h):
+        problems.append(f"portrait.processed: {w}x{h} pixels; it must be at most {t.portrait_max_w}x{t.display_h} "
+                        f"({t.portrait_w}x{t.portrait_h} is the designed size) so the text keeps its room"
+                        + ("" if target == DEFAULT_TARGET else f" on the {t.board}"))
     if im.mode != "1":
         rgba = im.convert("RGBA")
         lo, hi = rgba.getchannel("A").getextrema()
@@ -601,7 +621,8 @@ def _check_processed(problems, path: Path):
                             "portrait is pure black and white. Use photo = \"...\" to convert a picture")
 
 
-def _check_photo(problems, where: str, path: Path, s: dict):
+def _check_photo(problems, where: str, path: Path, s: dict, target: str = DEFAULT_TARGET):
+    t = TARGETS[target]
     if s.get("method") not in PORTRAIT_METHODS:
         problems.append(f"{where}.method: {s.get('method')!r}; use one of "
                         + ", ".join(f'"{m}"' for m in PORTRAIT_METHODS))
@@ -611,8 +632,9 @@ def _check_photo(problems, where: str, path: Path, s: dict):
     _number(problems, f"{where}.sharpen", s.get("sharpen"), 0, 3)
     size = s.get("size")
     if not (isinstance(size, list) and len(size) == 2 and all(type(v) is int for v in size)
-            and 8 <= size[0] <= 148 and 8 <= size[1] <= 128):
-        problems.append(f"{where}.size: {size!r}; expected [width, height] up to [148, 128] (designed: [104, 128])")
+            and 8 <= size[0] <= t.portrait_max_w and 8 <= size[1] <= t.display_h):
+        problems.append(f"{where}.size: {size!r}; expected [width, height] up to [{t.portrait_max_w}, {t.display_h}] "
+                        f"(designed: [{t.portrait_w}, {t.portrait_h}])")
         return
     im = _open_image(problems, "portrait.photo", path)
     if im is None:
@@ -674,8 +696,9 @@ def prepare_portrait(form: Form, out: Path) -> Path:
 
 # ---------------------------------------------------------- build pipeline
 
-def default_out(form_path: Path) -> Path:
-    return ROOT / "local" / "out" / form_path.stem
+def default_out(form_path: Path, target: str = DEFAULT_TARGET) -> Path:
+    suffix = "" if target == DEFAULT_TARGET else f"-{target}"
+    return ROOT / "local" / "out" / f"{form_path.stem}{suffix}"
 
 
 def write_profile(form: Form, out: Path) -> Path:
@@ -701,16 +724,17 @@ def _run(cmd, **kw) -> subprocess.CompletedProcess:
     return subprocess.run([str(c) for c in cmd], **kw)
 
 
-def host_preview_binary() -> Path:
-    """build/host/badger_preview, configured as the host tests do (sample
-    content only; the form's content is passed per render)."""
-    build = ROOT / "build" / "host"
+def host_preview_binary(target: str = DEFAULT_TARGET) -> Path:
+    """build/host/badger_preview (build/host-<target>/ for other targets),
+    configured as the host tests do (sample content only; the form's content
+    is passed per render)."""
+    build = ROOT / "build" / ("host" if target == DEFAULT_TARGET else f"host-{target}")
     exe = build / "badger_preview"
     if not (build / "build.ninja").exists():
         res = _run(["cmake", "-S", ROOT / "host", "-B", build, "-G", "Ninja", "-DCMAKE_BUILD_TYPE=Debug",
-                    f"-DPython3_EXECUTABLE={sys.executable}",
+                    f"-DPython3_EXECUTABLE={sys.executable}", f"-DBHIHKH_TARGET={target}",
                     f"-DBADGER_PROFILE={ROOT / 'config' / 'sample-profile.json'}",
-                    f"-DBADGER_PORTRAIT={PLACEHOLDER}"], capture_output=True, text=True)
+                    f"-DBADGER_PORTRAIT={placeholder(target)}"], capture_output=True, text=True)
         if res.returncode:
             raise SystemExit(f"configuring the host preview failed:\n{res.stdout[-2000:]}{res.stderr[-2000:]}")
     res = _run(["cmake", "--build", build, "--target", "badger_preview"], capture_output=True, text=True)
@@ -844,13 +868,13 @@ def preview(form: Form, out: Path) -> dict:
     portrait = prepare_portrait(form, out)
     profile = write_profile(form, out)
     pack = out / "assets.bin"
-    res = _run([sys.executable, TOOLS / "assetpack.py", "build", "--portrait", portrait, "--out", pack],
-               capture_output=True, text=True)
+    res = _run([sys.executable, TOOLS / "assetpack.py", "build", "--target", form.target, "--portrait", portrait,
+                "--out", pack], capture_output=True, text=True)
     if res.returncode:
         raise FormError([f"portrait: asset pack: {res.stderr.strip() or res.stdout.strip()}"])
     pairs = prof.flatten(form.doc)
     problems = [f"{form_field(k, form.doc, form.blocks)}: {why}" for k, why in prof.text_problems(pairs)]
-    exe = host_preview_binary()
+    exe = host_preview_binary(form.target)
     screens, projects = rp.fit_reports(exe, pairs, pack)
     for key, where in rp.fit_problems(screens, projects, pairs):
         problems.append(f"{form_field(key, form.doc, form.blocks)}: does not fit on the {where} (it would be cut "
@@ -889,7 +913,7 @@ def qr_failures(form: Form, screens: list[str]) -> list[str]:
     return msgs
 
 
-def build_firmware(prepared: dict, out: Path) -> Path:
+def build_firmware(prepared: dict, out: Path, target: str = DEFAULT_TARGET) -> Path:
     for name in ("fw", "fw-build.log", "fw-verify.txt"):
         if (out / name).is_symlink():
             raise FormError([f"{out / name} is a symbolic link; writing there would change another file"])
@@ -898,13 +922,15 @@ def build_firmware(prepared: dict, out: Path) -> Path:
     log = out / "fw-build.log"
     env = {**os.environ, "BUILD_DIR": str(fw)}
     with open(log, "w") as f:
-        res = _run([ROOT / "scripts" / "build-firmware.sh", f"-DPython3_EXECUTABLE={sys.executable}",
+        res = _run([ROOT / "scripts" / "build-firmware.sh", f"-DBHIHKH_TARGET={target}",
+                    f"-DPython3_EXECUTABLE={sys.executable}",
                     f"-DBADGER_PROFILE={prepared['profile']}", f"-DBADGER_PORTRAIT={prepared['portrait']}"],
                    stdout=f, stderr=subprocess.STDOUT, env=env)
     if res.returncode:
         tail = log.read_text(errors="replace").splitlines()[-30:]
         raise SystemExit("firmware build failed (log: {}):\n{}".format(log, "\n".join(tail)))
-    res = _run([sys.executable, ROOT / "scripts" / "verify_artifacts.py", fw], capture_output=True, text=True)
+    res = _run([sys.executable, ROOT / "scripts" / "verify_artifacts.py", fw, "--target", target],
+               capture_output=True, text=True)
     (out / "fw-verify.txt").write_text(res.stdout + res.stderr)
     if res.returncode:
         raise SystemExit(f"artifact checks failed:\n{res.stdout}{res.stderr}")
@@ -1076,7 +1102,10 @@ def main(argv=None) -> int:
     for name in ("check", "preview", "build"):
         s = sub.add_parser(name)
         s.add_argument("form", type=Path)
-        s.add_argument("--out", type=Path, help="output directory (default: local/out/<form name>)")
+        s.add_argument("--out", type=Path, help="output directory (default: local/out/<form name>, "
+                       "local/out/<form name>-<target> for targets other than badger2040)")
+        s.add_argument("--target", choices=sorted(TARGETS), default=DEFAULT_TARGET,
+                       help=f"hardware to build for (default {DEFAULT_TARGET})")
     e = sub.add_parser("export", help="write an equivalent form for an existing profile JSON")
     e.add_argument("profile", type=Path)
     e.add_argument("--form", type=Path, required=True, help="form to write (never overwritten)")
@@ -1149,7 +1178,7 @@ def main(argv=None) -> int:
         return 0
 
     try:
-        form = load_form(args.form)
+        form = load_form(args.form, target=getattr(args, "target", DEFAULT_TARGET))
     except FormError as err:
         _report(err, args.form)
         return 1
@@ -1175,7 +1204,7 @@ def main(argv=None) -> int:
         for note in form.notes:
             print(f"note: {note}")
         return 0
-    out = (args.out or default_out(args.form)).resolve()
+    out = (args.out or default_out(args.form, form.target)).resolve()
     if out == (ROOT / "local").resolve():
         print("--out must be a directory of its own, not local/ itself", file=sys.stderr)
         return 1
@@ -1191,9 +1220,13 @@ def main(argv=None) -> int:
     print(f"  generated profile: {prepared['profile']}")
     if args.cmd == "preview":
         return 0
-    fw = build_firmware(prepared, out)
-    print(f"firmware OK (artifact checks passed): {fw / 'badger_badge.uf2'}")
-    print("flash: hold BOOT/USR, tap RST, copy the .uf2 onto the RPI-RP2 drive (see docs/INSTALL.md first)")
+    t = TARGETS[form.target]
+    fw = build_firmware(prepared, out, form.target)
+    print(f"firmware OK for the {t.board} (artifact checks passed): {fw / (t.artifact + '.uf2')}")
+    if form.target == "badger2040":
+        print("flash: hold BOOT/USR, tap RST, copy the .uf2 onto the RPI-RP2 drive (see docs/INSTALL.md first)")
+    else:
+        print("flash: on the back, hold BOOT, tap RESET, copy the .uf2 onto the RP2350 drive (see docs/INSTALL.md first)")
     return 0
 
 
