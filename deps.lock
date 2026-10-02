@@ -1,15 +1,21 @@
 # Pinned build dependencies. scripts/fetch-deps.sh checks out exactly these
 # commits and fails if a tag has moved. Update deliberately, then re-run CI.
+#
+# pico-sdk 2.3.1 is the first tagged release with the official
+# boards/pimoroni_badger2350.h (upstream commit 8b0d07ed, "Add Pimoroni board
+# headers"); 2.2.0 and 2.3.0 lack it. Its TinyUSB submodule is the same commit
+# as 2.2.0's. The SDK 2.3 build requires picotool 2.3.x; 2.3.1 is the picotool
+# release made alongside SDK 2.3.1.
 PICO_SDK_URL=https://github.com/raspberrypi/pico-sdk
-PICO_SDK_TAG=2.2.0
-PICO_SDK_COMMIT=a1438dff1d38bd9c65dbd693f0e5db4b9ae91779
+PICO_SDK_TAG=2.3.1
+PICO_SDK_COMMIT=079c6f39023649b154152db30f1d781e884879bc
 TINYUSB_COMMIT=86ad6e56c1700e85f1c5678607a762cfe3aa2f47
 PIMORONI_PICO_URL=https://github.com/pimoroni/pimoroni-pico
 PIMORONI_PICO_TAG=v1.29.0-2
 PIMORONI_PICO_COMMIT=39b017a30717ed68e5ff15163bac89489acd09df
 PICOTOOL_URL=https://github.com/raspberrypi/picotool
-PICOTOOL_TAG=2.2.0
-PICOTOOL_COMMIT=a7eb3988f0645239185fadb4e25d8279478c2dbb
+PICOTOOL_TAG=2.3.1
+PICOTOOL_COMMIT=2041936441b48a3cc53ae3da9e805229fe8f4e18
 # Arm GNU toolchain: Ubuntu 24.04 package gcc-arm-none-eabi 15:13.2.rel1-2
 # (Arm GNU Toolchain 13.2.Rel1), the version CI uses.
 ARM_GCC_VERSION=13.2.1

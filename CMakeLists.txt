@@ -30,8 +30,8 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 pico_sdk_init()
 
-if(PICO_SDK_VERSION_STRING VERSION_LESS 2.2.0)
-  message(FATAL_ERROR "pico-sdk ${PICO_SDK_VERSION_STRING} found; this project is pinned to 2.2.0 (deps.lock)")
+if(PICO_SDK_VERSION_STRING VERSION_LESS 2.3.1)
+  message(FATAL_ERROR "pico-sdk ${PICO_SDK_VERSION_STRING} found; this project is pinned to 2.3.1 (deps.lock)")
 endif()
 
 # Build metadata (commit date keeps builds reproducible).
