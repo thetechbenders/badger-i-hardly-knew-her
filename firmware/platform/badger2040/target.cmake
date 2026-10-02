@@ -4,15 +4,18 @@
 set(BHIHKH_PICO_BOARD pimoroni_badger2040)  # Pico SDK boards/pimoroni_badger2040.h
 set(BHIHKH_PICO_PLATFORM rp2040)
 set(BHIHKH_TARGET_DESCRIPTION "Photo badge, business card and portfolio for the original Badger 2040")
+set(BHIHKH_TARGET_ARTIFACT_PREFIX badger_badge)  # badger_badge.uf2 (the name since the first release)
 
+# Board-specific code here, the shared Pico SDK backend in ../pico/.
+get_filename_component(_pico ${CMAKE_CURRENT_LIST_DIR}/../pico ABSOLUTE)
 set(BHIHKH_TARGET_INCLUDE_DIRS ${CMAKE_CURRENT_LIST_DIR})
 set(BHIHKH_TARGET_SOURCES
-  ${CMAKE_CURRENT_LIST_DIR}/main.cpp
+  ${_pico}/main.cpp
   ${CMAKE_CURRENT_LIST_DIR}/board.cpp
   ${CMAKE_CURRENT_LIST_DIR}/panel_uc8151.cpp
-  ${CMAKE_CURRENT_LIST_DIR}/flash_rp2040.cpp
-  ${CMAKE_CURRENT_LIST_DIR}/diagnostics.cpp
-  ${CMAKE_CURRENT_LIST_DIR}/i2c_rp2040.cpp
+  ${_pico}/flash_pico.cpp
+  ${_pico}/diagnostics.cpp
+  ${_pico}/i2c_pico.cpp
 )
 # Only the panel driver is taken from pimoroni-pico (MIT).
 set(BHIHKH_TARGET_VENDOR_SOURCES ${PIMORONI_PICO_PATH}/drivers/uc8151_legacy/uc8151_legacy.cpp)

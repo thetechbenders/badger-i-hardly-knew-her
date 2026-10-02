@@ -1,4 +1,7 @@
-// Badger 2040 photo badge / business card firmware - RP2040 entry point.
+// BHIHKH! photo badge / business card firmware - entry point shared by the
+// Pico SDK targets (Badger 2040 / RP2040, Badger 2350 / RP2350). Everything
+// board-specific comes from the target's board.hpp (pins, panel, power,
+// battery circuit) and flash_layout.hpp.
 //
 // Execution contexts and ownership
 //   core 0  main loop: app state machine, renderer (RenderScheduler), USB CDC
@@ -8,7 +11,7 @@
 //           debouncer, pushes ButtonEvents into an SPSC queue (ISR -> core 0).
 //   (core 0 also owns I2C0/Qwiic: the APDS-9960 gesture sensor is polled
 //    from the main loop, only while gesture mode is on.)
-//   core 1  display service: the only context that touches the UC8151 panel
+//   core 1  display service: the only context that touches the e-paper panel
 //           (spi0, CS/DC/RESET/BUSY). In single-core diagnostic mode core 1 is
 //           not started and core 0 polls the same DisplayService instead.
 #include <cstdio>
@@ -23,10 +26,9 @@
 #include "diagnostics.hpp"
 #include "display_pipeline.hpp"
 #include "flash_layout.hpp"
-#include "flash_rp2040.hpp"
+#include "flash_pico.hpp"
 #include "hardware/sync.h"
-#include "i2c_rp2040.hpp"
-#include "panel_uc8151.hpp"
+#include "i2c_pico.hpp"
 #include "pico/flash.h"
 #include "pico/multicore.h"
 #include "pico/stdlib.h"
@@ -47,13 +49,13 @@ namespace {
 Settings g_committed;  // last persisted (or defaults)
 Settings g_staged;     // what the CLI edits and the renderer shows
 bool g_staged_dirty = false;
-Rp2040Flash *g_flash;
+PicoFlash *g_flash;
 SettingsStore *g_store;
 
 Framebuffer g_bufs[2];
 JobQueue g_jobs;
 EventQueue g_events;
-Uc8151Panel g_panel;
+board::Panel g_panel;
 DisplayService g_display(g_panel, g_bufs, 2, g_jobs, g_events);
 RenderScheduler g_sched(g_bufs, 2, g_jobs, g_events);
 bool g_single_core = false;
@@ -73,9 +75,9 @@ AssetPackInfo g_asset_info;
 const char *g_asset_source = "none";
 
 bool g_usb = true;
-BatteryMeter g_battery;
+BatteryMeter g_battery(board::kBatteryCircuit);
 uint32_t g_battery_sample_ms = 0;
-Rp2040I2c g_i2c;
+PicoI2c g_i2c;
 Apds9960 g_gesture(g_i2c);
 SensorState g_last_sensor_state = SensorState::Unprobed;
 
@@ -179,7 +181,7 @@ void build_info_lines() {
     char v[16], f[16];
     fmt_mv(v, sizeof v, b.last_mv);
     fmt_mv(f, sizeof f, b.filtered_mv);
-    if (b.display == PowerDisplay::Usb) L.add("Power     USB | sense %s (reflects USB, not the cell)", v);
+    if (b.display == PowerDisplay::Usb) L.add("Power     USB | sense %s (%s)", v, board::kUsbSenseNote);
     else if (b.display == PowerDisplay::Invalid) L.add("Battery   INVALID reading %s", v);
     else L.add("Battery   %s (filtered %s) | %u/4 bars%s | approx.", v, f, b.bars, b.low ? " LOW" : "");
   }
@@ -294,6 +296,9 @@ class UsbCliHost : public CliHost {
   void print_version() override {
     std::printf("%s %s (%s)\r\nbuilt %s\r\npico-sdk %s, pimoroni-pico %s, %s\r\n", build::kName, build::kVersion,
                 build::kBuildType, build::kDate, build::kPicoSdk, build::kPimoroni, build::kCompiler);
+    std::printf("target %s: %s, %s, %lu MiB flash, %lu KiB SRAM, %s, %s\r\n", build::kTarget, board::kBoardName,
+                board::kChip, (unsigned long)(flash_layout::kFlashSize / (1024 * 1024)),
+                (unsigned long)((SRAM_END - SRAM_BASE) / 1024), board::kPsram, board::kPanelName);
   }
   void print_status() override {
     const View v = g_app.view();
@@ -361,8 +366,10 @@ class UsbCliHost : public CliHost {
                   g_single_core ? "single-core" : "dual-core", display_busy() ? "busy" : "idle",
                   (unsigned long)d.full, (unsigned long)d.clean, (unsigned long)d.partial,
                   (unsigned long)d.suppressed, (unsigned long)d.dropped, (unsigned long)d.timeouts);
-      std::printf("display: panel %s, init failures %lu\r\n",
-                  g_display.panel_ok() ? "ok" : "NOT RESPONDING (BUSY held low; retrying)", (unsigned long)d.panel_faults);
+      std::printf("display: %s panel %s, init failures %lu%s%s\r\n", board::kPanelName,
+                  g_display.panel_ok() ? "ok" : "NOT RESPONDING (BUSY stuck; retrying)", (unsigned long)d.panel_faults,
+                  g_panel.supports_partial() ? "" : " | no partial refresh on this panel",
+                  board::kPanelHasSpeeds ? "" : " | one waveform (refresh.speed has no effect)");
       std::printf("display: last %lu ms, max %lu ms; renders suppressed %lu, coalesced %lu, event overflow %lu\r\n",
                   (unsigned long)d.last_ms, (unsigned long)d.max_ms, (unsigned long)g_sched.suppressed(),
                   (unsigned long)g_sched.coalesced(), (unsigned long)d.event_overflows);
@@ -377,9 +384,10 @@ class UsbCliHost : public CliHost {
       const int n = g_sched.trace(r, RenderScheduler::kTrace);
       std::printf("refresh: last %d frames (ms since boot; wait = request->submit, busy = panel BUSY time)\r\n", n);
       for (int i = 0; i < n; ++i)
-        std::printf("refresh: #%lu req %lu wait %lu busy %lu speed %u %s (%s)%s\r\n", (unsigned long)r[i].seq,
+        std::printf("refresh: #%lu req %lu wait %lu busy %lu speed %c %s (%s)%s\r\n", (unsigned long)r[i].seq,
                     (unsigned long)r[i].request_ms, (unsigned long)(r[i].submit_ms - r[i].request_ms),
-                    (unsigned long)r[i].busy_ms, r[i].mode == RefreshMode::Clean ? 0u : unsigned(r[i].speed),
+                    (unsigned long)r[i].busy_ms,
+                    !board::kPanelHasSpeeds ? '-' : char('0' + (r[i].mode == RefreshMode::Clean ? 0 : r[i].speed)),
                     refresh_mode_str(r[i].mode), refresh_reason_str(r[i].reason),
                     r[i].done_ms ? "" : " [in progress]");
     }
@@ -403,9 +411,9 @@ class UsbCliHost : public CliHost {
     if (all || !std::strcmp(t, "gesture")) {
       known = true;
       const SensorStats &g = g_gesture.stats();
-      std::printf("gesture: mode %s, sensor %s (id 0x%02x) on I2C0 SDA %d SCL %d, polled (no INT line)\r\n",
+      std::printf("gesture: mode %s, sensor %s (id 0x%02x) on I2C%d SDA %u SCL %u, polled (no INT line)\r\n",
                   g_app.gesture_mode() ? "on" : "off", sensor_state_str(g_gesture.state()), g.chip_id,
-                  BADGER2040_SDA_PIN, BADGER2040_SCL_PIN);
+                  board::kI2cInstance, board::kI2cSdaPin, board::kI2cSclPin);
       std::printf("gesture: sessions %lu, swipes %lu, rejected %lu, cooldown-suppressed %lu, fifo overflows %lu\r\n",
                   (unsigned long)g.sessions, (unsigned long)g.recognized, (unsigned long)g.rejected,
                   (unsigned long)g_gesture.gate_suppressed(), (unsigned long)g.overflows);
@@ -501,11 +509,13 @@ void poll_cli() {
   board::led(0);
   cancel_repeating_timer(&g_button_timer);
   g_gesture.shutdown();  // on USB the Qwiic 3V3 stays up: make sure the IR LED is off
-  board::release_power_latch();
-  // On battery the rail collapses once no button is held. If we are still
-  // running, USB (or a held button) keeps us powered: emulate sleep. Wait for
-  // every button to be released, then for a new press, and reboot so a wake
-  // behaves like a battery cold boot (the press is captured at boot).
+  board::power_off();
+  // On battery the board is off now (Badger 2040: the rail collapses once no
+  // button is held; Badger 2350: the chip powers down until a button wakes
+  // it). If we are still running, USB (or a held button) keeps us powered:
+  // emulate sleep. Wait for every button to be released, then for a new
+  // press, and reboot so a wake behaves like a battery cold boot (the press
+  // is captured at boot).
   uint32_t released_since = 0;
   bool armed = false;
   while (true) {
@@ -516,7 +526,7 @@ void poll_cli() {
       if (b) released_since = t;
       else if (t - released_since > 100) armed = true;
     } else if (b) {
-      board::hold_power_latch();
+      board::cancel_power_off();
       diag::reboot(diag::ResetKind::SleepWake);
     }
     sleep_ms(10);
@@ -550,7 +560,7 @@ int main() {
   // Settings: defaults, then the newest valid flash record (not in safe mode).
   settings_defaults(&g_committed);
   g_single_core = boot.safe_mode;  // safe mode keeps everything on core 0
-  static Rp2040Flash flash(false);
+  static PicoFlash flash(false);
   static SettingsStore store(flash);
   g_flash = &flash;
   g_store = &store;

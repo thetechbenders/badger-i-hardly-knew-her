@@ -4,8 +4,10 @@
 #   cmake -S . -B build/fw -G Ninja -DCMAKE_BUILD_TYPE=Release [-DBHIHKH_TARGET=badger2040]
 #   cmake --build build/fw
 #
-# BHIHKH_TARGET selects the hardware (cmake/bhihkh_target.cmake); badger2040,
-# the original Badger 2040, is the default and the only implemented target.
+# BHIHKH_TARGET selects the hardware (cmake/bhihkh_target.cmake): badger2040,
+# the original Badger 2040 (the default), or badger2350. Artifacts are named
+# per board (BHIHKH_TARGET_ARTIFACT_PREFIX: badger_badge.uf2 for the Badger
+# 2040, badger2350_badge.uf2 for the Badger 2350).
 # Host tests/previews live in host/ (separate CMake project, no SDK needed).
 cmake_minimum_required(VERSION 3.16)
 
@@ -53,6 +55,11 @@ if(GIT_FOUND)
 endif()
 file(STRINGS ${CMAKE_CURRENT_SOURCE_DIR}/deps.lock _tag REGEX "^PIMORONI_PICO_TAG=")
 string(REPLACE "PIMORONI_PICO_TAG=" "" PIMORONI_PICO_VERSION "${_tag}")
+if(BHIHKH_TARGET_VENDOR_SOURCES MATCHES "${PIMORONI_PICO_PATH}")
+  set(BHIHKH_PIMORONI_USED "${PIMORONI_PICO_VERSION}")
+else()
+  set(BHIHKH_PIMORONI_USED "not used")
+endif()
 
 include(cmake/badger_content.cmake)
 badger_generate_content(${CMAKE_CURRENT_BINARY_DIR}/generated)
@@ -62,7 +69,7 @@ configure_file(firmware/platform/build_info.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/g
 get_filename_component(BADGER_SDK_REAL "${PICO_SDK_PATH}" REALPATH)
 get_filename_component(BADGER_PIMORONI_REAL "${PIMORONI_PICO_PATH}" REALPATH)
 
-set(FW badger_badge)
+set(FW ${BHIHKH_TARGET_ARTIFACT_PREFIX})
 add_executable(${FW}
   ${BADGER_CORE_SOURCES}
   ${BADGER_CLI_SOURCES}
@@ -72,7 +79,8 @@ add_executable(${FW}
   ${BHIHKH_TARGET_VENDOR_SOURCES}
 )
 target_include_directories(${FW} PRIVATE
-  firmware/core firmware/cli ${BHIHKH_TARGET_INCLUDE_DIRS} firmware/platform third_party/qrcodegen
+  firmware/core firmware/cli ${BHIHKH_TARGET_INCLUDE_DIRS} firmware/platform/pico firmware/platform
+  third_party/qrcodegen
   ${PIMORONI_PICO_PATH})
 target_compile_options(${FW} PRIVATE
   $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti>

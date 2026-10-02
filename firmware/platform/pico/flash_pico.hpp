@@ -1,4 +1,5 @@
-// Settings flash backend for the RP2040.
+// Settings flash backend for the RP2040 and RP2350 (Pico SDK flash API;
+// the region comes from the target's flash_layout.hpp).
 //
 // XIP constraints: while a sector is erased or programmed the flash cannot
 // be read, so no code may execute from flash on either core and no IRQ
@@ -14,9 +15,9 @@
 
 namespace badge {
 
-class Rp2040Flash : public FlashBackend {
+class PicoFlash : public FlashBackend {
  public:
-  explicit Rp2040Flash(bool core1_running) : core1_running_(core1_running) {}
+  explicit PicoFlash(bool core1_running) : core1_running_(core1_running) {}
   size_t sector_size() const override;
   size_t region_size() const override;
   bool read(uint32_t offset, void *dst, size_t len) override;
