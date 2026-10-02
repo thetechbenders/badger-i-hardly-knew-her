@@ -8,7 +8,7 @@ one hardware target with `-DBHIHKH_TARGET=<name>` (`cmake/bhihkh_target.cmake`):
 | `BHIHKH_TARGET` | Hardware | State |
 |---|---|---|
 | `badger2040` (default) | original Pimoroni Badger 2040 (RP2040) | implemented: everything in this document |
-| `badger2350` | Pimoroni Badger 2350, working name BadgHer™ NEO (name not final; the ™ is a joke, not a trademark claim) | planned, **not implemented** |
+| `badger2350` | Pimoroni Badger 2350 (RP2350A), working name BadgHer™ NEO (name not final; the ™ is a joke, not a trademark claim) | planned, **not implemented** |
 
 Selecting `badger2350`, or any name that is not implemented, fails at
 configure time with a message saying so; it never falls back to building
@@ -44,8 +44,12 @@ are today:
   PSRAM, wireless) need real interfaces when they are implemented.
 - **Flash and diagnostics.** `flash_layout.hpp` is the 2 MiB map;
   `diagnostics.cpp` reads RP2040 reset registers and scratch-bank stacks.
-- **Board header.** pico-sdk 2.2.0 has no Badger 2350 board header; the
-  port will have to supply one.
+- **Board header / SDK pin.** The pinned pico-sdk 2.2.0 predates Badger 2350
+  support. Current upstream pico-sdk now includes `pimoroni_badger2350` and
+  identifies the MCU as RP2350A. The port should evaluate a controlled SDK
+  pin update before maintaining a redundant local board header; verify the
+  physical board during bring-up because one BadgeWare intro page currently
+  says RP2350B.
 - **Artifacts.** Artifact names (`badger_badge*.uf2`) and the build
   directory (`build/fw`) do not carry the target yet.
 
