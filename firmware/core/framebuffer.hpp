@@ -1,10 +1,9 @@
-// Board-neutral 1-bit framebuffer at the target display's native size.
+// Portable framebuffer: Classic 1 bpp, capable target 2 bpp, row-major/MSB first.
 //
-// Layout: row-major, MSB first, stride = ceil(width / 8) bytes per row
-// (the same packing as MONO1 assets and PBM files):
-//   byte index = y * kStride + x / 8
-//   bit        = 7 - (x % 8)
-//   bit value  = 1 -> black ink, 0 -> white
+// Classic has MONO1 packing: stride ceil(width/8), 1 black / 0 white.
+// Four-tone targets store logical Ink values in MSB-first 2-bit pairs:
+// stride ceil(width/4), pixel x in bits 6-2*(x%4) of byte x/4. Logical
+// Black remains 1; asset tone ordering is translated explicitly by blit_gray2.
 // The size comes from the target's display_target.hpp (Badger 2040: 296 x
 // 128, Badger 2350: 264 x 176, both landscape). Panel controllers want their
 // own RAM layout; each panel backend packs from this buffer
@@ -25,13 +24,17 @@ struct Rect {
   constexpr bool empty() const { return w <= 0 || h <= 0; }
 };
 
-enum class Ink : uint8_t { White = 0, Black = 1 };
+// Logical values independent of asset ordering and controller RAM bits.
+// Ordinary UI drawing continues to use White/Black exclusively.
+enum class Ink : uint8_t { White = 0, Black = 1, LightGray = 2, DarkGray = 3 };
 
 class Framebuffer {
  public:
   static constexpr int kWidth = target::kDisplayWidth;
   static constexpr int kHeight = target::kDisplayHeight;
-  static constexpr int kStride = (kWidth + 7) / 8;
+  static constexpr int kBpp = target::kFourTone ? 2 : 1;
+  static constexpr int kPixelsPerByte = 8 / kBpp;
+  static constexpr int kStride = (kWidth + kPixelsPerByte - 1) / kPixelsPerByte;
   static constexpr size_t kBytes = size_t(kStride) * kHeight;
 
   Framebuffer() { clear(Ink::White); }
@@ -49,6 +52,8 @@ class Framebuffer {
   // the destination untouched.
   void blit_mono(const uint8_t *bits, int w, int h, int stride, int dx, int dy,
                  bool transparent = false, Ink fg = Ink::Black);
+  // Explicit GRAY2 asset blit; false on a target without four-tone support.
+  bool blit_gray2(const uint8_t *bits, int w, int h, int stride, int dx, int dy);
 
   void copy_from(const Framebuffer &o);
   bool equals(const Framebuffer &o) const;

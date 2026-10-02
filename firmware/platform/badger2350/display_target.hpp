@@ -8,9 +8,10 @@
 namespace badge::target {
 
 // SSD1680 e-paper, landscape: 264 x 176. The controller can show four
-// tones; this firmware draws black and white only (panel_ssd1680.hpp).
+// tones; portraits explicitly opt in, UI remains black/white.
 constexpr int kDisplayWidth = 264;
 constexpr int kDisplayHeight = 176;
+constexpr bool kFourTone = true;
 
 // Renderer layout (renderer.cpp), designed for 264 x 176: 32 px narrower
 // and 48 px taller than the Badger 2040.

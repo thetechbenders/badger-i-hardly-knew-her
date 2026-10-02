@@ -19,7 +19,7 @@
 // its speed setting is a no-op. This backend therefore offers full refreshes
 // only (supports_partial() is false; the refresh policy reports "no partial
 // on this panel"), and set_speed() accepts any value without changing the
-// waveform. A clean refresh is the same full refresh. Black and white only:
+// waveform. A clean refresh is the same full refresh. Four-tone encoding:
 // see ssd1680_pack.hpp.
 #pragma once
 

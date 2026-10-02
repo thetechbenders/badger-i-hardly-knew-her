@@ -91,8 +91,9 @@ void col_title(Framebuffer &fb, Column &c, const char *s, int gap_after, bool *c
   col_wrapped(fb, c, f, s, 2, gap_after, Ink::Black, cut);
 }
 
-void draw_portrait(Framebuffer &fb, const MonoBitmap &p, int x, int y) {
-  fb.blit_mono(p.bits, p.width, p.height, p.stride, x, y);
+void draw_portrait(Framebuffer &fb, const Bitmap &p, int x, int y) {
+  if (p.format == kAssetFormatGray2) fb.blit_gray2(p.bits, p.width, p.height, p.stride, x, y);
+  else if (p.format == kAssetFormatMono1) fb.blit_mono(p.bits, p.width, p.height, p.stride, x, y);
 }
 
 // ------------------------------------------------------------- status

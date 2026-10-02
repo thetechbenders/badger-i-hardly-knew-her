@@ -15,7 +15,7 @@ Framebuffer g_fb;
 TEST(badger2350_display_geometry) {
   CHECK_EQ(Framebuffer::kWidth, 264);
   CHECK_EQ(Framebuffer::kHeight, 176);
-  CHECK_EQ(Framebuffer::kBytes, 5808u);  // 33 bytes per row
+  CHECK_EQ(Framebuffer::kBytes, 11616u);  // 66 bytes per row
   CHECK_EQ(target::kPortraitWidth, 104);
   CHECK_EQ(target::kPortraitHeight, 176);
 }

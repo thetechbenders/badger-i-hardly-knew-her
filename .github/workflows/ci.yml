@@ -87,6 +87,24 @@ jobs:
           if grep -E "(warning|Warning):" "$RUNNER_TEMP/build.log"; then echo "::error::build warnings"; exit 1; fi
       - name: Memory report
         run: cat ${{ matrix.build }}/memory-report.txt | head -12
+      - name: Build and verify opt-in four-tone portrait
+        if: matrix.target == 'badger2350'
+        run: |
+          "$BADGER_PYTHON" - <<'PY'
+          from PIL import Image
+          im = Image.new("L", (104, 176))
+          im.putdata([255, 170, 85, 0] * (104 * 176 // 4))
+          im.save("build/four-tone-fixture.png")
+          PY
+          BUILD_DIR="$PWD/build/fw-four-tone" scripts/build-firmware.sh \
+            -DBHIHKH_TARGET=badger2350 -DBADGER_FOUR_TONE=ON \
+            -DPython3_EXECUTABLE="$BADGER_PYTHON" \
+            -DBADGER_PROFILE="$PWD/config/sample-profile.json" \
+            -DBADGER_PORTRAIT="$PWD/build/four-tone-fixture.png" 2>&1 | tee "$RUNNER_TEMP/four-tone-build.log"
+          if grep -E "(warning|Warning):" "$RUNNER_TEMP/four-tone-build.log"; then exit 1; fi
+          "$BADGER_PYTHON" scripts/verify_artifacts.py build/fw-four-tone --require-clean --target badger2350
+          "$BADGER_PYTHON" scripts/package_firmware.py build/fw-four-tone "$RUNNER_TEMP/four-tone.zip"
+          "$BADGER_PYTHON" scripts/package_firmware.py --verify "$RUNNER_TEMP/four-tone.zip"
       - name: Verify artifacts (UF2 regions, linker placement, metadata, checksums)
         run: '"$BADGER_PYTHON" scripts/verify_artifacts.py ${{ matrix.build }} --require-clean --target "$BHIHKH_TARGET"'
       # The other board's facts must reject this build: a package can never

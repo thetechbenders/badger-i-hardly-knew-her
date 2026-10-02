@@ -1,8 +1,10 @@
 # Badger 2350: proposed post-parity slice
 
-Status: proposal only. This draft changes documentation, not firmware.
-Physical validation of [PR #5](https://github.com/thetechbenders/badger-i-hardly-knew-her/pull/5)
-is an explicit hypothetical prerequisite, not a completed result.
+Status: authorized implementation of the focused portrait slice; still draft.
+Implementation and automated validation may proceed before physical parity
+validation of [PR #5](https://github.com/thetechbenders/badger-i-hardly-knew-her/pull/5).
+Physical four-tone testing requires separate authorization; merge remains gated
+on physically validated and merged parity. Physical validation remains pending.
 
 ## Dependency and merge gates
 
@@ -114,10 +116,30 @@ not need PSRAM merely to store one portrait.
   repeated refresh/recovery and sleep/wake regression. Measure refresh duration,
   ghosting and power implications; do not infer them from host previews.
 
-## Current draft validation
+## Implementation choices
 
-Documentation-only diff. No feature implementation or new tests exist yet.
-Check whitespace, cited repository paths, dependency head and PR base before
-publishing. Existing parity CI is evidence about parity, not this proposal or
-an implemented four-tone feature. No merge, release or flashing is authorized
-by this plan.
+Badger 2350 uses a packed, row-major 2-bpp framebuffer; Classic retains its
+original 1-bpp allocation. Three retained firmware frames (two job buffers and
+the display service's shown frame) add 17,424 bytes on the 2350; queues carry
+buffer indices, not extra frames. No new stack-resident framebuffer is added.
+The SSD1680 reuses its existing 5,808-byte scratch plane sequentially. The
+waveform, bounded waits, start-failure propagation and recovery are unchanged.
+
+GRAY2 is format ID 2 in BAPK version 1; logical asset order is white/light/dark/
+black. `Bitmap` carries the format, and portrait rendering explicitly chooses
+GRAY2 blitting. UI retains White/Black operations. Classic refuses GRAY2 and
+uses the existing external-pack fallback. Dual-target photo inputs generate
+separate mono and four-tone packs. Full format details are in FORMATS.md.
+
+Photo/form conversion and asset generation require explicit opt-in. Preview
+PGM gray levels come from the complete firmware framebuffer; mono previews
+retain PBM output. Panel mapping matches neutral RGB levels in pinned upstream
+`SSD1680::update()`: complemented bits 7/6 for red/BW, giving 00/01/10/11 for
+white/light/dark/black. Physical tone ordering remains to be checked separately.
+
+## Validation
+
+Host, Python, firmware, memory, artifacts and reproducibility results for this
+slice are recorded with the implementation review. Parity CI alone is not
+evidence about this slice. Physical validation remains pending. No merge,
+release or flashing is authorized.

@@ -237,8 +237,8 @@ void select_assets() {
     g_asset_source = fi.status == AssetStatus::Missing ? "built-in" : "built-in (flash pack invalid)";
     if (bi.status == AssetStatus::Ok) g_asset_base = kBuiltinAssetPack;
   }
-  g_ctx.portrait = MonoBitmap{};
-  if (g_asset_base) asset_pack_bitmap(g_asset_base, kAssetIdPortrait, &g_ctx.portrait);
+  g_ctx.portrait = Bitmap{};
+  if (g_asset_base) asset_pack_image(g_asset_base, kAssetIdPortrait, &g_ctx.portrait);
 }
 
 // ---------------------------------------------------------------- CLI
