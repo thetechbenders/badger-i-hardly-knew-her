@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Post-build flash/RAM report for the RP2040 image, with layout checks.
+"""Post-build flash/RAM report for the firmware image, with layout checks.
 
 Fails the build if the firmware image reaches the asset region, or if static
-RAM leaves too little room for the heap (RP2040: 264 KiB SRAM).
+RAM leaves too little room for the heap. The flash map and SRAM size come
+from the target's entry in bhihkh_targets.py (Badger 2040: 264 KiB SRAM).
 """
 from __future__ import annotations
 
@@ -11,9 +12,8 @@ import subprocess
 import sys
 from pathlib import Path
 
-FLASH_BASE = 0x10000000
-ASSET_REGION = 0x101E0000          # firmware/platform/badger2040/flash_layout.hpp
-SRAM_BASE, SRAM_SIZE = 0x20000000, 264 * 1024
+from bhihkh_targets import DEFAULT, TARGETS
+
 MIN_HEAP = 32 * 1024
 
 
@@ -34,7 +34,11 @@ def main(argv=None) -> int:
     ap.add_argument("--size", default="arm-none-eabi-size")
     ap.add_argument("--nm", default="arm-none-eabi-nm")
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--target", choices=sorted(TARGETS), default=DEFAULT)
     a = ap.parse_args(argv)
+    t = TARGETS[a.target]
+    FLASH_BASE, SRAM_BASE, SRAM_SIZE = t.xip_base, t.sram_base, t.sram_size
+    ASSET_REGION = t.xip_base + t.asset_off
     syms = nm_symbols(a.nm, a.elf)
     flash_end = syms["__flash_binary_end"]
     bss_end = syms["__bss_end__"]
@@ -46,7 +50,7 @@ def main(argv=None) -> int:
     sized = subprocess.run([a.nm, "--size-sort", "-S", "-C", "-r", a.elf], capture_output=True, text=True,
                            check=True).stdout.splitlines()[:25]
     lines = [
-        "Badger 2040 firmware memory report",
+        f"{t.board} firmware memory report",
         f"ELF: {Path(a.elf).name}",
         "",
         f"Flash image      {flash_used:8d} B  ({flash_used / 1024:.1f} KiB) of {ASSET_REGION - FLASH_BASE} B before the asset region",
@@ -54,7 +58,8 @@ def main(argv=None) -> int:
         f"Heap available   {heap:8d} B  ({heap / 1024:.1f} KiB)",
         f"Stacks           core0 {syms['__StackTop'] - syms['__StackBottom']} B, core1 {syms['__StackOneTop'] - syms['__StackOneBottom']} B",
         "",
-        "Flash layout: firmware 0x000000.., assets 0x1E0000 (64 KiB), settings 0x1FC000 (2 x 8 KiB)",
+        f"Flash layout: firmware 0x000000.., assets 0x{t.asset_off:X} ({t.asset_size // 1024} KiB), "
+        f"settings 0x{t.settings_off:X} (2 x {t.settings_size // 2048} KiB)",
         "",
         "Sections:",
         sections.strip(),

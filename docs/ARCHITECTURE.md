@@ -1,6 +1,55 @@
 # Architecture
 
-## Hardware facts this design relies on
+## Hardware targets
+
+BHIHKH! is native C/C++ on the Raspberry Pi Pico SDK, and the build selects
+one hardware target with `-DBHIHKH_TARGET=<name>` (`cmake/bhihkh_target.cmake`):
+
+| `BHIHKH_TARGET` | Hardware | State |
+|---|---|---|
+| `badger2040` (default) | original Pimoroni Badger 2040 (RP2040) | implemented: everything in this document |
+| `badger2350` | Pimoroni Badger 2350, working name BadgHer™ NEO (name not final; the ™ is a joke, not a trademark claim) | planned, **not implemented** |
+
+Selecting `badger2350`, or any name that is not implemented, fails at
+configure time with a message saying so; it never falls back to building
+Badger 2040 firmware. `PICO_BOARD` and `PICO_PLATFORM` follow from the
+target, and a conflicting value is refused rather than ignored.
+
+Each implemented target is a backend directory, `firmware/platform/<target>/`,
+with a `target.cmake` naming its Pico SDK board and platform, sources,
+compile definitions and SDK libraries. `scripts/bhihkh_targets.py` holds the
+same target's flash map, UF2 family and linker facts for `memory_report.py`
+and `verify_artifacts.py` (`--target`, default `badger2040`; the verifier also
+checks the build directory's CMake cache). `core/` and `cli/` have no target
+conditionals.
+
+The Badger 2350 port will stay on the Pico SDK. Pimoroni's BadgeWare
+(MicroPython) and `pimoroni/badger2350` sources are hardware reference
+only, not the runtime. Seams the port has to open, deliberately left as they
+are today:
+
+- **Display.** `Framebuffer` is the UC8151's 296×128 1-bpp column-major
+  layout, its `diff_bounds()` rounds to the UC8151 8-row partial window, and
+  the renderer, layouts, portrait pipeline, asset packs, host previews and
+  `tools/` (296×128, 104×128 portrait) are drawn for that panel. The
+  Badger 2350's 264×176 four-tone SSD1680 needs its own framebuffer format,
+  layouts and refresh policy: a display port, not a geometry constant.
+- **Composition root.** `badger2040/main.cpp` wires the shared core to the
+  RP2040 drivers. Much of it (CLI host, settings service, the main loop) will
+  apply to the RP2350 too; it should be split when a second backend needs
+  it, not before.
+- **Power and battery.** `board` (power latch, VBUS, 1.24 V-referenced ADC
+  battery sense) and `core/battery` (no charger) describe the original
+  board. A charger, RTC, wake causes and the extra peripherals (rear lights,
+  PSRAM, wireless) need real interfaces when they are implemented.
+- **Flash and diagnostics.** `flash_layout.hpp` is the 2 MiB map;
+  `diagnostics.cpp` reads RP2040 reset registers and scratch-bank stacks.
+- **Board header.** pico-sdk 2.2.0 has no Badger 2350 board header; the
+  port will have to supply one.
+- **Artifacts.** Artifact names (`badger_badge*.uf2`) and the build
+  directory (`build/fw`) do not carry the target yet.
+
+## Hardware facts this design relies on (`badger2040`)
 
 Verified against the Pico SDK board header `boards/pimoroni_badger2040.h`
 (SDK 2.2.0), `pimoroni-pico` v1.29.0-2 (`libraries/badger2040`,
@@ -47,7 +96,7 @@ firmware/core/        portable C++17, no SDK headers; compiled for device and ho
 firmware/cli/         USB CLI parser and dispatcher over a CliHost interface
 firmware/platform/    build_info (shared by targets); one backend directory per hardware target:
   badger2040/         RP2040 only: board (incl. ADC battery sampling), I2C0 bus, UC8151 panel adapter, flash backend,
-                      diagnostics (reset/fault/watchdog/memory), main loop
+                      diagnostics (reset/fault/watchdog/memory), main loop; target.cmake
 host/                 unit tests, simulated panel, preview renderer
 tools/                portrait, fonts, asset packs, profile compiler, previews, badgerctl
 ```

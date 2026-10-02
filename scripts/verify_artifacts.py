@@ -4,7 +4,7 @@
   scripts/verify_artifacts.py build/fw [--require-clean]
 
 Checks, all offline (no device involved):
-  - UF2 files: valid blocks, RP2040 family ID, 256-byte pages; the firmware
+  - UF2 files: valid blocks, the target's family ID, 256-byte pages; the firmware
     UF2 covers exactly the .bin from XIP_BASE and ends before the asset
     region; the asset UF2 lies inside the asset region and matches the
     generated pack; neither touches the guard gap or the settings sectors.
@@ -14,6 +14,9 @@ Checks, all offline (no device involved):
   - Build metadata: program name and `git describe` string embedded;
     optionally refuse a -dirty build.
   - memory-report.txt present and consistent; SHA256SUMS matches every file.
+
+The facts checked come from the build's BHIHKH_TARGET entry in
+bhihkh_targets.py; --target must match the build directory's CMake cache.
 """
 from __future__ import annotations
 
@@ -29,14 +32,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 import uf2  # noqa: E402
-
-XIP = 0x10000000
-# firmware/platform/badger2040/flash_layout.hpp
-ASSET_OFF, ASSET_SIZE = 0x1E0000, 0x10000
-SETTINGS_OFF, SETTINGS_SIZE = 0x1FC000, 0x4000  # 2 x 8 KiB slots (legacy 4 KiB slots inside B)
-FLASH_SIZE = 0x200000
-# RP2040 memmap_default.ld: SCRATCH_X (core 1 stack) and SCRATCH_Y (core 0 stack)
-SCRATCH_X, SCRATCH_Y, STACK = 0x20040000, 0x20041000, 0x1000
+from bhihkh_targets import DEFAULT, TARGETS  # noqa: E402
 
 errors: list[str] = []
 
@@ -54,7 +50,7 @@ def tool(name: str, override: str | None) -> str:
     return t
 
 
-def uf2_blocks(path: Path) -> list[tuple[int, int, int, bytes]]:
+def uf2_blocks(path: Path, family: int) -> list[tuple[int, int, int, bytes]]:
     blob = path.read_bytes()
     check(len(blob) % 512 == 0 and blob, f"{path.name}: whole 512-byte blocks")
     out = []
@@ -66,8 +62,8 @@ def uf2_blocks(path: Path) -> list[tuple[int, int, int, bytes]]:
             check(False, f"{path.name}: block {off // 512} magic")
             continue
         out.append((addr, size, flags, fam, b[32:32 + size]))
-    check(all(f & uf2.UF2_FLAG_FAMILY_ID and fam == uf2.RP2040_FAMILY_ID for _, _, f, fam, _ in out),
-          f"{path.name}: every block tagged RP2040 family 0x{uf2.RP2040_FAMILY_ID:08x}")
+    check(all(f & uf2.UF2_FLAG_FAMILY_ID and fam == family for _, _, f, fam, _ in out),
+          f"{path.name}: every block tagged family 0x{family:08x}")
     check(all(s == 256 and a % 256 == 0 for a, s, *_ in out), f"{path.name}: 256-byte aligned pages")
     return [(a, s, fam, d) for a, s, _f, fam, d in out]
 
@@ -87,11 +83,26 @@ def main(argv=None) -> int:
     ap.add_argument("--nm")
     ap.add_argument("--readelf")
     ap.add_argument("--require-clean", action="store_true", help="fail if the embedded version is -dirty")
+    ap.add_argument("--target", choices=sorted(TARGETS), default=DEFAULT, help=f"BHIHKH_TARGET (default {DEFAULT})")
     a = ap.parse_args(argv)
     d, n = a.build, a.name
+    t = TARGETS[a.target]
+    XIP, FLASH_SIZE, STACK = t.xip_base, t.flash_size, t.stack_size
+    ASSET_OFF, ASSET_SIZE = t.asset_off, t.asset_size
+    SETTINGS_OFF, SETTINGS_SIZE = t.settings_off, t.settings_size
+    SCRATCH_X, SCRATCH_Y = t.scratch_x, t.scratch_y
+
+    # --- target -----------------------------------------------------------------
+    cache = d / "CMakeCache.txt"
+    if cache.exists():
+        m = re.search(r"^BHIHKH_TARGET:\w+=(.*)$", cache.read_text(), re.M)
+        built = m.group(1) if m else "badger2040"  # configured before BHIHKH_TARGET existed
+        check(built == t.name, f"build directory configured for BHIHKH_TARGET={t.name} (CMake cache: {built})")
+    else:
+        print(f"skip  CMakeCache.txt (not a CMake build directory); checking as {t.name}")
 
     # --- UF2 / flash regions ------------------------------------------------
-    fw = uf2_blocks(d / f"{n}.uf2")
+    fw = uf2_blocks(d / f"{n}.uf2", t.uf2_family)
     lo, hi = span(fw)
     image = b"".join(p for _, _, _, p in sorted(fw))
     binary = (d / f"{n}.bin").read_bytes()
@@ -100,7 +111,7 @@ def main(argv=None) -> int:
     check(image[:len(binary)] == binary and set(image[len(binary):]) <= {0xFF, 0x00},
           f"firmware UF2 payload == {n}.bin ({len(binary)} B)")
     check(hi <= XIP + ASSET_OFF, f"firmware ends at 0x{hi:08x}, before the asset region 0x{XIP + ASSET_OFF:08x}")
-    assets = uf2_blocks(d / f"{n}-assets.uf2")
+    assets = uf2_blocks(d / f"{n}-assets.uf2", t.uf2_family)
     alo, ahi = span(assets)
     check(alo == XIP + ASSET_OFF and ahi <= XIP + ASSET_OFF + ASSET_SIZE,
           f"asset UF2 inside the asset region (0x{alo:08x}..0x{ahi:08x})")
@@ -113,10 +124,11 @@ def main(argv=None) -> int:
         check(not overlaps(blo, bhi, *guard) and not overlaps(blo, bhi, *settings),
               f"{label} UF2 leaves the guard gap and settings sectors untouched")
     check(not overlaps(lo, hi, alo, ahi), "firmware and asset UF2s do not overlap")
-    check(SETTINGS_OFF + SETTINGS_SIZE == FLASH_SIZE, "settings are the top 16 KiB of 2 MiB")
-    layout = (ROOT / "firmware/platform/badger2040/flash_layout.hpp").read_text()
+    check(SETTINGS_OFF + SETTINGS_SIZE == FLASH_SIZE,
+          f"settings are the top {SETTINGS_SIZE // 1024} KiB of {FLASH_SIZE // (1024 * 1024)} MiB")
+    layout = (ROOT / t.flash_layout_header).read_text()
     check(f"kSettingsOffset = 0x{SETTINGS_OFF:X}" in layout and f"kAssetOffset = 0x{ASSET_OFF:X}" in layout,
-          "verifier flash map matches firmware/platform/badger2040/flash_layout.hpp")
+          f"verifier flash map matches {t.flash_layout_header}")
 
     # --- linker placement ------------------------------------------------------
     elf = d / f"{n}.elf"
@@ -128,9 +140,9 @@ def main(argv=None) -> int:
         if len(parts) == 3:
             syms.setdefault(parts[2], int(parts[0], 16))
     check(syms.get("__StackBottom") == SCRATCH_Y and syms.get("__StackTop") == SCRATCH_Y + STACK,
-          "core 0 stack = SCRATCH_Y 0x20041000..0x20042000 (what paint_stacks/memory() measure)")
+          f"core 0 stack = SCRATCH_Y 0x{SCRATCH_Y:08x}..0x{SCRATCH_Y + STACK:08x} (what paint_stacks/memory() measure)")
     check(syms.get("__StackOneBottom") == SCRATCH_X and syms.get("__StackOneTop") == SCRATCH_X + STACK,
-          "core 1 stack = SCRATCH_X 0x20040000..0x20041000")
+          f"core 1 stack = SCRATCH_X 0x{SCRATCH_X:08x}..0x{SCRATCH_X + STACK:08x}")
     check(syms.get("core1_stack") == syms.get("__StackOneBottom"),
           "multicore core1_stack[] sits at __StackOneBottom (stack used == stack measured)")
     sections = {}
@@ -153,8 +165,8 @@ def main(argv=None) -> int:
     blob = elf.read_bytes()
     # The program name and description (pico_set_program_*). The repository
     # name is not used: it only appears when a profile links the repository.
-    check(b"BHIHKH!\0" in binary and b"business card and portfolio for the original Badger 2040" in binary,
-          "program name embedded")
+    check(b"BHIHKH!\0" in binary and t.description.encode() + b"\0" in binary,
+          "program name and target description embedded")
     try:
         desc = subprocess.run(["git", "-C", str(ROOT), "describe", "--always", "--dirty", "--tags", "--abbrev=12"],
                               capture_output=True, text=True, check=True).stdout.strip()
@@ -173,7 +185,7 @@ def main(argv=None) -> int:
     check(bool(m) and XIP + int(m.group(1)) <= XIP + ASSET_OFF, "memory report present, image below the asset region")
     check(f"settings 0x{SETTINGS_OFF:X} (2 x {SETTINGS_SIZE // 2048} KiB)" in rep,
           "memory report states the current settings layout")
-    check("core0 4096 B, core1 4096 B" in rep, "memory report: 4 KiB stack per core")
+    check(f"core0 {STACK} B, core1 {STACK} B" in rep, f"memory report: {STACK // 1024} KiB stack per core")
     sums = (d / "SHA256SUMS").read_text().split("\n")
     listed = 0
     for line in filter(None, sums):
