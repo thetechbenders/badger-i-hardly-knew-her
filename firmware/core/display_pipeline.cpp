@@ -21,6 +21,7 @@ const char *refresh_reason_str(RefreshReason r) {
     case RefreshReason::PartialBudget: return "partial budget used";
     case RefreshReason::PartialOff: return "partial disabled";
     case RefreshReason::SmallChange: return "small change";
+    case RefreshReason::PartialUnsupported: return "no partial on this panel";
   }
   return "?";
 }
@@ -97,6 +98,7 @@ void DisplayService::begin(const FrameJob &j, uint32_t now_ms) {
     reason = RefreshReason::CleanRequested;
   } else if (shown_known_) {
     diff = fb.diff_bounds(shown_);
+    if (!diff.empty()) diff = panel_.partial_window(diff);
     if (diff.empty()) {
       ++stats_.suppressed;
       emit(DisplayEventKind::Suppressed, j, RefreshMode::None, 0);
@@ -105,7 +107,8 @@ void DisplayService::begin(const FrameJob &j, uint32_t now_ms) {
     }
     const uint32_t area = uint32_t(diff.w) * uint32_t(diff.h);
     const uint32_t full = uint32_t(Framebuffer::kWidth) * Framebuffer::kHeight;
-    if (area * 100 > full * kPartialMaxAreaPct) reason = RefreshReason::LargeChange;
+    if (!panel_.supports_partial()) reason = RefreshReason::PartialUnsupported;
+    else if (area * 100 > full * kPartialMaxAreaPct) reason = RefreshReason::LargeChange;
     else if (j.max_partials == 0) reason = RefreshReason::PartialOff;
     else if (partials_since_full_ >= j.max_partials) reason = RefreshReason::PartialBudget;
     else {

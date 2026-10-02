@@ -15,6 +15,7 @@
 #pragma once
 
 #include "display_pipeline.hpp"
+#include "uc8151_pack.hpp"
 
 namespace badge {
 
@@ -27,6 +28,8 @@ class Uc8151Panel : public Panel {
   bool busy() override;
   void start_full(const Framebuffer &fb) override;
   void start_partial(const Framebuffer &fb, Rect r) override;
+  bool supports_partial() const override { return true; }
+  Rect partial_window(Rect diff) const override { return uc8151::partial_window(diff); }
   void finish() override;
   uint32_t expected_ms() const override;
 

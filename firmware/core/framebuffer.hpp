@@ -1,14 +1,20 @@
-// 1-bit framebuffer in the UC8151 native memory layout used by the Badger 2040.
+// Board-neutral 1-bit framebuffer at the target display's native size.
 //
-// Layout (identical to pimoroni::UC8151_Legacy::pixel()):
-//   byte index = x * (HEIGHT / 8) + y / 8
-//   bit        = 7 - (y % 8)          (MSB is the top pixel of the 8-pixel group)
+// Layout: row-major, MSB first, stride = ceil(width / 8) bytes per row
+// (the same packing as MONO1 assets and PBM files):
+//   byte index = y * kStride + x / 8
+//   bit        = 7 - (x % 8)
 //   bit value  = 1 -> black ink, 0 -> white
-// The panel is 296 px wide (x) and 128 px tall (y) in landscape orientation.
+// The size comes from the target's display_target.hpp (Badger 2040: 296 x
+// 128, Badger 2350: 264 x 176, both landscape). Panel controllers want their
+// own RAM layout; each panel backend packs from this buffer
+// (firmware/platform/<target>/), so nothing here depends on a controller.
 #pragma once
 
 #include <cstddef>
 #include <cstdint>
+
+#include "display_target.hpp"
 
 namespace badge {
 
@@ -23,10 +29,10 @@ enum class Ink : uint8_t { White = 0, Black = 1 };
 
 class Framebuffer {
  public:
-  static constexpr int kWidth = 296;
-  static constexpr int kHeight = 128;
-  static constexpr int kColumnBytes = kHeight / 8;               // 16
-  static constexpr size_t kBytes = size_t(kWidth) * kColumnBytes;  // 4736
+  static constexpr int kWidth = target::kDisplayWidth;
+  static constexpr int kHeight = target::kDisplayHeight;
+  static constexpr int kStride = (kWidth + 7) / 8;
+  static constexpr size_t kBytes = size_t(kStride) * kHeight;
 
   Framebuffer() { clear(Ink::White); }
 
@@ -48,11 +54,11 @@ class Framebuffer {
   bool equals(const Framebuffer &o) const;
   uint32_t hash() const;  // CRC32 of the buffer, used for change suppression
 
-  // Smallest rectangle covering all differing pixels, widened so y/h are
-  // multiples of 8 (the UC8151 partial window granularity). Empty if equal.
+  // Smallest rectangle covering all differing pixels (pixel exact). Empty if
+  // equal. A panel widens it to its own partial-window granularity
+  // (Panel::partial_window()).
   Rect diff_bounds(const Framebuffer &o) const;
 
-  uint8_t *data() { return buf_; }
   const uint8_t *data() const { return buf_; }
 
   void set_clip(Rect r);

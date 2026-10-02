@@ -10,8 +10,9 @@
 //
 // Buffer ownership moves with the FrameJob and comes back with the
 // BufferReleased event; neither side touches a buffer it does not own.
-// The Pimoroni UC8151 driver has no locking and busy-waits internally, so
-// every Panel call happens only inside DisplayService (one context).
+// Panel drivers keep no locks (the Pimoroni UC8151 driver also busy-waits
+// internally), so every Panel call happens only inside DisplayService (one
+// context).
 #pragma once
 
 #include <atomic>
@@ -51,6 +52,7 @@ enum class RefreshReason : uint8_t {
   PartialBudget,  // refresh.max_partials partials since the last full: full
   PartialOff,     // partial refresh disabled: full
   SmallChange,    // partial window
+  PartialUnsupported,  // the panel backend has no partial refresh: full
 };
 const char *refresh_reason_str(RefreshReason r);
 
@@ -76,7 +78,13 @@ class Panel {
   virtual uint8_t speed() const = 0;
   virtual bool busy() = 0;
   virtual void start_full(const Framebuffer &fb) = 0;
+  // Partial refresh of `r`, a window returned by partial_window(). Only
+  // called when supports_partial().
   virtual void start_partial(const Framebuffer &fb, Rect r) = 0;
+  virtual bool supports_partial() const = 0;
+  // The smallest window this controller can refresh that covers `diff`
+  // (pixel-exact differences). The refresh policy sizes the change by it.
+  virtual Rect partial_window(Rect diff) const { return diff; }
   virtual void finish() = 0;  // power the booster off after a refresh
   virtual uint32_t expected_ms() const = 0;
 };

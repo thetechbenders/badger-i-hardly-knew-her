@@ -33,8 +33,14 @@ void SimPanel::start_full(const Framebuffer &fb) {
   ops.push_back({'F', speed_, {0, 0, Framebuffer::kWidth, Framebuffer::kHeight}});
 }
 
+Rect SimPanel::partial_window(Rect d) const {
+  const int y0 = d.y & ~7, y1 = (d.bottom() + 7) & ~7;
+  return {d.x, int16_t(y0), d.w, int16_t(y1 - y0)};
+}
+
 void SimPanel::start_partial(const Framebuffer &fb, Rect r) {
   if (busy()) ++violations;
+  if (!partial) ++violations;
   if (r.y % 8 || r.h % 8) ++violations;  // UC8151 partial window granularity
   for (int x = r.x; x < r.right(); ++x)
     for (int y = r.y; y < r.bottom(); ++y) image.set(x, y, fb.get(x, y));

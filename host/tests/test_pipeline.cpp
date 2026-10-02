@@ -323,3 +323,38 @@ TEST(pipeline_refresh_trace_is_a_bounded_ring) {
   CHECK_EQ(r.sched.trace(t, 3), 3);  // caller's buffer bound respected
   CHECK_EQ(t[2].seq, r.sched.submitted());  // newest entries
 }
+
+// A panel backend without partial refresh (the Badger 2350's SSD1680): every
+// changed frame is a full refresh with its reason recorded, unchanged frames
+// are still suppressed, and partial refresh is never requested from it.
+TEST(pipeline_panel_without_partial_refresh_gets_full_refreshes) {
+  Rig r;
+  r.panel.partial = false;
+  r.sched.invalidate();
+  r.settle();
+  for (int v = 1; v <= 4; ++v) {
+    r.scene.value = v;
+    r.sched.invalidate();
+    r.settle();
+  }
+  r.sched.invalidate();  // unchanged: suppressed, no refresh
+  r.settle();
+  CHECK_EQ(r.count('P'), 0);
+  CHECK_EQ(r.count('F'), 5);
+  CHECK_EQ(r.panel.violations, 0);
+  CHECK(r.panel.image.equals(r.display.shown()));
+  RenderScheduler::RefreshRecord t[RenderScheduler::kTrace];
+  const int n = r.sched.trace(t, RenderScheduler::kTrace);
+  CHECK_EQ(n, 5);
+  CHECK(t[0].reason == RefreshReason::FirstFrame);
+  for (int i = 1; i < n; ++i) {
+    CHECK(t[i].mode == RefreshMode::Full);
+    CHECK(t[i].reason == RefreshReason::PartialUnsupported);
+  }
+  CHECK_STR(refresh_reason_str(RefreshReason::PartialUnsupported), "no partial on this panel");
+  // A clean request is still a clean (full) refresh.
+  r.scene.value = 9;
+  r.sched.invalidate(true);
+  r.settle();
+  CHECK_EQ(r.display.stats().clean, 1u);
+}
