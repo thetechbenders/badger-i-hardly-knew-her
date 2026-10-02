@@ -11,7 +11,9 @@
 //     with a timeout everywhere the reference spins; a controller that
 //     never answers is a panel fault, never a hang of the display context;
 //   - start_full() returns once the update is triggered; DisplayService
-//     polls busy() and times the refresh out.
+//     polls busy() and times the refresh out. If a BUSY wait before the
+//     trigger times out it sends nothing further and returns false, and
+//     DisplayService treats that as a panel fault.
 //
 // Refresh modes: the reference has one waveform and no partial update, and
 // its speed setting is a no-op. This backend therefore offers full refreshes
@@ -35,7 +37,7 @@ class Ssd1680Panel : public Panel {
   bool set_speed(uint8_t speed) override;
   uint8_t speed() const override { return speed_; }
   bool busy() override;
-  void start_full(const Framebuffer &fb) override;
+  bool start_full(const Framebuffer &fb) override;
   void start_partial(const Framebuffer &fb, Rect r) override;  // never called
   bool supports_partial() const override { return false; }
   void finish() override;

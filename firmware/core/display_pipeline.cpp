@@ -132,7 +132,11 @@ void DisplayService::begin(const FrameJob &j, uint32_t now_ms) {
     ++partials_since_full_;
     ++stats_.partial;
   } else {
-    panel_.start_full(shown_);
+    if (!panel_.start_full(shown_)) {
+      panel_failed(now_ms);
+      emit(DisplayEventKind::Done, j, RefreshMode::None, 0);  // never shown
+      return;
+    }
     partials_since_full_ = 0;
     if (mode == RefreshMode::Clean) ++stats_.clean; else ++stats_.full;
   }

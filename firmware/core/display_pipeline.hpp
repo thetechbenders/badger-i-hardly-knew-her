@@ -77,7 +77,9 @@ class Panel {
   virtual bool set_speed(uint8_t speed) = 0;  // same contract as init()
   virtual uint8_t speed() const = 0;
   virtual bool busy() = 0;
-  virtual void start_full(const Framebuffer &fb) = 0;
+  // Bounded. False if the controller did not accept the update (a BUSY wait
+  // before the trigger timed out): no refresh was started.
+  virtual bool start_full(const Framebuffer &fb) = 0;
   // Partial refresh of `r`, a window returned by partial_window(). Only
   // called when supports_partial().
   virtual void start_partial(const Framebuffer &fb, Rect r) = 0;

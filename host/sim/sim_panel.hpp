@@ -15,7 +15,7 @@ namespace badge {
 class SimPanel : public Panel {
  public:
   struct Op {
-    char kind;  // 'I' init, 'S' speed, 'F' full, 'P' partial, 'O' off
+    char kind;  // 'I' init, 'S' speed, 'F' full, 'f' refused full, 'P' partial, 'O' off
     uint8_t speed;
     Rect r;
   };
@@ -24,7 +24,7 @@ class SimPanel : public Panel {
   bool set_speed(uint8_t speed) override;
   uint8_t speed() const override { return speed_; }
   bool busy() override;
-  void start_full(const Framebuffer &fb) override;
+  bool start_full(const Framebuffer &fb) override;
   void start_partial(const Framebuffer &fb, Rect r) override;
   bool supports_partial() const override { return partial; }
   Rect partial_window(Rect diff) const override;
@@ -37,6 +37,7 @@ class SimPanel : public Panel {
   bool stuck = false;         // BUSY stuck low until the next reset (transient)
   bool dead = false;          // BUSY held low permanently: every reset times out
   bool partial = true;        // false: no partial refresh (start_partial is a violation)
+  bool start_fails = false;   // start_full() is refused before the trigger (op 'f')
 
  private:
   uint32_t now() const { return clock_->load(); }

@@ -52,9 +52,10 @@ bool Uc8151Panel::set_speed(uint8_t speed) {
 
 bool Uc8151Panel::busy() { return g_uc.is_busy(); }
 
-void Uc8151Panel::start_full(const Framebuffer &fb) {
+bool Uc8151Panel::start_full(const Framebuffer &fb) {
   uc8151::pack(fb, g_panel_buffer);
   g_uc.update(false);  // non-blocking: returns after DRF, BUSY stays low while refreshing
+  return true;         // the driver reports no status
 }
 
 void Uc8151Panel::start_partial(const Framebuffer &fb, Rect r) {

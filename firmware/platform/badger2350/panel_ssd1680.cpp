@@ -152,9 +152,9 @@ bool Ssd1680Panel::set_speed(uint8_t speed) {
 // Reference update(), without its final wait: waveform, both RAM planes,
 // update sequence 0xC7 (clock and analog on, display, both off again), then
 // the trigger. DisplayService only calls this while not busy().
-void Ssd1680Panel::start_full(const Framebuffer &fb) {
+bool Ssd1680Panel::start_full(const Framebuffer &fb) {
   ssd1680::pack(fb, g_plane);
-  write_waveform();  // a timeout here leaves BUSY set; the service times the refresh out
+  if (!write_waveform()) return false;  // no commands while BUSY: abort, nothing triggered
   for (uint8_t ram : {kWriteRamRed, kWriteRamBw}) {
     command(kRamXCounter, {kXStart});
     command(kRamYCounter, {kYStartL, kYStartH});
@@ -162,11 +162,12 @@ void Ssd1680Panel::start_full(const Framebuffer &fb) {
   }
   command(kBoosterSoftStart);
   command(kUpdateControl2, {0xC7});
-  wait_idle(kCommandTimeoutMs);
+  if (!wait_idle(kCommandTimeoutMs)) return false;  // not triggered
   command(kActivate);
+  return true;
 }
 
-void Ssd1680Panel::start_partial(const Framebuffer &fb, Rect) { start_full(fb); }
+void Ssd1680Panel::start_partial(const Framebuffer &fb, Rect) { (void)start_full(fb); }
 
 // The 0xC7 sequence already turns the booster and clock off at its end.
 void Ssd1680Panel::finish() {}

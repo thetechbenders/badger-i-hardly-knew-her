@@ -26,7 +26,7 @@ class Uc8151Panel : public Panel {
   bool set_speed(uint8_t speed) override;
   uint8_t speed() const override { return speed_; }
   bool busy() override;
-  void start_full(const Framebuffer &fb) override;
+  bool start_full(const Framebuffer &fb) override;
   void start_partial(const Framebuffer &fb, Rect r) override;
   bool supports_partial() const override { return true; }
   Rect partial_window(Rect diff) const override { return uc8151::partial_window(diff); }

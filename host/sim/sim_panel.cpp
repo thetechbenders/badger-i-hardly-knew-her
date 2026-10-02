@@ -26,11 +26,16 @@ bool SimPanel::set_speed(uint8_t speed) {
   return true;
 }
 
-void SimPanel::start_full(const Framebuffer &fb) {
+bool SimPanel::start_full(const Framebuffer &fb) {
   if (busy()) ++violations;
+  if (start_fails) {  // nothing written, nothing triggered
+    ops.push_back({'f', speed_, {}});
+    return false;
+  }
   image.copy_from(fb);
   busy_until_ = now() + expected_ms();
   ops.push_back({'F', speed_, {0, 0, Framebuffer::kWidth, Framebuffer::kHeight}});
+  return true;
 }
 
 Rect SimPanel::partial_window(Rect d) const {
