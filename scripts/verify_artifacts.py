@@ -31,7 +31,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import uf2  # noqa: E402
 
 XIP = 0x10000000
-# firmware/platform/flash_layout.hpp
+# firmware/platform/badger2040/flash_layout.hpp
 ASSET_OFF, ASSET_SIZE = 0x1E0000, 0x10000
 SETTINGS_OFF, SETTINGS_SIZE = 0x1FC000, 0x4000  # 2 x 8 KiB slots (legacy 4 KiB slots inside B)
 FLASH_SIZE = 0x200000
@@ -114,9 +114,9 @@ def main(argv=None) -> int:
               f"{label} UF2 leaves the guard gap and settings sectors untouched")
     check(not overlaps(lo, hi, alo, ahi), "firmware and asset UF2s do not overlap")
     check(SETTINGS_OFF + SETTINGS_SIZE == FLASH_SIZE, "settings are the top 16 KiB of 2 MiB")
-    layout = (ROOT / "firmware/platform/flash_layout.hpp").read_text()
+    layout = (ROOT / "firmware/platform/badger2040/flash_layout.hpp").read_text()
     check(f"kSettingsOffset = 0x{SETTINGS_OFF:X}" in layout and f"kAssetOffset = 0x{ASSET_OFF:X}" in layout,
-          "verifier flash map matches firmware/platform/flash_layout.hpp")
+          "verifier flash map matches firmware/platform/badger2040/flash_layout.hpp")
 
     # --- linker placement ------------------------------------------------------
     elf = d / f"{n}.elf"

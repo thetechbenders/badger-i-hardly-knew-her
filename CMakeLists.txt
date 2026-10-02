@@ -67,17 +67,18 @@ add_executable(${FW}
   ${BADGER_CLI_SOURCES}
   ${BADGER_GENERATED_SOURCES}
   ${CMAKE_CURRENT_BINARY_DIR}/generated/build_info.cpp
-  firmware/platform/main.cpp
-  firmware/platform/board.cpp
-  firmware/platform/panel_uc8151.cpp
-  firmware/platform/flash_rp2040.cpp
-  firmware/platform/diagnostics.cpp
-  firmware/platform/i2c_rp2040.cpp
+  firmware/platform/badger2040/main.cpp
+  firmware/platform/badger2040/board.cpp
+  firmware/platform/badger2040/panel_uc8151.cpp
+  firmware/platform/badger2040/flash_rp2040.cpp
+  firmware/platform/badger2040/diagnostics.cpp
+  firmware/platform/badger2040/i2c_rp2040.cpp
   # Only the panel driver is taken from pimoroni-pico (MIT).
   ${PIMORONI_PICO_PATH}/drivers/uc8151_legacy/uc8151_legacy.cpp
 )
 target_include_directories(${FW} PRIVATE
-  firmware/core firmware/cli firmware/platform third_party/qrcodegen ${PIMORONI_PICO_PATH})
+  firmware/core firmware/cli firmware/platform/badger2040 firmware/platform third_party/qrcodegen
+  ${PIMORONI_PICO_PATH})
 target_compile_options(${FW} PRIVATE
   $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti>
   # Reproducible across checkout locations: no absolute source paths in

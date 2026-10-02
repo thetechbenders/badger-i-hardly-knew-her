@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 FLASH_BASE = 0x10000000
-ASSET_REGION = 0x101E0000          # firmware/platform/flash_layout.hpp
+ASSET_REGION = 0x101E0000          # firmware/platform/badger2040/flash_layout.hpp
 SRAM_BASE, SRAM_SIZE = 0x20000000, 264 * 1024
 MIN_HEAP = 32 * 1024
 

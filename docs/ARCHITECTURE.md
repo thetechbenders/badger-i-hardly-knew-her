@@ -45,7 +45,8 @@ firmware/core/        portable C++17, no SDK headers; compiled for device and ho
   battery             LiPo meter: conversion, EMA filter, hysteresis, USB/invalid states
   gesture, apds9960   swipe decoding, orientation, cooldown; sensor driver/service over I2cBus
 firmware/cli/         USB CLI parser and dispatcher over a CliHost interface
-firmware/platform/    RP2040 only: board (incl. ADC battery sampling), I2C0 bus, UC8151 panel adapter, flash backend,
+firmware/platform/    build_info (shared by targets); one backend directory per hardware target:
+  badger2040/         RP2040 only: board (incl. ADC battery sampling), I2C0 bus, UC8151 panel adapter, flash backend,
                       diagnostics (reset/fault/watchdog/memory), main loop
 host/                 unit tests, simulated panel, preview renderer
 tools/                portrait, fonts, asset packs, profile compiler, previews, badgerctl
