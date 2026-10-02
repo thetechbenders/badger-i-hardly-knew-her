@@ -698,7 +698,7 @@ struct System {
     render(fb, v, s->ctx);
     s->hashes.push_back(fb.hash());
   }
-  // Same handling as apply() in firmware/platform/main.cpp.
+  // Same handling as apply() in firmware/platform/badger2040/main.cpp.
   void apply(uint32_t a) {
     if (a & kActRedraw) sched.invalidate(a & kActCleanRefresh);
     if (a & kActSleep) {

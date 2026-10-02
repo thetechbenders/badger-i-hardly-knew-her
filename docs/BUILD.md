@@ -51,6 +51,18 @@ before running `fetch-deps.sh`.
 - For `picotool save` backups on Windows, use the prebuilt picotool from the
   official `raspberrypi/pico-sdk-tools` releases, or usbipd + WSL.
 
+## Hardware target
+
+| CMake option | Default |
+|---|---|
+| `-DBHIHKH_TARGET=<name>` | `badger2040`, the original Badger 2040 and the only implemented target |
+
+`badger2350` (Badger 2350, working name BadgHer™ NEO) is planned and not
+implemented: selecting it stops the configure step with an error, and so does
+an unknown name or a `PICO_BOARD`/`PICO_PLATFORM` that contradicts the target.
+Use a fresh build directory per target. See
+[ARCHITECTURE.md](ARCHITECTURE.md#hardware-targets).
+
 ## Content selection at build time
 
 | CMake option | Default |
@@ -131,11 +143,12 @@ copy of the settings (staged, committed, store work buffers) holds the
 1. **host**: the C++ unit tests (ASan/UBSan), Python tool tests, zbar QR
    decoding of the rendered screens, a font reproducibility check and the
    previews (uploaded as an artifact).
-2. **firmware**: a real RP2040 cross-build with the pinned toolchain and
-   dependencies, using the public sample content. It then runs
-   `verify_artifacts.py --require-clean`, runs the second-checkout
-   reproducibility check, and uploads the UF2, ELF, map, bin, memory report
-   and SHA256SUMS.
+2. **firmware**: a real RP2040 cross-build for `BHIHKH_TARGET=badger2040`
+   with the pinned toolchain and dependencies, using the public sample
+   content. It then runs `verify_artifacts.py --require-clean --target
+   badger2040`, runs the second-checkout reproducibility check (configured
+   without the option, so it also checks the default target), and uploads
+   the UF2, ELF, map, bin, memory report and SHA256SUMS.
 
 ## Regenerating assets
 

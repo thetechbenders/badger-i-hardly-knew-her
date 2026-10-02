@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Cross-build the RP2040 firmware. Extra args go to CMake, e.g.
+# Cross-build the firmware (default BHIHKH_TARGET=badger2040, the RP2040 Badger 2040).
+# Extra args go to CMake, e.g.
 #   scripts/build-firmware.sh -DBADGER_PROFILE=local/profile.json -DBADGER_PORTRAIT=local/portrait.png
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"

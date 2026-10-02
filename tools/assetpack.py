@@ -27,7 +27,7 @@ ID_PORTRAIT = 1
 FMT_MONO1 = 1
 PANEL_W, PANEL_H = 296, 128
 MAX_SIZE = 64 * 1024
-ASSET_REGION = 0x101E0000  # keep in sync with firmware/platform/flash_layout.hpp
+ASSET_REGION = 0x101E0000  # keep in sync with firmware/platform/badger2040/flash_layout.hpp
 
 
 def pack_mono1(img) -> tuple[int, int, bytes]:

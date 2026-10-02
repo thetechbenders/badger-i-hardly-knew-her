@@ -1,9 +1,11 @@
-# Badger 2040 (RP2040) photo badge + business card firmware.
+# BHIHKH! photo badge + business card firmware (native Pico SDK).
 #
 #   scripts/fetch-deps.sh
-#   cmake -S . -B build/fw -G Ninja -DCMAKE_BUILD_TYPE=Release
+#   cmake -S . -B build/fw -G Ninja -DCMAKE_BUILD_TYPE=Release [-DBHIHKH_TARGET=badger2040]
 #   cmake --build build/fw
 #
+# BHIHKH_TARGET selects the hardware (cmake/bhihkh_target.cmake); badger2040,
+# the original Badger 2040, is the default and the only implemented target.
 # Host tests/previews live in host/ (separate CMake project, no SDK needed).
 cmake_minimum_required(VERSION 3.16)
 
@@ -17,8 +19,7 @@ endif()
 if(NOT DEFINED picotool_DIR AND EXISTS ${DEPS_DIR}/picotool-install/picotool)
   set(picotool_DIR ${DEPS_DIR}/picotool-install/picotool)
 endif()
-set(PICO_BOARD pimoroni_badger2040 CACHE STRING "Original Badger 2040 (RP2040)")
-set(PICO_PLATFORM rp2040)
+include(cmake/bhihkh_target.cmake)  # sets PICO_BOARD, PICO_PLATFORM, BHIHKH_TARGET_*
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
@@ -67,17 +68,12 @@ add_executable(${FW}
   ${BADGER_CLI_SOURCES}
   ${BADGER_GENERATED_SOURCES}
   ${CMAKE_CURRENT_BINARY_DIR}/generated/build_info.cpp
-  firmware/platform/main.cpp
-  firmware/platform/board.cpp
-  firmware/platform/panel_uc8151.cpp
-  firmware/platform/flash_rp2040.cpp
-  firmware/platform/diagnostics.cpp
-  firmware/platform/i2c_rp2040.cpp
-  # Only the panel driver is taken from pimoroni-pico (MIT).
-  ${PIMORONI_PICO_PATH}/drivers/uc8151_legacy/uc8151_legacy.cpp
+  ${BHIHKH_TARGET_SOURCES}
+  ${BHIHKH_TARGET_VENDOR_SOURCES}
 )
 target_include_directories(${FW} PRIVATE
-  firmware/core firmware/cli firmware/platform third_party/qrcodegen ${PIMORONI_PICO_PATH})
+  firmware/core firmware/cli ${BHIHKH_TARGET_INCLUDE_DIRS} firmware/platform third_party/qrcodegen
+  ${PIMORONI_PICO_PATH})
 target_compile_options(${FW} PRIVATE
   $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wno-unused-parameter -fno-exceptions -fno-rtti>
   # Reproducible across checkout locations: no absolute source paths in
@@ -96,22 +92,21 @@ target_compile_options(${FW} PRIVATE
   # inside the source tree) and the more specific one goes after.
   -ffile-prefix-map=${CMAKE_BINARY_DIR}=.
   -ffile-prefix-map=${CMAKE_BINARY_DIR}/generated=./build/fw/generated)
-set_source_files_properties(${PIMORONI_PICO_PATH}/drivers/uc8151_legacy/uc8151_legacy.cpp
+set_source_files_properties(${BHIHKH_TARGET_VENDOR_SOURCES}
                             third_party/qrcodegen/qrcodegen.c PROPERTIES COMPILE_OPTIONS "-w")
 target_compile_definitions(${FW} PRIVATE
   PICO_PANIC_FUNCTION=badge_panic
   PICO_STACK_SIZE=0x1000
   PICO_CORE1_STACK_SIZE=0x1000
   PICO_STDIO_USB_CONNECT_WAIT_TIMEOUT_MS=0
-  PICO_FLASH_SIZE_BYTES=2097152
+  ${BHIHKH_TARGET_DEFINITIONS}
 )
-target_link_libraries(${FW} PRIVATE
-  pico_stdlib pico_multicore pico_flash hardware_spi hardware_i2c hardware_pwm hardware_adc hardware_flash hardware_watchdog)
+target_link_libraries(${FW} PRIVATE ${BHIHKH_TARGET_LIBRARIES})
 pico_enable_stdio_usb(${FW} 1)
 pico_enable_stdio_uart(${FW} 0)
 pico_set_program_name(${FW} "BHIHKH!")
 pico_set_program_version(${FW} "${BADGER_GIT_VERSION}")
-pico_set_program_description(${FW} "Photo badge, business card and portfolio for the original Badger 2040")
+pico_set_program_description(${FW} "${BHIHKH_TARGET_DESCRIPTION}")
 target_link_options(${FW} PRIVATE -Wl,--print-memory-usage)
 pico_add_extra_outputs(${FW})  # .uf2 .bin .hex .dis .map
 
@@ -124,7 +119,7 @@ find_program(BADGER_NM_TOOL arm-none-eabi-nm HINTS "${_tc_dir}" REQUIRED)
 add_custom_command(TARGET ${FW} POST_BUILD
   COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/scripts/memory_report.py
           --elf $<TARGET_FILE:${FW}> --map ${CMAKE_CURRENT_BINARY_DIR}/${FW}.elf.map
-          --size ${BADGER_SIZE_TOOL} --nm ${BADGER_NM_TOOL}
+          --size ${BADGER_SIZE_TOOL} --nm ${BADGER_NM_TOOL} --target ${BHIHKH_TARGET}
           --out ${CMAKE_CURRENT_BINARY_DIR}/memory-report.txt
   COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/generated/assets.uf2
           ${CMAKE_CURRENT_BINARY_DIR}/${FW}-assets.uf2

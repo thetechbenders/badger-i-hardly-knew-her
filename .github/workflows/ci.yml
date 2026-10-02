@@ -28,6 +28,10 @@ jobs:
   firmware:
     name: RP2040 cross-build
     runs-on: ubuntu-24.04
+    # The hardware target this job builds (cmake/bhihkh_target.cmake). Only
+    # badger2040 is implemented; a second target becomes a matrix over this.
+    env:
+      BHIHKH_TARGET: badger2040
     steps:
       - uses: actions/checkout@v4
         with:
@@ -61,13 +65,16 @@ jobs:
       - name: Build firmware (public sample content)
         run: |
           scripts/build-firmware.sh \
+            -DBHIHKH_TARGET="$BHIHKH_TARGET" \
             -DPython3_EXECUTABLE="$BADGER_PYTHON" \
             -DBADGER_PROFILE="$PWD/config/sample-profile.json" \
             -DBADGER_PORTRAIT="$PWD/assets/sample/portrait_placeholder.png"
       - name: Memory report
         run: cat build/fw/memory-report.txt | head -12
       - name: Verify artifacts (UF2 regions, linker placement, metadata, checksums)
-        run: '"$BADGER_PYTHON" scripts/verify_artifacts.py build/fw --require-clean'
+        run: '"$BADGER_PYTHON" scripts/verify_artifacts.py build/fw --require-clean --target "$BHIHKH_TARGET"'
+      # Configured without -DBHIHKH_TARGET, so this also shows the default
+      # target builds the same image.
       - name: Reproducible from a different checkout path and build-directory name
         run: |
           repro="$RUNNER_TEMP/repro"
