@@ -3,60 +3,66 @@
 ## Hardware targets
 
 BHIHKH! is native C/C++ on the Raspberry Pi Pico SDK, and the build selects
-one hardware target with `-DBHIHKH_TARGET=<name>` (`cmake/bhihkh_target.cmake`):
+one hardware target with `-DBHIHKH_TARGET=<name>` (`cmake/bhihkh_target.cmake`,
+list in `cmake/bhihkh_targets_list.cmake`):
 
-| `BHIHKH_TARGET` | Hardware | State |
-|---|---|---|
-| `badger2040` (default) | original Pimoroni Badger 2040 (RP2040) | implemented: everything in this document |
-| `badger2350` | Pimoroni Badger 2350 (RP2350A), working name BadgHer™ NEO (name not final; the ™ is a joke, not a trademark claim) | planned, **not implemented** |
+| `BHIHKH_TARGET` | Hardware | Artifacts | State |
+|---|---|---|---|
+| `badger2040` (default) | original Pimoroni Badger 2040 (RP2040) | `build/fw/badger_badge*.uf2` | implemented, hardware-tested |
+| `badger2350` | Pimoroni Badger 2350 (RP2350A), working name BadgHer™ NEO (name not final; the ™ is a joke, not a trademark claim) | `build/fw-badger2350/badger2350_badge*.uf2` | implemented and CI-built; **physical validation pending** ([checklist](BADGER2350_SMOKE_TEST.md)) |
 
-Selecting `badger2350`, or any name that is not implemented, fails at
-configure time with a message saying so; it never falls back to building
-Badger 2040 firmware. `PICO_BOARD` and `PICO_PLATFORM` follow from the
-target, and a conflicting value is refused rather than ignored.
+An unknown name fails at configure time; there is no fallback to the other
+board. `PICO_BOARD` and `PICO_PLATFORM` follow from the target, a conflicting
+value is refused rather than ignored, and a build directory configured for
+one board refuses the other. The UF2 family differs too (RP2040 vs RP2350 Arm
+Secure), so a boot ROM rejects the other board's image, and
+`verify_artifacts.py` checks a build against its own target's facts only.
 
-Each implemented target is a backend directory, `firmware/platform/<target>/`,
-with a `target.cmake` naming its Pico SDK board and platform, sources,
-compile definitions and SDK libraries. `scripts/bhihkh_targets.py` holds the
-same target's flash map, UF2 family and linker facts for `memory_report.py`
-and `verify_artifacts.py` (`--target`, default `badger2040`; the verifier also
-checks the build directory's CMake cache). `core/` and `cli/` have no target
-conditionals.
+Both targets run the same product: `core/` and `cli/` have no target
+conditionals, and the composition root is shared:
 
-The Badger 2350 port will stay on the Pico SDK. Pimoroni's BadgeWare
-(MicroPython) and `pimoroni/badger2350` sources are hardware reference
-only, not the runtime. Seams the port has to open, deliberately left as they
-are today:
+- **`firmware/platform/pico/`** (shared Pico SDK backend): the main loop and
+  CLI host (`main.cpp`), diagnostics (crash record, fault handlers, watchdog,
+  memory), the settings flash backend and the Qwiic / Qw/ST I2C bus. They are
+  written against the board interface below.
+- **`firmware/platform/<target>/`** (one per board): `board.hpp/.cpp` (pins,
+  buttons and wake capture, VBUS, battery ADC and its circuit, reset cause,
+  power-off), the panel backend, `flash_layout.hpp`, `target.cmake`, and the
+  portable `display_target.hpp`.
+- **`display_target.hpp`** is the only target header the core sees (no SDK
+  headers): panel size and a handful of layout constants (portrait size, QR
+  limits, index row pitch, interest lines, QR-page wrapping). Host tests and
+  previews are built once per target with it (`build/host`,
+  `build/host-badger2350`), so they render what that firmware renders.
 
-- **Display.** `Framebuffer` is the UC8151's 296×128 1-bpp column-major
-  layout, its `diff_bounds()` rounds to the UC8151 8-row partial window, and
-  the renderer, layouts, portrait pipeline, asset packs, host previews and
-  `tools/` (296×128, 104×128 portrait) are drawn for that panel. The
-  Badger 2350's 264×176 four-tone SSD1680 needs its own framebuffer format,
-  layouts and refresh policy: a display port, not a geometry constant.
-- **Composition root.** `badger2040/main.cpp` wires the shared core to the
-  RP2040 drivers. Much of it (CLI host, settings service, the main loop) will
-  apply to the RP2350 too; it should be split when a second backend needs
-  it, not before.
-- **Power and battery.** `board` (power latch, VBUS, 1.24 V-referenced ADC
-  battery sense) and `core/battery` (no charger) describe the original
-  board. A charger, RTC, wake causes and the extra peripherals (rear lights,
-  PSRAM, wireless) need real interfaces when they are implemented.
-- **Flash and diagnostics.** `flash_layout.hpp` is the 2 MiB map;
-  `diagnostics.cpp` reads RP2040 reset registers and scratch-bank stacks.
-- **Board header / SDK pin.** The pinned pico-sdk 2.2.0 predates Badger 2350
-  support. Current upstream pico-sdk now includes `pimoroni_badger2350` and
-  identifies the MCU as RP2350A. The port should evaluate a controlled SDK
-  pin update before maintaining a redundant local board header; verify the
-  physical board during bring-up because one BadgeWare intro page currently
-  says RP2350B.
-- **Artifacts.** Artifact names (`badger_badge*.uf2`) and the build
-  directory (`build/fw`) do not carry the target yet.
+**Display seam.** `Framebuffer` is a board-neutral row-major 1-bpp buffer at
+the target's size; `diff_bounds()` is pixel-exact. Each panel backend packs
+it into its controller's RAM layout (`badger2040/uc8151_pack.hpp`,
+`badger2350/ssd1680_pack.hpp`) and reports its partial-refresh granularity
+(`Panel::partial_window()`) or that it has none (`supports_partial()`). The
+Badger 2040's packing and 8-row partial windows are byte-for-byte what they
+were (host tests compare against the Pimoroni driver's pixel layout; the
+previews are byte-identical). The SSD1680 can show four tones from two RAM
+planes; this firmware draws black and white only, and a later 2-bit phase
+would change the buffer and the packer behind the same `Panel` interface.
+QR codes stay pure black/white, integer-scaled, with their quiet zone.
+
+**Layouts.** The Badger 2350's 264×176 panel is 32 px narrower and 48 px
+taller. Its layouts keep every screen and its information order, using the
+height rather than scaling: a 104×176 full-height portrait, all six contact
+lines under a two-line title, larger full-screen QR modules (148 px limit),
+QR-page titles that wrap instead of shrinking, and the index's seven rows
+at a 20 px pitch (the app's scrolling stays target-neutral).
+`tests/badger2040/` and `tests/badger2350/` hold what holds on only one of
+them.
+
+Pimoroni's BadgeWare (MicroPython) and `pimoroni/badger2350` sources are
+hardware reference only, not the runtime.
 
 ## Hardware facts this design relies on (`badger2040`)
 
 Verified against the Pico SDK board header `boards/pimoroni_badger2040.h`
-(SDK 2.2.0), `pimoroni-pico` v1.29.0-2 (`libraries/badger2040`,
+(SDK 2.2.0; unchanged in 2.3.1), `pimoroni-pico` v1.29.0-2 (`libraries/badger2040`,
 `drivers/uc8151_legacy`) and `pimoroni/badger2040` (MicroPython `badger2040.py`,
 `wakeup` module, launcher history).
 
@@ -75,11 +81,43 @@ Verified against the Pico SDK board header `boards/pimoroni_badger2040.h`
 There is no RTC (only the Badger 2040 W has the PCF85063A), so timed wake is
 impossible. There is no battery charger. Only front-button wake exists.
 
+## Hardware facts this design relies on (`badger2350`)
+
+Verified against the official Pico SDK board header
+`boards/pimoroni_badger2350.h` (pico-sdk 2.3.1, the first tagged SDK with it;
+upstream commit `8b0d07ed`) and Pimoroni's `pimoroni/badger2350` v3.1.1
+(`7f2fa36`: `board/`, `modules/c/ssd1680`, `modules/c/powman`,
+`badgeware/badge.py`). The SDK header defines `PICO_RP2350A 1`; one
+BadgeWare introduction page says RP2350B, the board header and Pimoroni's
+own `board/pimoroni_badger2350.h` say RP2350A. **Not yet checked on a
+physical board.**
+
+| Function | GPIO | Notes |
+|---|---|---|
+| Buttons A, B, C, UP, DOWN | 7, 9, 10, 11, 6 | Active low, internal pull-ups required |
+| HOME ("AKA boot" in the board header) | 22 | Active low, pull-up; used as the Badger 2040's USR button. Cannot wake the board. |
+| Button interrupt | 15 | Low while any of A..DOWN is pressed; the power-down wake source (powman PWRUP3, falling edge) |
+| RESET-button sense | 14 | Not used (BadgeWare's long-press power-off) |
+| E-paper (SSD1680, 264×176) | SPI0 12 MHz: CS 17, SCK 18, MOSI 19, DC 20, RESET 21, BUSY 16 (**high** = busy) | One waveform, no partial update in the reference driver; four tones from two RAM planes (black/white used) |
+| VBUS detect | 12 | High when USB power is present (no pull) |
+| Battery sense | 26 (ADC0, 1/2 divider) + 1.1 V ref on 28 (ADC2) | `vbat = 2 × 1.1 V × raw / ref` (BadgeWare); charger status is on the wireless chip, not used |
+| Switched I2C/RTC supply | 27 | On while awake, released before power-down |
+| Qw/ST + RTC (I2C0) | SDA 4, SCL 5 | PCF85063A at 0x51 (not used), optional APDS-9960 at 0x39, polled |
+| Rear LEDs | 0–3 | Not used |
+| PSRAM | CS 8 | 8 MiB; not initialised or used (CS held deselected) |
+| Flash | 16 MiB, boot2 `w25q080` | No partition table: UF2s are absolute |
+
+Power: no latch. "Off" is the RP2350 power manager's lowest state (switched
+core, SRAM, XIP off), entered on battery after the sleep image has finished
+on the panel and left by a front-button press, which boots from flash with
+RAM lost (classified as a power-on, as a Badger 2040 battery wake). On USB,
+power-off is emulated exactly as on the Badger 2040.
+
 ## Module map
 
 ```
 firmware/core/        portable C++17, no SDK headers; compiled for device and host
-  framebuffer         1-bpp buffer in the UC8151 column-major layout; diff bounds
+  framebuffer         board-neutral row-major 1-bpp buffer at the target's size; exact diff bounds
   font, text          compiled bitmap fonts; UTF-8, fit chains, ellipsis, wrapping
   qr                  qrcodegen wrapper: version/ECC/scale choice, quiet zone
   renderer            badge (layouts A/B), card (contact icons), project portfolio,
@@ -98,9 +136,13 @@ firmware/core/        portable C++17, no SDK headers; compiled for device and ho
   battery             LiPo meter: conversion, EMA filter, hysteresis, USB/invalid states
   gesture, apds9960   swipe decoding, orientation, cooldown; sensor driver/service over I2cBus
 firmware/cli/         USB CLI parser and dispatcher over a CliHost interface
-firmware/platform/    build_info (shared by targets); one backend directory per hardware target:
-  badger2040/         RP2040 only: board (incl. ADC battery sampling), I2C0 bus, UC8151 panel adapter, flash backend,
-                      diagnostics (reset/fault/watchdog/memory), main loop; target.cmake
+firmware/platform/    build_info (shared by targets)
+  pico/               shared Pico SDK backend: main loop + CLI host, diagnostics (reset/fault/watchdog/
+                      memory), settings flash backend, I2C bus
+  badger2040/         RP2040: board (power latch, ADC battery sampling), UC8151 panel adapter + packing,
+                      flash map, display_target.hpp, target.cmake
+  badger2350/         RP2350A: board (powman power-down, wake capture, battery), native SSD1680 panel +
+                      packing, flash map, display_target.hpp, target.cmake
 host/                 unit tests, simulated panel, preview renderer
 tools/                portrait, fonts, asset packs, profile compiler, previews, badgerctl
 ```
@@ -125,9 +167,9 @@ core 0 ─ main loop (event driven: WFE with 10 ms timeout)
   ├─ Settings (staged + committed) and flash commits
   └─ watchdog feed (only while core 1's heartbeat advances), LED, VBUS/VSYS
 
-core 1 ─ DisplayService: the only owner of the UC8151 driver, SPI0 and the
-         panel GPIOs. It polls BUSY without blocking, then powers the booster
-         off when a refresh finishes.
+core 1 ─ DisplayService: the only owner of the panel driver (UC8151 /
+         SSD1680), SPI0 and the panel GPIOs. It polls BUSY without blocking,
+         then powers the booster off when a refresh finishes.
 ```
 
 - **Buffer ownership** travels with the job. Core 0 may write a buffer only
@@ -135,7 +177,9 @@ core 1 ─ DisplayService: the only owner of the UC8151 driver, SPI0 and the
   has copied the frame. No buffer is ever shared.
 - **Driver thread-safety**: `UC8151_Legacy` has no locks. It busy-waits in
   `reset()`/`setup()` and drives SPI0 and the GPIOs directly, so it is not
-  thread-safe. It is only ever called from the DisplayService context.
+  thread-safe. It is only ever called from the DisplayService context. The
+  Badger 2350's SSD1680 backend follows the same rule, and bounds every BUSY
+  wait (500 ms for reset and waveform load, 100 ms before the update trigger).
 - **Single-core diagnostic mode** (`diag.single_core true`, or automatically
   in safe mode) does not launch core 1. The same DisplayService is then
   polled from the core 0 loop, with identical queues and code paths.

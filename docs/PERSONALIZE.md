@@ -20,6 +20,15 @@ Then flash as in [INSTALL.md](INSTALL.md): hold **BOOT/USR**, tap **RST**,
 and copy `local/out/badge/fw/badger_badge.uf2` onto the `RPI-RP2` drive.
 Read INSTALL.md first if the badge still runs BadgerOS.
 
+**Badger 2350**: add `--target badger2350` to steps 4 and 5 (for example
+`scripts/build-badge.sh local/badge.toml --target badger2350`). The same form
+works; the portrait is made at 104×176, the previews show the 264×176
+screens with the same fit and QR gates, and the output goes to
+`local/out/badge-badger2350/` (`fw/badger2350_badge.uf2`). A photo's default
+crop follows the taller portrait; an explicit `crop` must have that
+portrait's proportions (104:176). The Badger 2350 build is not yet validated
+on a physical badge ([INSTALL.md](INSTALL.md#badger-2350)).
+
 `local/` is ignored by Git, so the form, the photo and everything made from
 them stay on your computer. The template in `config/` holds only generic
 example content; don't put your details there.
