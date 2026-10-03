@@ -62,7 +62,7 @@ constexpr uint8_t kLut[153] = {
     0x44, 0x42, 0x22, 0x22, 0x23, 0x32, 0x00, 0x00, 0x00,  // FR, XON
 };
 
-// The plane sent to both RAMs (black and white only, ssd1680_pack.hpp).
+// Reuse one scratch plane; frames remain owned by DisplayService while packing.
 uint8_t g_plane[ssd1680::kPlaneBytes];
 
 void command(uint8_t reg, const uint8_t *data, size_t len) {
@@ -153,9 +153,9 @@ bool Ssd1680Panel::set_speed(uint8_t speed) {
 // update sequence 0xC7 (clock and analog on, display, both off again), then
 // the trigger. DisplayService only calls this while not busy().
 bool Ssd1680Panel::start_full(const Framebuffer &fb) {
-  ssd1680::pack(fb, g_plane);
   if (!write_waveform()) return false;  // no commands while BUSY: abort, nothing triggered
   for (uint8_t ram : {kWriteRamRed, kWriteRamBw}) {
+    ssd1680::pack(fb, g_plane, ram == kWriteRamRed ? ssd1680::Plane::Red : ssd1680::Plane::Bw);
     command(kRamXCounter, {kXStart});
     command(kRamYCounter, {kYStartL, kYStartH});
     command(ram, g_plane, sizeof g_plane);

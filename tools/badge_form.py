@@ -66,7 +66,7 @@ GENERATED_MARK = "_generated_by"
 
 CONTACT_TYPES = ("email", "phone", "web", "github", "discord", "text")
 QR_CHOICES = ("none", "link", "vcard", "vcard-from-contacts")
-PORTRAIT_METHODS = ("atkinson", "floyd", "bayer8", "threshold")
+PORTRAIT_METHODS = ("atkinson", "floyd", "bayer8", "threshold", "four-tone")
 PORTRAIT_SIZE = (104, 128)  # the Badger 2040's; per target: TARGETS[...].portrait_w/_h
 INTERESTS_SEPARATOR = " \u00b7 "
 
@@ -74,7 +74,7 @@ SECTIONS = {
     "form": None, "person": ("name", "title", "affiliation", "event", "interests"),
     "contacts": ("type", "label", "value", "hidden"), "qr": ("show", "link", "vcard", "vcard_file", "caption"),
     "portrait": ("photo", "processed", "settings", "crop", "size", "method", "gamma", "black_pct",
-                 "white_pct", "sharpen"),
+                 "white_pct", "sharpen", "four_tone"),
     "projects": ("title", "tagline", "description", "status", "banner", "link"),
     "preferences": None,
 }
@@ -96,6 +96,7 @@ class Portrait:
     kind: str                      # "photo", "processed"
     path: Path
     settings: dict = field(default_factory=dict)   # photo: tools/portrait.py settings
+    four_tone: bool = False
 
 
 @dataclass
@@ -522,16 +523,22 @@ def _portrait(problems: list[str], notes: list[str], form_dir: Path, table, targ
         problems.append(f"portrait.{kind}: expected a file name in quotes, got {_typename(raw)}")
         return None
     path = _resolve(form_dir, raw.strip())
-    tone_keys = [k for k in SECTIONS["portrait"] if k not in ("photo", "processed") and k in t]
+    four_tone = t.get("four_tone", False)
+    if type(four_tone) is not bool:
+        problems.append("portrait.four_tone: expected true or false")
+        four_tone = False
+    if four_tone and target != "badger2350":
+        problems.append("portrait.four_tone: requires badger2350")
+    tone_keys = [k for k in SECTIONS["portrait"] if k not in ("photo", "processed", "four_tone") and k in t]
     if kind == "processed":
         for k in tone_keys:
             problems.append(f"portrait.{k}: only applies to photo = \"...\"; remove it")
         if path.resolve() == PLACEHOLDER.resolve() and target != DEFAULT_TARGET:
             path = placeholder(target)  # the sample silhouette at this badge's size, not a 104x128 one
-        _check_processed(problems, path, target)
+        _check_processed(problems, path, target, four_tone)
         if path.resolve() == placeholder(target).resolve():
             notes.append("portrait: using the sample silhouette; set portrait.photo to your own picture")
-        return Portrait("processed", path)
+        return Portrait("processed", path, four_tone=four_tone)
     settings = {"size": [tgt.portrait_w, tgt.portrait_h], "gamma": 1.0, "black_pct": 1.0, "white_pct": 2.0,
                 "sharpen": 0.6, "method": "atkinson"}
     if "settings" in t:
@@ -562,8 +569,11 @@ def _portrait(problems: list[str], notes: list[str], form_dir: Path, table, targ
     else:
         settings.update({k: t[k] for k in tone_keys})
         where = "portrait"
+    if four_tone:
+        settings["method"] = "four-tone"
+    four_tone = settings.get("method") == "four-tone"
     _check_photo(problems, where, path, settings, target)
-    return Portrait("photo", path, settings)
+    return Portrait("photo", path, settings, four_tone)
 
 
 def _number(problems, name, v, lo, hi) -> bool:
@@ -602,7 +612,7 @@ def placeholder(target: str = DEFAULT_TARGET) -> Path:
     return PLACEHOLDER if target == "badger2040" else PLACEHOLDER.with_name(f"portrait_placeholder_{target}.png")
 
 
-def _check_processed(problems, path: Path, target: str = DEFAULT_TARGET):
+def _check_processed(problems, path: Path, target: str = DEFAULT_TARGET, four_tone: bool = False):
     t = TARGETS[target]
     im = _open_image(problems, "portrait.processed", path)
     if im is None:
@@ -612,7 +622,13 @@ def _check_processed(problems, path: Path, target: str = DEFAULT_TARGET):
         problems.append(f"portrait.processed: {w}x{h} pixels; it must be at most {t.portrait_max_w}x{t.display_h} "
                         f"({t.portrait_w}x{t.portrait_h} is the designed size) so the text keeps its room"
                         + ("" if target == DEFAULT_TARGET else f" on the {t.board}"))
-    if im.mode != "1":
+    if four_tone:
+        import assetpack
+        try:
+            assetpack.pack_gray2(im, target)
+        except SystemExit as e:
+            problems.append(f"portrait.processed: {e}")
+    elif im.mode != "1":
         rgba = im.convert("RGBA")
         lo, hi = rgba.getchannel("A").getextrema()
         grey = any(rgba.convert("L").histogram()[1:255])
@@ -623,6 +639,8 @@ def _check_processed(problems, path: Path, target: str = DEFAULT_TARGET):
 
 def _check_photo(problems, where: str, path: Path, s: dict, target: str = DEFAULT_TARGET):
     t = TARGETS[target]
+    if s.get("method") == "four-tone" and target != "badger2350":
+        problems.append(f"{where}.method: four-tone requires badger2350")
     if s.get("method") not in PORTRAIT_METHODS:
         problems.append(f"{where}.method: {s.get('method')!r}; use one of "
                         + ", ".join(f'"{m}"' for m in PORTRAIT_METHODS))
@@ -676,7 +694,7 @@ def prepare_portrait(form: Form, out: Path) -> Path:
     if p.kind == "processed":
         from PIL import Image
         with Image.open(p.path) as im:
-            im = im.convert("1", dither=Image.Dither.NONE) if im.mode != "1" else im.copy()
+            im = im.convert("L") if p.four_tone else im.convert("1", dither=Image.Dither.NONE)
         im.save(dest)
         return dest
     import portrait as pt
@@ -690,6 +708,8 @@ def prepare_portrait(form: Form, out: Path) -> Path:
     from PIL import Image
     gray = Image.fromarray((g * 255).round().astype("uint8"))
     sheet = {"photo (grey)": gray, **{m: pt.to_image(pt.convert(g, m)) for m in pt.METHODS}}
+    if p.four_tone:
+        sheet["four-tone"] = pt.to_image(pt.convert(g, "four-tone"))
     pt.comparison_sheet(sheet, 3).save(out / "portrait-methods_x3.png")
     return dest
 
@@ -869,7 +889,7 @@ def preview(form: Form, out: Path) -> dict:
     profile = write_profile(form, out)
     pack = out / "assets.bin"
     res = _run([sys.executable, TOOLS / "assetpack.py", "build", "--target", form.target, "--portrait", portrait,
-                "--out", pack], capture_output=True, text=True)
+                "--out", pack, *(["--four-tone"] if form.portrait.four_tone else [])], capture_output=True, text=True)
     if res.returncode:
         raise FormError([f"portrait: asset pack: {res.stderr.strip() or res.stdout.strip()}"])
     pairs = prof.flatten(form.doc)
@@ -893,7 +913,7 @@ def preview(form: Form, out: Path) -> dict:
     if res.returncode or bad:
         raise FormError(qr_failures(form, bad) or [f"previews failed:\n{res.stdout[-2000:]}{res.stderr[-2000:]}"])
     return {"profile": profile, "portrait": portrait, "pack": pack, "previews": previews,
-            "sheet": previews / "contact_sheet.png", "report": report}
+            "sheet": previews / "contact_sheet.png", "report": report, "four_tone": form.portrait.four_tone}
 
 
 def qr_failures(form: Form, screens: list[str]) -> list[str]:
@@ -923,6 +943,7 @@ def build_firmware(prepared: dict, out: Path, target: str = DEFAULT_TARGET) -> P
     env = {**os.environ, "BUILD_DIR": str(fw)}
     with open(log, "w") as f:
         res = _run([ROOT / "scripts" / "build-firmware.sh", f"-DBHIHKH_TARGET={target}",
+                    f"-DBADGER_FOUR_TONE={'ON' if prepared.get('four_tone') else 'OFF'}",
                     f"-DPython3_EXECUTABLE={sys.executable}",
                     f"-DBADGER_PROFILE={prepared['profile']}", f"-DBADGER_PORTRAIT={prepared['portrait']}"],
                    stdout=f, stderr=subprocess.STDOUT, env=env)

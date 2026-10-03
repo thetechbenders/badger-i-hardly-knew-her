@@ -115,13 +115,13 @@ Header (32 bytes)
 12  u32 total_size (<= 64 KiB)
 Entry (24 bytes each, after the header)
  0  u16 id (1 = portrait)            8 u32 offset (4-aligned, after the entry table)
- 2  u8  format (1 = MONO1)          12 u32 length
+ 2  u8  format (1 MONO1, 2 GRAY2)   12 u32 length
  3  u8  reserved                    16 u32 crc32 of the entry data
  4  u16 width   6 u16 height        20 u32 reserved
 ```
 
 **MONO1**: row-major, MSB first, bit 1 = black ink, stride = ceil(width/8),
-width ≤ 296 and height ≤ 128, length = stride × height exactly.
+dimensions must fit the target panel, length = stride × height exactly.
 
 The firmware validates every field (sizes, bounds, alignment, overlap with
 the table, per-entry and whole-pack CRCs) before use. It prefers a valid
@@ -130,19 +130,22 @@ flashed pack, then the built-in pack, then no portrait.
 
 ## Framebuffer / panel layout
 
-The renderer's `Framebuffer` is board-neutral: row-major, byte
+Classic's `Framebuffer` is row-major, byte
 `y * stride + x / 8` (stride = width / 8), bit `7 - x % 8`, 1 = black, the
-same packing as MONO1 assets and PBM previews. Each panel backend converts
-it to its controller's RAM:
+same packing as MONO1 assets and PBM previews. Badger 2350 stores 2-bit logical
+`Ink` values, four MSB-first pixels per byte (stride 66). Logical values are
+0 white, 1 black, 2 light gray, 3 dark gray, independently of asset and panel
+encoding. Hash, equality, copies and pixel-exact differences include both bits.
+Each panel backend converts the complete framebuffer to its controller's RAM:
 
 - Badger 2040 (UC8151, 296×128): byte `x * 16 + y / 8`, bit `7 - y % 8`,
   1 = black (`badger2040/uc8151_pack.hpp`). Identical to
   `UC8151_Legacy::pixel()`; a host test compares against a transcription of
   that function.
 - Badger 2350 (SSD1680, 264×176): byte `x * 22 + y / 8`, bit `7 - y % 8`,
-  1 = black, the same plane sent to both RAMs (0x26 and 0x24)
-  (`badger2350/ssd1680_pack.hpp`); a host test compares against the plane
-  loop of Pimoroni's reference driver.
+  red/BW plane bits respectively white 00, light 01, dark 10, black 11.
+  A single scratch plane is reused for 0x26 and 0x24. Mono output sends identical
+  planes. Tests compare against the pinned Pimoroni RGB loop and exact vectors.
 
 ## Profile JSON (`config/sample-profile.json`)
 
@@ -187,3 +190,24 @@ manifest (JSON: the paths it wrote); only those are replaced. A
 `[[contacts]]` block with `hidden = true` keeps its slot with an empty value
 (never drawn), so label-only contacts of a JSON profile survive `export`.
 Form backups record the form and output paths in `INPUTS.json`.
+
+## Opt-in four-tone portrait assets
+
+BAPK version 1 also supports format ID 2, GRAY2. A new container version is
+unnecessary: entry format identifies the payload, and MONO1 (ID 1) is unchanged.
+GRAY2 is row-major, four pixels per byte, leftmost pixel in bits 7..6,
+then 5..4, 3..2, 1..0. Values are 0 white, 1 light gray, 2 dark gray,
+3 black. Row stride is ceil(width / 4); unused low pairs in the final byte
+must be zero. Width/height must be positive and fit the target panel; payload
+length must equal stride times height. Existing pack, header, and entry CRC
+checks apply. Unknown formats are explicitly unsupported; Classic rejects
+GRAY2, never reinterprets it as MONO1, and the existing loader uses its built-in
+mono fallback for a rejected external pack. For a shared source image, generate
+a separate MONO1 pack for Classic using the default mono workflow.
+
+GRAY2 requires explicit `--four-tone` asset generation on Badger 2350.
+Processed input must be opaque neutral grayscale with values 0, 85, 170, 255.
+Photo conversion retains the existing crop and linear-light resizing and
+quantizes normalized luminance to the nearest of those four illustrative
+levels (ties toward the lighter level). Preview gray values are logical tone
+illustrations, not measured panel luminance.

@@ -218,3 +218,23 @@ for byte. Without an argument, `create` keeps using `local/profile.json` and
 archives still verify (a form archive without `INPUTS.json` is accepted
 when its recorded paths are unambiguous). Existing archives are
 never replaced: a second backup of the same commit gets a `-2` suffix.
+
+## Opt-in Badger 2350 four-tone portraits
+
+In a form's `[portrait]`, set `four_tone = true` and use `photo = "..."`.
+The existing form preview/build flow performs deterministic four-level
+quantization. A processed portrait can use the same flag, but must contain
+only opaque neutral values 0, 85, 170 and 255. `method = "four-tone"` is also
+an explicit opt-in for photos, including portrait settings JSON.
+
+For the JSON/profile workflow, convert with
+`tools/portrait.py PHOTO --target badger2350 --four-tone --out portrait.png`,
+then build with `-DBHIHKH_TARGET=badger2350 -DBADGER_FOUR_TONE=ON`
+and `-DBADGER_PORTRAIT=portrait.png`. Standalone asset generation takes
+`tools/assetpack.py build --target badger2350 --four-tone --portrait portrait.png --out assets.bin`.
+These options are refused for Classic; produce a separate
+mono portrait for it using the default workflow. Default builds remain mono.
+
+Only badge portraits use gray. Text, QR codes, status and other screens stay
+black/white. Preview shades illustrate logical tones; physical appearance and
+Badger 2350 hardware validation remain pending.

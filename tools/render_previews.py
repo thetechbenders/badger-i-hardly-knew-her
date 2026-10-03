@@ -254,7 +254,8 @@ def main(argv=None) -> int:
     pngs = []
     size = None  # the panel size badger_preview renders (its BHIHKH_TARGET)
     for pbm in pbms:
-        im = Image.open(pbm).convert("1")
+        im = Image.open(pbm)
+        im = im.convert("L" if im.mode != "1" else "1")
         size = size or im.size
         if im.size != size:
             raise SystemExit(f"{pbm}: unexpected size {im.size}, expected {size}")

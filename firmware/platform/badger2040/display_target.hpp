@@ -10,6 +10,7 @@ namespace badge::target {
 // UC8151 2.9" e-paper, landscape: 296 x 128, black/white.
 constexpr int kDisplayWidth = 296;
 constexpr int kDisplayHeight = 128;
+constexpr bool kFourTone = false;
 
 // Renderer layout (renderer.cpp). These are the values the Badger 2040
 // screens were designed with; changing one changes the Classic image.

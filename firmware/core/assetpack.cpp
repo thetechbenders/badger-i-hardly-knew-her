@@ -22,6 +22,7 @@ const char *asset_status_str(AssetStatus s) {
     case AssetStatus::BadDataCrc: return "bad data crc";
     case AssetStatus::BadEntry: return "bad entry";
     case AssetStatus::BadEntryCrc: return "bad entry crc";
+    case AssetStatus::UnsupportedFormat: return "unsupported format";
   }
   return "?";
 }
@@ -61,11 +62,24 @@ AssetPackInfo asset_pack_validate(const uint8_t *base, size_t avail) {
       info.status = AssetStatus::BadEntry;
       return info;
     }
-    if (fmt == kAssetFormatMono1) {
+    if (fmt != kAssetFormatMono1 && (fmt != kAssetFormatGray2 || !target::kFourTone)) {
+      info.status = AssetStatus::UnsupportedFormat;
+      return info;
+    }
+    {
+      const uint32_t stride = (w + (fmt == kAssetFormatMono1 ? 7 : 3)) / (fmt == kAssetFormatMono1 ? 8 : 4);
       if (w == 0 || h == 0 || w > Framebuffer::kWidth || h > Framebuffer::kHeight ||
-          len != uint32_t((w + 7) / 8) * h) {
+          len != stride * h) {
         info.status = AssetStatus::BadEntry;
         return info;
+      }
+      if (fmt == kAssetFormatGray2 && (w & 3)) {
+        const uint8_t mask = uint8_t((1u << (2 * (4 - (w & 3)))) - 1);
+        for (uint16_t y = 0; y < h; ++y)
+          if (base[off + (y + 1) * stride - 1] & mask) {
+            info.status = AssetStatus::BadEntry;
+            return info;
+          }
       }
     }
     if (crc32(base + off, len) != get32(e + 16)) { info.status = AssetStatus::BadEntryCrc; return info; }
@@ -88,6 +102,24 @@ bool asset_pack_bitmap(const uint8_t *base, uint16_t id, MonoBitmap *out) {
       out->bits = base + get32(e + 8);
       return true;
     }
+  }
+  return false;
+}
+
+bool asset_pack_image(const uint8_t *base, uint16_t id, Bitmap *out) {
+  *out = Bitmap{};
+  const uint16_t count = get16(base + 8);
+  for (uint16_t i = 0; i < count; ++i) {
+    const uint8_t *e = base + kHeader + uint32_t(i) * kEntry;
+    if (get16(e) != id) continue;
+    if (e[2] != kAssetFormatMono1 && (e[2] != kAssetFormatGray2 || !target::kFourTone)) return false;
+    out->format = e[2];
+    out->width = get16(e + 4);
+    out->height = get16(e + 6);
+    out->stride = uint16_t((out->width + (e[2] == kAssetFormatMono1 ? 7 : 3)) /
+                          (e[2] == kAssetFormatMono1 ? 8 : 4));
+    out->bits = base + get32(e + 8);
+    return true;
   }
   return false;
 }

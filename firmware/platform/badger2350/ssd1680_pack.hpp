@@ -13,11 +13,9 @@
 // modules/c/ssd1680/ssd1680.cpp, MIT) for its 264 x 176 frame buffer.
 //
 // Tones: the panel shows four levels from two RAM planes (0x26 "red" and
-// 0x24 "black/white") with the reference waveform. This firmware draws
-// black and white only, which the reference encodes as 1 (black) or 0
-// (white) in BOTH planes; pack() returns that plane. A later 2-bit phase
-// would pack the planes differently from a 2-bit buffer, behind the same
-// Panel interface.
+// 0x24 "black/white") with the pinned reference waveform. For neutral RGB
+// levels 255, 170, 85, 0 the reference takes complemented luminance bits
+// 7 (red) and 6 (BW): white 00, light 01, dark 10, black 11 (red/BW).
 #pragma once
 
 #include <cstddef>
@@ -31,14 +29,18 @@ constexpr int kRamRowBytes = Framebuffer::kHeight / 8;  // 22
 constexpr size_t kPlaneBytes = size_t(Framebuffer::kWidth) * kRamRowBytes;  // 5808
 static_assert(Framebuffer::kHeight % 8 == 0, "whole RAM bytes per landscape column");
 
-// One black/white plane: 1 = black.
-inline void pack(const Framebuffer &fb, uint8_t *out) {
+enum class Plane : uint8_t { Red, Bw };
+
+inline void pack(const Framebuffer &fb, uint8_t *out, Plane plane = Plane::Bw) {
   for (int x = 0; x < Framebuffer::kWidth; ++x) {
     uint8_t *row = out + size_t(x) * kRamRowBytes;
     for (int b = 0; b < kRamRowBytes; ++b) {
       uint8_t v = 0;
-      for (int i = 0; i < 8; ++i)
-        if (fb.get(x, b * 8 + i) == Ink::Black) v |= uint8_t(0x80u >> i);
+      for (int i = 0; i < 8; ++i) {
+        const Ink ink = fb.get(x, b * 8 + i);
+        if (ink == Ink::Black || (plane == Plane::Red ? ink == Ink::DarkGray : ink == Ink::LightGray))
+          v |= uint8_t(0x80u >> i);
+      }
       row[b] = v;
     }
   }

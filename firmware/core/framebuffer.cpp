@@ -9,10 +9,20 @@ namespace badge {
 static_assert(Framebuffer::kWidth > 0 && Framebuffer::kHeight > 0, "display size");
 static_assert(Framebuffer::kWidth <= INT16_MAX && Framebuffer::kHeight <= INT16_MAX, "Rect holds coordinates");
 
-void Framebuffer::clear(Ink ink) { std::memset(buf_, ink == Ink::Black ? 0xFF : 0x00, kBytes); }
+void Framebuffer::clear(Ink ink) {
+  if (!target::kFourTone && ink != Ink::White && ink != Ink::Black) return;
+  std::memset(buf_, kBpp == 1 ? (ink == Ink::Black ? 0xFF : 0) : uint8_t(ink) * 0x55, kBytes);
+}
 
 void Framebuffer::set(int x, int y, Ink ink) {
   if (x < clip_.x || y < clip_.y || x >= clip_.right() || y >= clip_.bottom()) return;
+  if constexpr (target::kFourTone) {
+    uint8_t &b = buf_[size_t(y) * kStride + x / 4];
+    const int shift = 6 - 2 * (x & 3);
+    b = uint8_t((b & ~(3u << shift)) | (uint8_t(ink) << shift));
+    return;
+  }
+  if (ink != Ink::White && ink != Ink::Black) return;
   uint8_t &b = buf_[size_t(y) * kStride + (x >> 3)];
   const uint8_t m = uint8_t(0x80u >> (x & 7));
   if (ink == Ink::Black) b |= m; else b &= uint8_t(~m);
@@ -20,6 +30,8 @@ void Framebuffer::set(int x, int y, Ink ink) {
 
 Ink Framebuffer::get(int x, int y) const {
   if (x < 0 || y < 0 || x >= kWidth || y >= kHeight) return Ink::White;
+  if constexpr (target::kFourTone)
+    return Ink((buf_[size_t(y) * kStride + x / 4] >> (6 - 2 * (x & 3))) & 3);
   return (buf_[size_t(y) * kStride + (x >> 3)] & (0x80u >> (x & 7))) ? Ink::Black : Ink::White;
 }
 
@@ -38,6 +50,12 @@ void Framebuffer::fill_rect(Rect r, Ink ink) {
   int x1 = r.right() < clip_.right() ? r.right() : clip_.right();
   int y1 = r.bottom() < clip_.bottom() ? r.bottom() : clip_.bottom();
   if (x0 >= x1 || y0 >= y1) return;
+  if constexpr (target::kFourTone) {
+    for (int y = y0; y < y1; ++y)
+      for (int x = x0; x < x1; ++x) set(x, y, ink);
+    return;
+  }
+  if (ink != Ink::White && ink != Ink::Black) return;
   // Per-byte masks for the horizontal span, applied to every row.
   for (int y = y0; y < y1; ++y) {
     uint8_t *row = &buf_[size_t(y) * kStride];
@@ -79,6 +97,15 @@ void Framebuffer::copy_from(const Framebuffer &o) {
   clip_ = o.clip_;
 }
 
+bool Framebuffer::blit_gray2(const uint8_t *bits, int w, int h, int stride, int dx, int dy) {
+  if (!target::kFourTone) return false;
+  constexpr Ink tones[] = {Ink::White, Ink::LightGray, Ink::DarkGray, Ink::Black};
+  for (int y = 0; y < h; ++y)
+    for (int x = 0; x < w; ++x)
+      set(dx + x, dy + y, tones[(bits[size_t(y) * stride + x / 4] >> (6 - 2 * (x & 3))) & 3]);
+  return true;
+}
+
 bool Framebuffer::equals(const Framebuffer &o) const { return std::memcmp(buf_, o.buf_, kBytes) == 0; }
 
 uint32_t Framebuffer::hash() const { return crc32(buf_, kBytes); }
@@ -94,11 +121,12 @@ Rect Framebuffer::diff_bounds(const Framebuffer &o) const {
       if (y < y0) y0 = y;
       y1 = y;
       // First and last differing pixel inside this byte (MSB = leftmost).
-      int lo = 0, hi = 7;
-      while (!(d & (0x80u >> lo))) ++lo;
-      while (!(d & (0x80u >> hi))) --hi;
-      if (i * 8 + lo < x0) x0 = i * 8 + lo;
-      if (i * 8 + hi > x1) x1 = i * 8 + hi;
+      int lo = 0, hi = kPixelsPerByte - 1;
+      const unsigned mask = (1u << kBpp) - 1;
+      while (!((d >> (8 - kBpp * (lo + 1))) & mask)) ++lo;
+      while (!((d >> (8 - kBpp * (hi + 1))) & mask)) --hi;
+      if (i * kPixelsPerByte + lo < x0) x0 = i * kPixelsPerByte + lo;
+      if (i * kPixelsPerByte + hi > x1) x1 = i * kPixelsPerByte + hi;
     }
   }
   if (y1 < 0) return {};
