@@ -768,7 +768,11 @@ int status_right(const View &v, const RenderContext &ctx) {
       return W - 2;
     case Screen::Card: {
       const CardGeometry g = card_geometry_impl(ctx, false);
-      return g.qr_status == QrStatus::Empty ? W - 2 : g.qr.x - 4;
+      // Keep the status in the true top-right whenever the vertically
+      // centred QR starts below the status strip. Only move it left when
+      // the QR actually occupies rows 0..kStatusHeight-1.
+      if (g.qr_status == QrStatus::Empty || g.qr.y >= kStatusHeight) return W - 2;
+      return g.qr.x - 4;
     }
     case Screen::Recovery: return W - 4;
     default: return W - 2;
