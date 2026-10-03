@@ -1,5 +1,9 @@
 # Battery meter (single-cell LiPo)
 
+This page describes the original Badger 2040. The Badger 2350 uses the same
+meter (filter, hysteresis, thresholds, `USB` and `?` states) with its own
+circuit: see [Badger 2350](#badger-2350).
+
 ## Circuit and what was verified
 
 | Signal | GPIO / ADC | Source |
@@ -97,3 +101,24 @@ Sampling does not reset the idle timer and never delays power-off.
    and note it here.
 5. `diag battery` also prints the raw ADC counts and the derived ADC supply,
    for checking the reference.
+
+## Badger 2350
+
+| Signal | GPIO / ADC | Source |
+|---|---|---|
+| Battery sense, divider 1/2 | GPIO26 / ADC0 | Pico SDK 2.3.1 `pimoroni_badger2350.h` (`BADGER2350_VBAT_SENSE_PIN`); BadgeWare `badge.py` (`* 2`) |
+| 1.1 V reference | GPIO28 / ADC2, no enable pin | SDK header (`BADGER2350_SENSE_1V1_PIN`); BadgeWare (`/ vref * 1.1`) |
+| VBUS detect | GPIO12, no pull, high = USB | SDK header; BadgeWare (`usb_connected()`) |
+| Charge status | on the wireless chip (CYW43 GPIO2) | BadgeWare `pins.csv`; **not read** (no wireless driver) |
+
+`vbat = 2 × 1100 mV × bat / ref`: BadgeWare's formula, with the same 32-sample
+averaging as the Badger 2040 (`BatteryCircuit{1100, 2}` in
+`badger2350/board.hpp`, host-tested against BadgeWare's arithmetic).
+BadgeWare's own range is 3.00–4.10 V; the meter keeps this firmware's LiPo
+thresholds (3.60/3.70/3.80/3.95 V, LOW below 3.50 V), which are settings.
+
+The board has a charger. With VBUS present the status shows **USB** (the
+cell is then on the charger and reads high); it never shows "charging",
+because the charge-status line is not readable without the wireless chip.
+**Not validated on a badge yet**: compare `diag battery` with a multimeter
+and calibrate with `battery.cal_permille` as above.

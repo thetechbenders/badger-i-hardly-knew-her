@@ -125,3 +125,47 @@ presses), and each commit is verified by reading it back.
 | Force safe mode | Hold **A + C** while pressing RST (USB) or while waking (battery). |
 | Anything else | BOOTSEL (hold BOOT/USR, tap RST) always works; re-flash the UF2. `reboot bootsel` does the same from the CLI. |
 | Return to stock | Flash Pimoroni's `with-badger-os` UF2, or restore your `picotool save` image. |
+
+## Badger 2350
+
+Everything above describes the original Badger 2040. On the **Badger 2350**
+(`badger2350_badge.uf2`, built with `-DBHIHKH_TARGET=badger2350`) the
+product is the same; the differences are below. **This target has not yet
+been validated on a physical badge**: treat these steps as the plan for
+[BADGER2350_SMOKE_TEST.md](BADGER2350_SMOKE_TEST.md), not as tested
+instructions.
+
+- **What it replaces.** The badge ships with Pimoroni's BadgeWare
+  (MicroPython): 2 MiB firmware, a 1 MiB ROMFS, a 12 MiB FAT filesystem with
+  the apps (the "Badger2350" drive) and 1 MiB reserved at the top. Flashing
+  this firmware replaces the firmware region. Its asset pack
+  (0xFE0000–0xFEFFFF) and settings (0xFFC000–0xFFFFFF) live in the reserved
+  top megabyte; the FAT data stays in place but is not used.
+- **Back up**: in BOOTSEL mode, `picotool save -a badger-2350-full-backup.bin`
+  (16 MiB; picotool with USB support).
+- **Flash**: connect USB-C; on the back, hold **BOOT**, tap **RESET**,
+  release BOOT. The `RP2350` drive appears (Pimoroni's procedure). Copy
+  `badger2350_badge.uf2`; optionally, in BOOTSEL again,
+  `badger2350_badge-assets.uf2`. Use only the files named for your badge:
+  they carry the RP2350 UF2 family, `scripts/verify_artifacts.py --target
+  badger2350` checks them, and the Badger 2040's `badger_badge*.uf2` fail
+  that check.
+- **Buttons**: A, B, C, UP and DOWN as on the Badger 2040; **HOME** takes
+  the USR button's role (diagnostics, layout toggle). Safe mode: hold
+  **A + C** while pressing RESET or while waking the badge.
+- **Power off / sleep**: no power latch. On battery the chip powers down
+  after the sleep image has finished; any front button wakes it, which
+  boots the firmware again (as a Badger 2040 battery wake). On USB, sleep is
+  emulated as on the Badger 2040.
+- **Battery**: the badge has a charger. The status area shows `USB` while
+  VBUS is present, never "charging" (the charge-status line is on the
+  wireless chip, which this firmware does not use). The meter's conversion
+  is BadgeWare's (BATTERY.md); its accuracy is unvalidated.
+- **Display**: full refreshes only (the reference SSD1680 driver has one
+  waveform and no partial update), so `refresh.speed` and `refresh.partial`
+  have no effect; `A long` still requests a clean full refresh. Black and
+  white only.
+- **Not used**: Wi-Fi/Bluetooth, the RTC, the rear lights and PSRAM.
+- **Return to stock**: flash Pimoroni's
+  `badger-vX.X.X-micropython-with-filesystem.uf2` (it rewrites the firmware
+  and the apps), or restore your `picotool save` image.

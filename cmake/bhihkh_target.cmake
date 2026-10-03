@@ -3,10 +3,10 @@
 # PICO_PLATFORM.
 #
 #   -DBHIHKH_TARGET=badger2040   original Badger 2040 (RP2040); the default
-#   -DBHIHKH_TARGET=badger2350   Badger 2350: planned, not implemented yet
+#   -DBHIHKH_TARGET=badger2350   Badger 2350 (RP2350A)
 #
-# An implemented target has firmware/platform/<target>/target.cmake, which
-# sets (all paths absolute):
+# The target list is cmake/bhihkh_targets_list.cmake. Each target has
+# firmware/platform/<target>/target.cmake, which sets (all paths absolute):
 #   BHIHKH_PICO_BOARD, BHIHKH_PICO_PLATFORM   handed to the Pico SDK
 #   BHIHKH_TARGET_DESCRIPTION                  program description (picotool info)
 #   BHIHKH_TARGET_INCLUDE_DIRS                 backend headers
@@ -14,21 +14,25 @@
 #   BHIHKH_TARGET_VENDOR_SOURCES               third-party sources (built with -w)
 #   BHIHKH_TARGET_DEFINITIONS                  board compile definitions
 #   BHIHKH_TARGET_LIBRARIES                    Pico SDK libraries the backend uses
-# Selecting a planned or unknown target fails here, before anything is built.
-set(BHIHKH_TARGETS_IMPLEMENTED badger2040)
-set(BHIHKH_TARGETS_PLANNED badger2350)
+#   BHIHKH_TARGET_ARTIFACT_PREFIX              artifact file name prefix (names the board)
+# Selecting an unknown target fails here, before anything is built; there is
+# no fallback to another board.
+include(${CMAKE_CURRENT_LIST_DIR}/bhihkh_targets_list.cmake)
 
 set(BHIHKH_TARGET badger2040 CACHE STRING "BHIHKH! hardware target (implemented: ${BHIHKH_TARGETS_IMPLEMENTED})")
 set_property(CACHE BHIHKH_TARGET PROPERTY STRINGS ${BHIHKH_TARGETS_IMPLEMENTED})
 
-if(BHIHKH_TARGET IN_LIST BHIHKH_TARGETS_PLANNED)
-  message(FATAL_ERROR "BHIHKH_TARGET=${BHIHKH_TARGET} is planned but not implemented yet; "
-                      "the only buildable target is badger2040 (the default). "
-                      "No firmware is configured for it.")
-elseif(NOT BHIHKH_TARGET IN_LIST BHIHKH_TARGETS_IMPLEMENTED)
-  message(FATAL_ERROR "unknown BHIHKH_TARGET '${BHIHKH_TARGET}'; "
-                      "implemented: ${BHIHKH_TARGETS_IMPLEMENTED}; planned: ${BHIHKH_TARGETS_PLANNED}")
+if(NOT BHIHKH_TARGET IN_LIST BHIHKH_TARGETS_IMPLEMENTED)
+  message(FATAL_ERROR "unknown BHIHKH_TARGET '${BHIHKH_TARGET}'; implemented: ${BHIHKH_TARGETS_IMPLEMENTED}")
 endif()
+# A build directory belongs to one board: its SDK configuration (chip, board
+# header, toolchain flags) cannot be switched in place.
+if(DEFINED CACHE{BHIHKH_TARGET_CONFIGURED} AND NOT "$CACHE{BHIHKH_TARGET_CONFIGURED}" STREQUAL "${BHIHKH_TARGET}")
+  message(FATAL_ERROR "this build directory is configured for BHIHKH_TARGET=$CACHE{BHIHKH_TARGET_CONFIGURED}; "
+                      "build ${BHIHKH_TARGET} in a separate directory (scripts/build-firmware.sh uses "
+                      "build/fw-<target> for targets other than the default)")
+endif()
+set(BHIHKH_TARGET_CONFIGURED ${BHIHKH_TARGET} CACHE INTERNAL "BHIHKH_TARGET this build directory was configured for")
 
 get_filename_component(BHIHKH_TARGET_DIR ${CMAKE_CURRENT_LIST_DIR}/../firmware/platform/${BHIHKH_TARGET} ABSOLUTE)
 include(${BHIHKH_TARGET_DIR}/target.cmake)

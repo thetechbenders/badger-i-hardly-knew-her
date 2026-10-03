@@ -28,6 +28,31 @@ TEST(battery_conversion_matches_upstream_formula) {
   CHECK(BatteryMeter::to_mv(raw_for(4000), 1020, nullptr) >= 4075);  // calibration scales
 }
 
+// Badger 2350: 1.1 V reference (SENSE_1V1), 1/2 divider (VBAT_SENSE).
+// BadgeWare: vbat = 2 * 1.1 * raw_vbat / raw_1v1 (16-bit raw values; the
+// 12-bit native reading gives the same ratio).
+TEST(battery_conversion_badger2350_circuit) {
+  const BatteryCircuit c{1100, 2};
+  uint16_t vdd;
+  // 3.3 V supply: ref = 1.1 / 3.3 * 4095 = 1365; a 3.80 V cell reads 1.90 V = 2358.
+  CHECK_EQ(BatteryMeter::to_mv({1365, 2358}, 1000, &vdd, c), 3800);  // 2 * 1100 * 2358 / 1365 = 3800.4
+  CHECK(vdd >= 3295 && vdd <= 3305);
+  // BadgeWare's float formula on the same counts scaled to 16 bits.
+  const double badgeware = 2 * 1.1 * (2358 * 16.0) / (1365 * 16.0);
+  CHECK(BatteryMeter::to_mv({1365, 2358}, 1000, nullptr, c) == uint16_t(badgeware * 1000 + 0.5));
+  // Supply sag is corrected by the reference here too.
+  CHECK(BatteryMeter::to_mv({1501, 2358}, 1000, &vdd, c) >= 3450 &&
+        BatteryMeter::to_mv({1501, 2358}, 1000, &vdd, c) <= 3460);
+  CHECK(vdd >= 2995 && vdd <= 3005);
+  // The meter uses its circuit.
+  BatteryMeter m(c);
+  m.configure(BatteryThresholds{});
+  CHECK_EQ(m.update({1365, 2358}, false).last_mv, 3800);
+  CHECK(m.state().display == PowerDisplay::Battery);
+  CHECK_EQ(m.circuit().ref_mv, 1100);
+  CHECK_EQ(BatteryMeter().circuit().ref_mv, 1240);  // default: the Badger 2040's
+}
+
 TEST(battery_bars_and_low_for_lipo_defaults) {
   struct { uint16_t mv; uint8_t bars; bool low; } cases[] = {
       {4200, 4, false}, {3960, 4, false}, {3900, 3, false}, {3750, 2, false},

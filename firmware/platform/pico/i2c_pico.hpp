@@ -1,12 +1,13 @@
-// Qwiic / I2C0 on the Badger 2040 (SDA GPIO4, SCL GPIO5 per the SDK board
-// header). Four-wire connector: 3V3, GND, SDA, SCL - no interrupt line.
+// The Qwiic / Qw/ST I2C bus (instance and pins from the target's board.hpp:
+// I2C0 on SDA GPIO4 / SCL GPIO5 on both badges). Four-wire connector: 3V3,
+// GND, SDA, SCL - no interrupt line.
 #pragma once
 
 #include "i2c_bus.hpp"
 
 namespace badge {
 
-class Rp2040I2c : public I2cBus {
+class PicoI2c : public I2cBus {
  public:
   void init(uint32_t baud = 400000);
   bool write(uint8_t addr, const uint8_t *data, size_t len) override;

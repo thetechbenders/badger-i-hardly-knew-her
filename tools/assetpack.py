@@ -1,12 +1,16 @@
 #!/usr/bin/env python3
 """Build, inspect and package badge asset packs (format: firmware/core/assetpack.hpp).
 
-  assetpack.py build --portrait portrait.png --out pack.bin [--cpp pack.cpp] [--uf2 pack.uf2]
-  assetpack.py inspect pack.bin
-  assetpack.py placeholder --out sample_portrait.png   # generic, non-personal silhouette
+  assetpack.py build --portrait portrait.png --out pack.bin [--cpp pack.cpp] [--uf2 pack.uf2] [--target T]
+  assetpack.py inspect pack.bin [--target T]
+  assetpack.py placeholder --out sample_portrait.png [--target T]   # generic, non-personal silhouette
 
-The UF2 targets the reserved asset region (default 0x101E0000) so a private
-portrait can be flashed separately from a public firmware image.
+--target is the BHIHKH_TARGET (default badger2040): it sets the panel size a
+bitmap must fit, the placeholder size, and the asset region and UF2 family
+of --uf2 (Badger 2040: 0x101E0000, RP2040; Badger 2350: 0x10FE0000,
+RP2350 Arm with picotool's RP2350-E10 block first). The UF2 targets the
+reserved asset region so a private portrait can be flashed separately from a
+public firmware image.
 """
 from __future__ import annotations
 
@@ -17,7 +21,9 @@ import zlib
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import uf2  # noqa: E402
+from bhihkh_targets import DEFAULT, TARGETS  # noqa: E402
 
 MAGIC = 0x4B504142
 VERSION = 1
@@ -25,17 +31,24 @@ HEADER = 32
 ENTRY = 24
 ID_PORTRAIT = 1
 FMT_MONO1 = 1
-PANEL_W, PANEL_H = 296, 128
 MAX_SIZE = 64 * 1024
-ASSET_REGION = 0x101E0000  # keep in sync with firmware/platform/badger2040/flash_layout.hpp
+# Badger 2040 values, the defaults (other targets: bhihkh_targets.py).
+PANEL_W, PANEL_H = TARGETS[DEFAULT].display_w, TARGETS[DEFAULT].display_h
+ASSET_REGION = TARGETS[DEFAULT].xip_base + TARGETS[DEFAULT].asset_off
 
 
-def pack_mono1(img) -> tuple[int, int, bytes]:
+def asset_region(target: str = DEFAULT) -> int:
+    t = TARGETS[target]
+    return t.xip_base + t.asset_off
+
+
+def pack_mono1(img, target: str = DEFAULT) -> tuple[int, int, bytes]:
     """PIL image -> MONO1 bytes (row-major, MSB first, 1 = black)."""
+    t = TARGETS[target]
     im = img.convert("1", dither=None) if img.mode != "1" else img
     w, h = im.size
-    if not (0 < w <= PANEL_W and 0 < h <= PANEL_H):
-        raise SystemExit(f"bitmap {w}x{h} exceeds the {PANEL_W}x{PANEL_H} panel")
+    if not (0 < w <= t.display_w and 0 < h <= t.display_h):
+        raise SystemExit(f"bitmap {w}x{h} exceeds the {t.display_w}x{t.display_h} panel ({t.board})")
     stride = (w + 7) // 8
     px = im.load()
     out = bytearray(stride * h)
@@ -66,8 +79,9 @@ def build_pack(entries: list[tuple[int, int, int, int, bytes]]) -> bytes:
     return head + body
 
 
-def parse_pack(blob: bytes) -> list[dict]:
+def parse_pack(blob: bytes, target: str = DEFAULT) -> list[dict]:
     """Validate like the firmware and return entry descriptions (raises ValueError)."""
+    t = TARGETS[target]
     if len(blob) < HEADER:
         raise ValueError("too short")
     magic, ver, hsize, count, _flags, total, dcrc, hcrc = struct.unpack("<IHHHHIII", blob[:24])
@@ -86,7 +100,7 @@ def parse_pack(blob: bytes) -> list[dict]:
         eid, fmt, _r, w, h, off, ln, crc, _r2 = struct.unpack_from("<HBBHHIIII", blob, HEADER + i * ENTRY)
         if off < HEADER + ENTRY * count or off % 4 or off + ln > total:
             raise ValueError(f"entry {i}: bad offset")
-        if fmt == FMT_MONO1 and (not (0 < w <= PANEL_W and 0 < h <= PANEL_H) or ln != ((w + 7) // 8) * h):
+        if fmt == FMT_MONO1 and (not (0 < w <= t.display_w and 0 < h <= t.display_h) or ln != ((w + 7) // 8) * h):
             raise ValueError(f"entry {i}: bad bitmap geometry")
         if zlib.crc32(blob[off:off + ln]) & 0xFFFFFFFF != crc:
             raise ValueError(f"entry {i}: bad crc")
@@ -105,15 +119,17 @@ def emit_cpp(blob: bytes, symbol: str) -> str:
 
 
 def placeholder(w: int = 104, h: int = 128):
-    """A plain head-and-shoulders outline (shapes only): clearly not a photo."""
+    """A plain head-and-shoulders outline (shapes only): clearly not a photo.
+    Drawn for 128 rows; a taller frame centres the same figure."""
     from PIL import Image, ImageDraw
     im = Image.new("1", (w, h), 1)
     d = ImageDraw.Draw(im)
     cx = w // 2
+    dy = (h - 128) // 2
     d.rectangle([0, 0, w - 1, h - 1], outline=0)
-    d.ellipse([cx - 22, 18, cx + 22, 70], outline=0, width=2)
-    d.chord([cx - 46, 78, cx + 46, 170], 180, 360, outline=0, width=2)
-    d.line([cx - 45, 124, cx + 45, 124], fill=0, width=2)
+    d.ellipse([cx - 22, 18 + dy, cx + 22, 70 + dy], outline=0, width=2)
+    d.chord([cx - 46, 78 + dy, cx + 46, 170 + dy], 180, 360, outline=0, width=2)
+    d.line([cx - 45, 124 + dy, cx + 45, 124 + dy], fill=0, width=2)
     return im
 
 
@@ -126,20 +142,23 @@ def main(argv=None) -> int:
     b.add_argument("--cpp", type=Path)
     b.add_argument("--symbol", default="kBuiltinAssetPack")
     b.add_argument("--uf2", type=Path)
-    b.add_argument("--address", type=lambda s: int(s, 0), default=ASSET_REGION)
+    b.add_argument("--address", type=lambda s: int(s, 0), help="UF2 address (default: the target's asset region)")
     i = sub.add_parser("inspect")
     i.add_argument("pack", type=Path)
     p = sub.add_parser("placeholder")
     p.add_argument("--out", type=Path, required=True)
+    for s in (b, i, p):
+        s.add_argument("--target", choices=sorted(TARGETS), default=DEFAULT, help=f"BHIHKH_TARGET (default {DEFAULT})")
     args = ap.parse_args(argv)
+    t = TARGETS[args.target]
 
     if args.cmd == "placeholder":
         args.out.parent.mkdir(parents=True, exist_ok=True)
-        placeholder().save(args.out)
+        placeholder(t.portrait_w, t.portrait_h).save(args.out)
         return 0
     if args.cmd == "inspect":
         try:
-            for e in parse_pack(args.pack.read_bytes()):
+            for e in parse_pack(args.pack.read_bytes(), args.target):
                 print(e)
         except ValueError as e:
             print(f"invalid: {e}", file=sys.stderr)
@@ -149,10 +168,10 @@ def main(argv=None) -> int:
     from PIL import Image
     entries = []
     if args.portrait:
-        w, h, data = pack_mono1(Image.open(args.portrait))
+        w, h, data = pack_mono1(Image.open(args.portrait), args.target)
         entries.append((ID_PORTRAIT, FMT_MONO1, w, h, data))
     blob = build_pack(entries)
-    parse_pack(blob)  # self-check
+    parse_pack(blob, args.target)  # self-check
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_bytes(blob)
     if args.cpp:
@@ -160,9 +179,10 @@ def main(argv=None) -> int:
         if not args.cpp.exists() or args.cpp.read_text() != text:
             args.cpp.write_text(text)
     if args.uf2:
-        if not (0x10000000 <= args.address < 0x10200000):
-            raise SystemExit("address outside the 2 MiB flash window")
-        args.uf2.write_bytes(uf2.to_uf2(blob, args.address))
+        address = asset_region(args.target) if args.address is None else args.address
+        if not (t.xip_base <= address and address + len(blob) <= t.xip_base + t.flash_size):
+            raise SystemExit(f"address outside the {t.flash_size // (1024 * 1024)} MiB flash window")
+        args.uf2.write_bytes(uf2.to_uf2(blob, address, t.uf2_family, t.uf2_abs_block))
     return 0
 
 

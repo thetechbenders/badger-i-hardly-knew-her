@@ -1,5 +1,6 @@
 // Host preview: renders badge screens with the firmware renderer and writes
-// them as binary PBM (P4) at native 296x128 resolution.
+// them as binary PBM (P4) at the target panel's native resolution (Badger
+// 2040: 296x128, Badger 2350: 264x176; the host build's BHIHKH_TARGET).
 //
 //   badger_preview --out DIR [--pack FILE|--no-portrait] [--layout N]
 //                  [--set key=value ...] [--screens badge,card,...]

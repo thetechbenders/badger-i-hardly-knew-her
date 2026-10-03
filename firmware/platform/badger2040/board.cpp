@@ -3,6 +3,8 @@
 #include "hardware/adc.h"
 #include "hardware/gpio.h"
 #include "hardware/pwm.h"
+#include "hardware/structs/vreg_and_chip_reset.h"
+#include "hardware/watchdog.h"
 #include "pico/stdlib.h"
 
 namespace badge::board {
@@ -41,6 +43,19 @@ extern "C" void __attribute__((constructor(101))) badger_early_wake() {
 
 uint32_t wake_buttons() { return g_wake; }
 
+diag::ResetFlags reset_flags() {
+  // WATCHDOG.REASON is cleared by every chip-level reset; CHIP_RESET is not
+  // updated by a watchdog reset (it keeps describing the last chip reset,
+  // usually the original power-on), so it is only read for chip resets.
+  const uint32_t chip = vreg_and_chip_reset_hw->chip_reset;
+  diag::ResetFlags f;
+  f.watchdog = watchdog_caused_reboot();
+  f.por = chip & VREG_AND_CHIP_RESET_CHIP_RESET_HAD_POR_BITS;
+  f.run_pin = chip & VREG_AND_CHIP_RESET_CHIP_RESET_HAD_RUN_BITS;
+  f.debugger = chip & VREG_AND_CHIP_RESET_CHIP_RESET_HAD_PSM_RESTART_BITS;
+  return f;
+}
+
 int wake_button() {
   for (int i = 0; i < int(Button::User); ++i)
     if (g_wake & (1u << i)) return i;
@@ -48,7 +63,7 @@ int wake_button() {
 }
 
 void init() {
-  hold_power_latch();
+  cancel_power_off();
   for (int i = 0; i < kButtonCount; ++i) {
     const uint pin = kPinsButton[i];
     gpio_init(pin);
@@ -105,12 +120,12 @@ void led(uint8_t level) {
   pwm_set_gpio_level(BADGER2040_USER_LED_PIN, uint16_t(level) * level);
 }
 
-void hold_power_latch() {
+void cancel_power_off() {
   gpio_init(BADGER2040_3V3_EN_PIN);
   gpio_set_dir(BADGER2040_3V3_EN_PIN, GPIO_OUT);
   gpio_put(BADGER2040_3V3_EN_PIN, 1);
 }
 
-void release_power_latch() { gpio_put(BADGER2040_3V3_EN_PIN, 0); }
+void power_off() { gpio_put(BADGER2040_3V3_EN_PIN, 0); }
 
 }  // namespace badge::board

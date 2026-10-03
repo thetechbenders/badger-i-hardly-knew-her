@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Convert a portrait photo into a 1-bit bitmap for the Badger 2040 panel.
+"""Convert a portrait photo into a 1-bit bitmap for the badge panel.
+
+--target picks the badge (default badger2040: 104x128 on the 296x128 panel;
+badger2350: 104x176 on the 264x176 panel); --size or a settings file can
+still choose another size that fits the panel.
 
 The original photo is never modified. The tool crops, scales and converts the
 image at the panel's native resolution and can emit a comparison sheet of the
@@ -17,6 +21,9 @@ from pathlib import Path
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageOps
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+from bhihkh_targets import DEFAULT, TARGETS  # noqa: E402
 
 METHODS = ("threshold", "bayer8", "floyd", "atkinson")
 
@@ -126,9 +133,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--method", choices=METHODS)
     ap.add_argument("--out", type=Path, help="1-bit PNG to write for the chosen method")
     ap.add_argument("--compare", type=Path, help="directory for per-method PNGs and a comparison sheet")
+    ap.add_argument("--target", choices=sorted(TARGETS), default=DEFAULT, help=f"BHIHKH_TARGET (default {DEFAULT})")
     args = ap.parse_args(argv)
+    t = TARGETS[args.target]
 
-    cfg = {"crop": None, "size": [104, 128], "gamma": 1.0,
+    cfg = {"crop": None, "size": [t.portrait_w, t.portrait_h], "gamma": 1.0,
            "black_pct": 1.0, "white_pct": 2.0, "sharpen": 0.6, "method": "atkinson"}
     if args.settings:
         cfg.update(json.loads(args.settings.read_text()))
@@ -139,8 +148,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.method:
         cfg["method"] = args.method
     w, h = cfg["size"]
-    if not (8 <= w <= 296 and 8 <= h <= 128):
-        raise SystemExit(f"size {w}x{h} does not fit the 296x128 panel")
+    if not (8 <= w <= t.display_w and 8 <= h <= t.display_h):
+        raise SystemExit(f"size {w}x{h} does not fit the {t.display_w}x{t.display_h} panel")
     if cfg["crop"] is None:  # default: the largest centred area at the output aspect
         with Image.open(args.source) as src:
             W, H = ImageOps.exif_transpose(src).size

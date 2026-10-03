@@ -1,11 +1,16 @@
-// Battery meter for a single-cell LiPo on the original Badger 2040.
+// Battery meter for a single-cell LiPo.
 //
-// Input: one ADC measurement = raw counts of the 1.24 V reference (ADC2) and
-// of the battery-sense divider (ADC3, gain 1/3), taken by the platform.
+// Input: one ADC measurement = raw counts of a fixed voltage reference and
+// of the battery-sense divider, taken by the platform, plus the circuit
+// (BatteryCircuit: reference voltage and divider ratio, from the board):
+//   Badger 2040  1.24 V reference (ADC2), divider 1/3 (ADC3)
+//   Badger 2350  1.1 V reference (SENSE_1V1, ADC2), divider 1/2 (VBAT_SENSE, ADC0)
+// Both ADCs run from the same supply, so the reference recovers it:
+//
+//   vdd  = ref_mv * 4095 / ref_counts                  (actual ADC supply)
+//   vbat = bat_counts / 4095 * divider * vdd * cal     (= divider * ref_mv * bat / ref * cal)
+//
 // Output: a stable display state for a four-bar icon.
-//
-//   vdd  = 1.24 V * 4095 / ref_counts          (actual ADC supply)
-//   vbat = bat_counts / 4095 * 3 * vdd * cal   (= 3 * 1240 mV * bat / ref * cal)
 //
 // Filtering: exponential moving average (alpha 1/4) seeded by the first valid
 // reading. Hysteresis: the bar count only moves up once the voltage exceeds
@@ -14,7 +19,9 @@
 // Readings are rejected as invalid when the reference or the result is out of
 // a plausible range (sensor fault, missing reference, floating input).
 // Voltage-to-charge mapping is approximate; the icon never claims precision
-// and never shows "charging" (the board has no charger).
+// and never shows "charging": the Badger 2040 has no charger, and the Badger
+// 2350's charge-status line sits on its wireless chip, which this firmware
+// does not run. With VBUS present the state is "USB", nothing more.
 #pragma once
 
 #include <cstdint>
@@ -29,9 +36,15 @@ struct BatteryThresholds {
 };
 
 struct BatteryRaw {
-  uint16_t ref_counts;  // ADC2, 12-bit average
-  uint16_t bat_counts;  // ADC3, 12-bit average
+  uint16_t ref_counts;  // reference, 12-bit average
+  uint16_t bat_counts;  // battery-sense divider, 12-bit average
 };
+
+struct BatteryCircuit {
+  uint16_t ref_mv;  // reference voltage
+  uint8_t divider;  // vbat = divider * sense voltage
+};
+constexpr BatteryCircuit kBadger2040Battery{1240, 3};
 
 enum class PowerDisplay : uint8_t {
   Unknown = 0,  // no measurement yet: draw nothing
@@ -56,15 +69,19 @@ class BatteryMeter {
   static constexpr uint16_t kMaxValidMv = 4600;  // above a LiPo's 4.2 V + margin
   static constexpr uint16_t kMinVddMv = 1800, kMaxVddMv = 3700;
 
+  explicit BatteryMeter(BatteryCircuit c = kBadger2040Battery) : circuit_(c) {}
   void configure(const BatteryThresholds &t);
   // Feed one measurement. `usb` = VBUS detected (reading then reflects USB).
   const BatteryState &update(const BatteryRaw &raw, bool usb);
   const BatteryState &state() const { return st_; }
   // Pure conversion (exposed for tests and diagnostics); 0 if invalid.
-  static uint16_t to_mv(const BatteryRaw &raw, uint16_t cal_permille, uint16_t *vdd_mv);
+  static uint16_t to_mv(const BatteryRaw &raw, uint16_t cal_permille, uint16_t *vdd_mv,
+                        BatteryCircuit c = kBadger2040Battery);
+  BatteryCircuit circuit() const { return circuit_; }
 
  private:
   uint8_t level_for(uint16_t mv) const;
+  BatteryCircuit circuit_;
   BatteryThresholds t_;
   BatteryState st_;
   bool seeded_ = false;

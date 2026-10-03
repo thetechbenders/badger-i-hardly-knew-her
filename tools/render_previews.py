@@ -252,14 +252,17 @@ def main(argv=None) -> int:
     pbms = render(args.preview, native, pairs, args.pack, args.screens, args.preview_arg)
     report = {"payload": payload, "screens": {}, "fit": fits, "screen_fit": screen_fits}
     pngs = []
+    size = None  # the panel size badger_preview renders (its BHIHKH_TARGET)
     for pbm in pbms:
         im = Image.open(pbm).convert("1")
-        if im.size != (296, 128):
-            raise SystemExit(f"{pbm}: unexpected size {im.size}")
+        size = size or im.size
+        if im.size != size:
+            raise SystemExit(f"{pbm}: unexpected size {im.size}, expected {size}")
+        W, H = size
         png = native / (pbm.stem + ".png")
         im.save(png)
         pbm.unlink()
-        up = im.resize((296 * args.scale, 128 * args.scale), Image.Resampling.NEAREST)
+        up = im.resize((W * args.scale, H * args.scale), Image.Resampling.NEAREST)
         up.save(big / png.name)
         pngs.append((png.stem, im))
         expected = payload
@@ -270,7 +273,7 @@ def main(argv=None) -> int:
             expected = dict(pairs).get(f"project{titles[n - 1]}.link", "") if titles else ""
         if pbm.stem in ("card", "qr") or pbm.stem.startswith("project-qr"):
             # zbar needs some margin around the panel image.
-            framed = Image.new("L", (296 + 40, 128 + 40), 255)
+            framed = Image.new("L", (W + 40, H + 40), 255)
             framed.paste(im.convert("L"), (20, 20))
             res = {"native": decode_qr(framed),
                    f"x{args.scale}": decode_qr(framed.resize((framed.width * args.scale, framed.height * args.scale),
@@ -280,14 +283,15 @@ def main(argv=None) -> int:
 
     # Contact sheet: every screen at the enlarged size, labelled.
     pad, label = 12, 16
-    sheet = Image.new("L", (296 * args.scale + 2 * pad, len(pngs) * (128 * args.scale + label + pad) + pad), 235)
+    W, H = size or (0, 0)
+    sheet = Image.new("L", (W * args.scale + 2 * pad, len(pngs) * (H * args.scale + label + pad) + pad), 235)
     d = ImageDraw.Draw(sheet)
     y = pad
     for name, im in pngs:
         d.text((pad, y), name, fill=0)
         y += label
-        sheet.paste(im.convert("L").resize((296 * args.scale, 128 * args.scale), Image.Resampling.NEAREST), (pad, y))
-        y += 128 * args.scale + pad
+        sheet.paste(im.convert("L").resize((W * args.scale, H * args.scale), Image.Resampling.NEAREST), (pad, y))
+        y += H * args.scale + pad
     sheet.save(args.out / "contact_sheet.png")
     (args.out / "qr_report.json").write_text(json.dumps(report, indent=2) + "\n")
 
@@ -301,7 +305,7 @@ def main(argv=None) -> int:
                                                                        "--gesture", gest, "--suffix", "_status"])
         im = Image.open(p).convert("L")
         p.unlink()
-        crops.append((label, im.crop((296 - 60, 0, 296, 12)).resize((60 * 6, 12 * 6), Image.Resampling.NEAREST)))
+        crops.append((label, im.crop((im.width - 60, 0, im.width, 12)).resize((60 * 6, 12 * 6), Image.Resampling.NEAREST)))
     ss = Image.new("L", (60 * 6 + 140, len(crops) * (12 * 6 + 8) + 8), 235)
     d2 = ImageDraw.Draw(ss)
     for i, (label, im) in enumerate(crops):

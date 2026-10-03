@@ -2,6 +2,7 @@
 
 #include "assetpack.hpp"
 #include "check.hpp"
+#include "framebuffer.hpp"
 
 namespace badge {
 extern const uint8_t kBuiltinAssetPack[];
@@ -15,7 +16,10 @@ TEST(assetpack_builtin_valid) {
   CHECK(i.status == AssetStatus::Ok);
   MonoBitmap p;
   CHECK(asset_pack_bitmap(kBuiltinAssetPack, kAssetIdPortrait, &p));
-  CHECK(p.width <= 296 && p.height <= 128);
+  CHECK(p.width <= Framebuffer::kWidth && p.height <= Framebuffer::kHeight);
+  // The sample portrait is the target's designed size.
+  CHECK_EQ(p.width, target::kPortraitWidth);
+  CHECK_EQ(p.height, target::kPortraitHeight);
   CHECK(!asset_pack_bitmap(kBuiltinAssetPack, 999, &p));
 }
 

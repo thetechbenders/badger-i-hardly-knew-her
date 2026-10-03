@@ -63,7 +63,7 @@ CardGeometry project_qr_geometry(const RenderContext &ctx, int project);
 // first configured project shown, `selected` the highlighted row's bar
 // (empty when the list is empty). The scrollbar only appears when the list
 // does not fit.
-constexpr int kIndexRowH = 14;
+constexpr int kIndexRowH = target::kIndexRowH;
 struct IndexGeometry {
   int count = 0, top = 0, sel = 0, shown = 0;
   Rect list, selected, track, thumb;

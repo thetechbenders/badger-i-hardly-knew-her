@@ -1,4 +1,4 @@
-#include "flash_rp2040.hpp"
+#include "flash_pico.hpp"
 
 #include <cstring>
 
@@ -31,16 +31,16 @@ void do_erase_program(void *p) {
 }
 }  // namespace
 
-size_t Rp2040Flash::sector_size() const { return flash_layout::kSectorSize; }
-size_t Rp2040Flash::region_size() const { return flash_layout::kSettingsSectors * flash_layout::kSectorSize; }
+size_t PicoFlash::sector_size() const { return flash_layout::kSectorSize; }
+size_t PicoFlash::region_size() const { return flash_layout::kSettingsSectors * flash_layout::kSectorSize; }
 
-bool Rp2040Flash::read(uint32_t offset, void *dst, size_t len) {
+bool PicoFlash::read(uint32_t offset, void *dst, size_t len) {
   if (offset + len > flash_layout::kSettingsSectors * flash_layout::kSectorSize) return false;
   std::memcpy(dst, reinterpret_cast<const void *>(XIP_BASE + flash_layout::kSettingsOffset + offset), len);
   return true;
 }
 
-bool Rp2040Flash::erase_and_program(uint32_t sector_offset, const void *src, size_t len, size_t erase_len) {
+bool PicoFlash::erase_and_program(uint32_t sector_offset, const void *src, size_t len, size_t erase_len) {
   if (sector_offset % flash_layout::kSectorSize || erase_len % flash_layout::kSectorSize || erase_len == 0 ||
       erase_len > sizeof g_page_buf || len > erase_len ||
       sector_offset + erase_len > flash_layout::kSettingsSectors * flash_layout::kSectorSize) {

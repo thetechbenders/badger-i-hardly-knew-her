@@ -271,6 +271,53 @@ TEST(pipeline_failed_speed_change_is_a_panel_fault_not_a_hang) {
   CHECK_EQ(r.panel.violations, 0);
 }
 
+// The controller refuses a full refresh before its trigger (SSD1680: a BUSY
+// wait in start_full() timed out): a panel fault, not a refresh. Nothing is
+// counted or traced as shown, the service is not left refreshing, and once
+// the panel answers again the refused frame is redrawn, not suppressed.
+TEST(pipeline_refused_refresh_start_is_a_panel_fault_not_a_refresh) {
+  for (bool partial : {true, false}) {  // UC8151-like and SSD1680-like panels
+  Rig r;
+  r.panel.partial = partial;
+  r.sched.invalidate();
+  r.settle();
+  static Framebuffer before;
+  before.copy_from(r.panel.image);
+  r.panel.start_fails = true;
+  r.scene.value = 100;  // large change: a full refresh on either panel
+  r.sched.invalidate();
+  r.step(10);
+  CHECK_EQ(r.count('f'), 1);
+  CHECK(!r.display.busy());  // not State::Refreshing
+  CHECK(!r.display.panel_ok());
+  CHECK_EQ(r.display.stats().panel_faults, 1u);
+  CHECK_EQ(r.display.stats().full, 1u);  // only the first frame
+  CHECK(r.panel.image.equals(before));
+  // No completion is ever reported as a refresh: the job is closed with
+  // mode None, and core 0 is not left waiting for it.
+  r.step(DisplayService::kPanelRetryMinMs - 100);
+  CHECK(r.sched.settled());
+  CHECK_EQ(r.count('O'), 1);  // finish() only after the first, real refresh
+  RenderScheduler::RefreshRecord t[RenderScheduler::kTrace];
+  const int n = r.sched.trace(t, RenderScheduler::kTrace);
+  CHECK_EQ(n, 2);
+  CHECK(t[1].mode == RefreshMode::None);
+  // The controller accepts updates again: the bounded re-init succeeds and
+  // the refused frame is drawn with one clean refresh.
+  r.panel.start_fails = false;
+  r.step(DisplayService::kPanelRetryMaxMs + 100);
+  r.settle();
+  CHECK(r.display.panel_ok());
+  CHECK_EQ(r.display.stats().clean, 1u);
+  static Framebuffer want;
+  draw_scene(want, &r.scene);
+  CHECK(r.panel.image.equals(want));
+  CHECK_EQ(r.display.stats().timeouts, 0u);
+  CHECK_EQ(r.display.stats().event_overflows, 0u);
+  CHECK_EQ(r.panel.violations, 0);
+  }
+}
+
 // The trace records why each frame got its mode, and a browsing session
 // costs exactly one panel refresh per navigation step (no hidden extra
 // blank/clean phases from the scheduler).
@@ -322,4 +369,39 @@ TEST(pipeline_refresh_trace_is_a_bounded_ring) {
   CHECK_EQ(t[n - 1].seq, r.sched.submitted());
   CHECK_EQ(r.sched.trace(t, 3), 3);  // caller's buffer bound respected
   CHECK_EQ(t[2].seq, r.sched.submitted());  // newest entries
+}
+
+// A panel backend without partial refresh (the Badger 2350's SSD1680): every
+// changed frame is a full refresh with its reason recorded, unchanged frames
+// are still suppressed, and partial refresh is never requested from it.
+TEST(pipeline_panel_without_partial_refresh_gets_full_refreshes) {
+  Rig r;
+  r.panel.partial = false;
+  r.sched.invalidate();
+  r.settle();
+  for (int v = 1; v <= 4; ++v) {
+    r.scene.value = v;
+    r.sched.invalidate();
+    r.settle();
+  }
+  r.sched.invalidate();  // unchanged: suppressed, no refresh
+  r.settle();
+  CHECK_EQ(r.count('P'), 0);
+  CHECK_EQ(r.count('F'), 5);
+  CHECK_EQ(r.panel.violations, 0);
+  CHECK(r.panel.image.equals(r.display.shown()));
+  RenderScheduler::RefreshRecord t[RenderScheduler::kTrace];
+  const int n = r.sched.trace(t, RenderScheduler::kTrace);
+  CHECK_EQ(n, 5);
+  CHECK(t[0].reason == RefreshReason::FirstFrame);
+  for (int i = 1; i < n; ++i) {
+    CHECK(t[i].mode == RefreshMode::Full);
+    CHECK(t[i].reason == RefreshReason::PartialUnsupported);
+  }
+  CHECK_STR(refresh_reason_str(RefreshReason::PartialUnsupported), "no partial on this panel");
+  // A clean request is still a clean (full) refresh.
+  r.scene.value = 9;
+  r.sched.invalidate(true);
+  r.settle();
+  CHECK_EQ(r.display.stats().clean, 1u);
 }

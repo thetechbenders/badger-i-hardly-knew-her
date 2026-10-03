@@ -9,6 +9,13 @@ monochrome e-paper, five front buttons, USB-C, battery connector). It uses the
 Raspberry Pi Pico SDK and Pimoroni's C++ UC8151 driver. No MicroPython, no
 Arduino.
 
+The same firmware also builds natively for the **Pimoroni Badger 2350**
+(RP2350A, 264 × 176 e-paper; working name BadgHer™ NEO, name not final), with
+its own panel backend and layouts: `-DBHIHKH_TARGET=badger2350`
+([docs/BUILD.md](docs/BUILD.md#hardware-target), [docs/INSTALL.md](docs/INSTALL.md#badger-2350)). That target is CI-built and
+host-tested, but **not yet validated on a physical badge**
+([checklist](docs/BADGER2350_SMOKE_TEST.md)).
+
 | Photo badge (layout A, default) | Business card |
 |---|---|
 | ![badge](docs/previews/x3/badge_layoutA.png) | ![card](docs/previews/x3/card_example_qr.png) |
@@ -78,15 +85,22 @@ to their own screen without drawing the project first. See
 ## Quick start
 
 ```bash
-scripts/fetch-deps.sh          # pinned pico-sdk 2.2.0, pimoroni-pico v1.29.0-2, picotool 2.2.0
-scripts/run-host-tests.sh      # host unit/render/QR tests + previews (no hardware)
-scripts/build-firmware.sh      # RP2040 cross-build -> build/fw/badger_badge.uf2
+scripts/fetch-deps.sh          # pinned pico-sdk 2.3.1, pimoroni-pico v1.29.0-2, picotool 2.3.1
+scripts/run-host-tests.sh      # host unit/render/QR tests + previews (no hardware), both badges
+scripts/build-firmware.sh      # Badger 2040 (RP2040) cross-build -> build/fw/badger_badge.uf2
+# Badger 2350: scripts/build-firmware.sh -DBHIHKH_TARGET=badger2350 -> build/fw-badger2350/badger2350_badge.uf2
 ```
 
-Then hold **BOOT/USR**, tap **RST**, and copy `build/fw/badger_badge.uf2`
-onto the `RPI-RP2` drive. **Read [docs/INSTALL.md](docs/INSTALL.md) first:
-this replaces MicroPython/BadgerOS, and the badge's settings writes
-eventually overwrite BadgerOS files.**
+Then, on a **Badger 2040**, hold **BOOT/USR**, tap **RST**, and copy
+`build/fw/badger_badge.uf2` onto the `RPI-RP2` drive. **Read
+[docs/INSTALL.md](docs/INSTALL.md) first: this replaces MicroPython/BadgerOS,
+and the badge's settings writes eventually overwrite BadgerOS files.**
+
+On a **Badger 2350**, hold **BOOT** on the back, tap **RESET**, release BOOT,
+and copy `build/fw-badger2350/badger2350_badge.uf2` onto the `RP2350` drive
+(Pimoroni's procedure). This target is not yet validated on a physical badge:
+read [docs/INSTALL.md](docs/INSTALL.md#badger-2350) first, back up the stock
+flash, and see [docs/BADGER2350_SMOKE_TEST.md](docs/BADGER2350_SMOKE_TEST.md).
 
 Configure over USB (see [docs/USB_CLI.md](docs/USB_CLI.md)):
 
