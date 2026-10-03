@@ -54,6 +54,23 @@ TEST(badger2350_qr_sizes) {
   CHECK(full.qr.x == 0 && full.qr.y == (Framebuffer::kHeight - full.qr.w) / 2);
 }
 
+// The 176 px panel leaves a clear strip above the vertically centred card
+// QR. Keep battery/gesture status at the physical top-right instead of
+// needlessly shifting it left beside the QR.
+TEST(badger2350_card_status_uses_free_top_right) {
+  settings_defaults(&g_s);
+  set(g_s, "qr.payload", "https://example.com/alex");
+  RenderContext c = context(g_s);
+  View v;
+  v.screen = Screen::Card;
+  const CardGeometry card = card_geometry(c, false);
+  const Rect status = status_rect(v, c);
+  CHECK(card.qr_status == QrStatus::Ok);
+  CHECK(card.qr.y >= kStatusHeight);
+  CHECK_EQ(status.right(), Framebuffer::kWidth - 2);
+  CHECK(status.bottom() <= card.qr.y);
+}
+
 // Beside the larger repository QR a long title wraps onto two lines instead
 // of being cut, and a single long word falls back to bold 14.
 TEST(badger2350_project_qr_title_wraps) {
