@@ -160,11 +160,13 @@ TEST(battery_wake_first_frame_retries_transient_invalid_sample) {
   render(fb, app.view(), ctx);
 
   const Rect status = status_rect(app.view(), ctx);
-  bool status_drawn = false;
-  for (int y = status.y; y < status.bottom(); ++y)
-    for (int x = status.x; x < status.right(); ++x)
-      status_drawn |= fb.get(x, y) == Ink::Black;
-  CHECK(status_drawn);
+  const int battery_x = status.right() - 16;
+  const int battery_y = status.y;
+  for (int bar = 0; bar < 4; ++bar) {
+    // Probe the interior of each 2x3 fill block, not the battery outline.
+    CHECK_EQ(fb.get(battery_x + 2 + 3 * bar, battery_y + 3) == Ink::Black,
+             bar < first.bars);
+  }
 }
 
 TEST(battery_initial_sample_ignores_plausible_low_until_stable) {
