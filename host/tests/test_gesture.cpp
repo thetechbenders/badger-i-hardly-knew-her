@@ -88,6 +88,10 @@ Swipe run_swipe(Apds9960 &s, FakeApds &bus, uint32_t &t, const std::vector<Gestu
 }
 }  // namespace
 
+TEST(gesture_default_params_match_validated_hardware) {
+  CHECK_EQ(GestureParams{}.sensitivity, 10);
+}
+
 TEST(gesture_decoder_directions) {
   GestureDecoder d;
   struct { char axis; bool pos; Swipe want; } cases[] = {
