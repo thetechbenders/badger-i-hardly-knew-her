@@ -110,10 +110,14 @@ class BatteryMeter {
 // USB is accepted immediately. Failure to reach a stable valid run remains
 // Invalid so the first frame never invents a battery level.
 struct InitialBatterySamplePolicy {
-  static constexpr int kMaxAttempts = 8;
   static constexpr int kStableSamples = 3;
   static constexpr uint16_t kStableSpreadMv = 50;
   static constexpr uint32_t kRetryDelayMs = 25;
+  // Physical Classic retest showed the analog path can still be unsettled
+  // after the previous 175 ms window. Give cold start up to 1.5 s, while a
+  // stable battery still returns as soon as three samples agree.
+  static constexpr uint32_t kMaxSettleMs = 1500;
+  static constexpr int kMaxAttempts = 1 + kMaxSettleMs / kRetryDelayMs;
 };
 
 template <typename ReadFn, typename WaitFn>

@@ -197,6 +197,37 @@ TEST(battery_initial_sample_ignores_plausible_low_until_stable) {
   CHECK(next.filtered_mv >= 4050);
 }
 
+TEST(battery_initial_sample_allows_slow_classic_cold_settle) {
+  BatteryMeter m;
+  m.configure(BatteryThresholds{});
+  uint32_t elapsed_ms = 0;
+  int reads = 0, waits = 0;
+  const BatteryState &s = sample_initial_battery(
+      m,
+      [&]() {
+        ++reads;
+        // The first hardware follow-up still timed out after the former
+        // 175 ms window. Model a Classic analog path that does not become
+        // trustworthy until 600 ms after cold boot.
+        if (elapsed_ms < 600)
+          return BatterySample{raw_for(reads & 1 ? 3200 : 4100), false};
+        return BatterySample{raw_for(4100), false};
+      },
+      [&](uint32_t delay_ms) {
+        ++waits;
+        elapsed_ms += delay_ms;
+      });
+
+  CHECK(s.display == PowerDisplay::Battery);
+  CHECK_EQ(s.samples, 1u);
+  CHECK_EQ(s.bars, 4);
+  CHECK(!s.low);
+  CHECK(s.filtered_mv >= 4050);
+  CHECK(elapsed_ms >= 600u);
+  CHECK(elapsed_ms < InitialBatterySamplePolicy::kMaxSettleMs);
+  CHECK_EQ(waits, reads - 1);
+}
+
 TEST(battery_initial_sample_rejects_never_stable_plausible_values) {
   BatteryMeter m;
   m.configure(BatteryThresholds{});
