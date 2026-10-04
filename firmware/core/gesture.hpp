@@ -25,7 +25,7 @@ struct GestureFrame {
 };
 
 struct GestureParams {
-  uint8_t sensitivity = 30;   // minimum |delta ratio| in percent
+  uint8_t sensitivity = 10;   // minimum |delta ratio| in percent
   uint8_t noise_floor = 10;   // per-channel counts
   uint8_t rotation = 0;       // 0..3, x 90 degrees clockwise
   bool mirror = false;
