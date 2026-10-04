@@ -37,6 +37,9 @@ struct SessionResult {
   Swipe raw = Swipe::None;
   int16_t delta_ud = 0, delta_lr = 0;
   uint16_t frames = 0, valid_frames = 0;
+  // Retained only for diagnostics; these are samples already consumed from
+  // the FIFO, so exposing them never changes sensor state or drains data.
+  GestureFrame first{}, last{};
 };
 
 class GestureDecoder {

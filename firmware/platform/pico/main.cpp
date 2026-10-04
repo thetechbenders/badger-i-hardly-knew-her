@@ -436,6 +436,16 @@ class UsbCliHost : public CliHost {
                   swipe_name(g.last.raw), g.last.delta_ud, g.last.delta_lr, g.last.valid_frames, g.last.frames,
                   swipe_name(g.last_swipe), (unsigned long)g.i2c_errors, (unsigned long)g.faults,
                   (unsigned long)g.probes, (unsigned long)g_i2c.recoveries());
+      std::printf("gesture: last samples first U/D/L/R %u/%u/%u/%u, last %u/%u/%u/%u\r\n",
+                  g.last.first.u, g.last.first.d, g.last.first.l, g.last.first.r,
+                  g.last.last.u, g.last.last.d, g.last.last.l, g.last.last.r);
+      const SensorRegisterSnapshot regs = g_gesture.diagnostic_registers();
+      if (regs.valid) {
+        std::printf("gesture: regs ENABLE 0x%02x, PDATA %u, GCONF4 0x%02x (GMODE %u), GSTATUS 0x%02x, GFLVL %u\r\n",
+                    regs.enable, regs.proximity, regs.gconf4, regs.gconf4 & 0x01, regs.gstatus, regs.fifo_level);
+      } else {
+        std::printf("gesture: regs unavailable (I2C read failed)\r\n");
+      }
     }
     if (all || !std::strcmp(t, "qr")) {
       known = true;

@@ -6,7 +6,7 @@ namespace {
 // Register map (Broadcom APDS-9960 datasheet).
 enum : uint8_t {
   ENABLE = 0x80, ATIME = 0x81, WTIME = 0x83, PILT = 0x89, PIHT = 0x8B, PERS = 0x8C,
-  CONFIG1 = 0x8D, PPULSE = 0x8E, CONTROL = 0x8F, CONFIG2 = 0x90, ID = 0x92,
+  CONFIG1 = 0x8D, PPULSE = 0x8E, CONTROL = 0x8F, CONFIG2 = 0x90, ID = 0x92, PDATA = 0x9C,
   POFFSET_UR = 0x9D, POFFSET_DL = 0x9E, CONFIG3 = 0x9F,
   GPENTH = 0xA0, GEXTH = 0xA1, GCONF1 = 0xA2, GCONF2 = 0xA3, GOFFSET_U = 0xA4, GOFFSET_D = 0xA5,
   GPULSE = 0xA6, GOFFSET_L = 0xA7, GOFFSET_R = 0xA9, GCONF3 = 0xAA, GCONF4 = 0xAB,
@@ -56,6 +56,26 @@ bool Apds9960::reg_read(uint8_t reg, uint8_t *v) {
   ++stats_.i2c_errors;
   ++consec_errors_;
   return false;
+}
+
+SensorRegisterSnapshot Apds9960::diagnostic_registers() {
+  SensorRegisterSnapshot s;
+  struct Read {
+    uint8_t reg;
+    uint8_t *out;
+  };
+  Read reads[] = {
+      {ENABLE, &s.enable}, {PDATA, &s.proximity}, {GCONF4, &s.gconf4},
+      {GSTATUS, &s.gstatus}, {GFLVL, &s.fifo_level},
+  };
+  for (const Read &r : reads) {
+    if (!bus_.write_read(kAddr, r.reg, r.out, 1)) {
+      ++stats_.i2c_errors;
+      return s;
+    }
+  }
+  s.valid = true;
+  return s;
 }
 
 bool Apds9960::probe_and_configure() {
