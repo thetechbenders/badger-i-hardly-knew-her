@@ -173,6 +173,7 @@ TEST(apds_start_forces_power_down_and_mode_toggles_emitter) {
   CHECK(!bus.ir_enabled());
   CHECK_EQ(bus.regs[0xA3], 0x41);
   CHECK_EQ(bus.regs[0x90], 0x01);  // no extra LED boost on the Adafruit breakout
+  CHECK_EQ(bus.regs[0xA1], 60);    // measured idle UDLR is ~43-53, so 30 could never exit
   uint32_t t = 0;
   s.set_wanted(true);
   s.poll(t += 10);
