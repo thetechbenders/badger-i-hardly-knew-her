@@ -130,9 +130,9 @@ TEST(battery_wake_first_frame_retries_transient_invalid_sample) {
   CHECK_EQ(app.on_button({Button::Down, Gesture::Long, 1000}), kActSleep);
   CHECK(app.sleeping());
 
-  // A real Classic battery wake is a cold boot. Reproduce the observed
-  // sequence: the first ADC result is invalid, then the settled reading is
-  // valid before the first post-wake frame is constructed.
+  // A real Classic battery wake is a cold boot. An invalid first conversion
+  // must not seed the filter; only a stable run is committed before the first
+  // post-wake frame is constructed.
   BatteryMeter wake;
   wake.configure(BatteryThresholds{});
   int reads = 0, waits = 0;
@@ -145,8 +145,9 @@ TEST(battery_wake_first_frame_retries_transient_invalid_sample) {
       },
       [&](uint32_t) { ++waits; });
   CHECK(first.display == PowerDisplay::Battery);
-  CHECK_EQ(reads, 2);
-  CHECK_EQ(waits, 1);
+  CHECK_EQ(first.samples, 1u);
+  CHECK_EQ(reads, 1 + InitialBatterySamplePolicy::kStableSamples);
+  CHECK_EQ(waits, reads - 1);
 
   app.boot(cfg, int(Button::B), 0);
   CHECK(app.view().screen == Screen::Card);
@@ -166,6 +167,72 @@ TEST(battery_wake_first_frame_retries_transient_invalid_sample) {
   CHECK(status_drawn);
 }
 
+TEST(battery_initial_sample_ignores_plausible_low_until_stable) {
+  BatteryMeter m;
+  m.configure(BatteryThresholds{});
+  int reads = 0, waits = 0;
+  const BatteryState &s = sample_initial_battery(
+      m,
+      [&]() {
+        ++reads;
+        // Physical Classic reproduction: the first wake reading can be a
+        // plausible LOW value even though the cell is actually about 4.1 V.
+        return BatterySample{raw_for(reads == 1 ? 3200 : 4100), false};
+      },
+      [&](uint32_t) { ++waits; });
+
+  CHECK(s.display == PowerDisplay::Battery);
+  CHECK_EQ(s.samples, 1u);  // transient candidates never entered the EMA
+  CHECK_EQ(s.bars, 4);
+  CHECK(!s.low);
+  CHECK(s.filtered_mv >= 4050);
+  CHECK_EQ(reads, 1 + InitialBatterySamplePolicy::kStableSamples);
+  CHECK_EQ(waits, reads - 1);
+
+  // The next ordinary sample must stay full instead of climbing an EMA that
+  // was seeded by the transient low startup reading.
+  const BatteryState &next = m.update(raw_for(4100), false);
+  CHECK_EQ(next.bars, 4);
+  CHECK(!next.low);
+  CHECK(next.filtered_mv >= 4050);
+}
+
+TEST(battery_initial_sample_rejects_never_stable_plausible_values) {
+  BatteryMeter m;
+  m.configure(BatteryThresholds{});
+  int reads = 0, waits = 0;
+  const BatteryState &s = sample_initial_battery(
+      m,
+      [&]() {
+        ++reads;
+        return BatterySample{raw_for(reads & 1 ? 3200 : 4100), false};
+      },
+      [&](uint32_t) { ++waits; });
+
+  CHECK(s.display == PowerDisplay::Invalid);
+  CHECK_EQ(s.samples, 1u);
+  CHECK_EQ(s.invalid, 1u);
+  CHECK_EQ(reads, InitialBatterySamplePolicy::kMaxAttempts);
+  CHECK_EQ(waits, InitialBatterySamplePolicy::kMaxAttempts - 1);
+}
+
+TEST(battery_initial_sample_accepts_usb_immediately) {
+  BatteryMeter m;
+  m.configure(BatteryThresholds{});
+  int reads = 0, waits = 0;
+  const BatteryState &s = sample_initial_battery(
+      m,
+      [&]() {
+        ++reads;
+        return BatterySample{{0, 0}, true};
+      },
+      [&](uint32_t) { ++waits; });
+
+  CHECK(s.display == PowerDisplay::Usb);
+  CHECK_EQ(reads, 1);
+  CHECK_EQ(waits, 0);
+}
+
 TEST(battery_initial_sample_preserves_persistent_failure) {
   BatteryMeter m;
   m.configure(BatteryThresholds{});
@@ -179,6 +246,8 @@ TEST(battery_initial_sample_preserves_persistent_failure) {
       [&](uint32_t) { ++waits; });
 
   CHECK(s.display == PowerDisplay::Invalid);
+  CHECK_EQ(s.samples, 1u);
+  CHECK_EQ(s.invalid, 1u);
   CHECK_EQ(reads, InitialBatterySamplePolicy::kMaxAttempts);
   CHECK_EQ(waits, InitialBatterySamplePolicy::kMaxAttempts - 1);
 }

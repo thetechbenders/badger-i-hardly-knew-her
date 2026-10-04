@@ -161,9 +161,9 @@ void sample_battery(uint32_t now) {
 }
 
 // The first frame after a real battery wake is also a cold boot on Classic.
-// Do not commit a transient invalid ADC result to that frame: retry invalid
-// startup samples briefly before the display service begins. The board-level
-// sampling sequence and its own reference-settle delay remain unchanged.
+// Observe a short run of startup samples before seeding the battery EMA so a
+// plausible-but-transient low reading cannot become the first displayed state.
+// The board-level sampling sequence and reference-settle delay are unchanged.
 void sample_initial_battery_for_frame() {
   g_ctx.status.battery = sample_initial_battery(
       g_battery,
