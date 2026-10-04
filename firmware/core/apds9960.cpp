@@ -21,7 +21,7 @@ constexpr RegVal kConfig[] = {
     {ENABLE, 0x00},     {ATIME, 219},       {WTIME, 0xFF},     {PPULSE, 0x87},
     {POFFSET_UR, 0},    {POFFSET_DL, 0},    {CONFIG1, 0x60},   {CONTROL, 0x09},  // LDRIVE 100 mA, PGAIN 4x, AGAIN 4x
     {PILT, 0},          {PIHT, 50},         {PERS, 0x11},      {CONFIG2, 0x01},  // LED boost 100 %; avoid self-triggering on Adafruit breakout
-    {CONFIG3, 0},       {GPENTH, 40},       {GEXTH, 30},       {GCONF1, 0x40},   // FIFO threshold 4 datasets
+    {CONFIG3, 0},       {GPENTH, 40},       {GEXTH, 60},       {GCONF1, 0x40},   // exit above measured open-air UDLR baseline
     {GCONF2, 0x41},     {GOFFSET_U, 0},     {GOFFSET_D, 0},    {GOFFSET_L, 0},   // GGAIN 4x, GLDRIVE 100 mA, GWTIME 2.8 ms
     {GOFFSET_R, 0},     {GPULSE, 0xC9},     {GCONF3, 0},       {GCONF4, GCONF4_GFIFO_CLR},  // 32 us x 10 pulses
 };
