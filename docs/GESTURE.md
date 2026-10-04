@@ -23,7 +23,7 @@
   not power-cycle the sensor.
 - **Sensor on:** in gesture mode the firmware sets
   `ENABLE = PON | WEN | PEN | GEN`. The IR LED then pulses (100 mA drive,
-  300 % boost, 10 × 32 µs pulses per cycle). This is the mode that costs
+  100 % boost, 10 × 32 µs pulses per cycle). This is the mode that costs
   battery; measure it (docs/HARDWARE_SMOKE_TEST.md, section I).
 - **Automatic off:** gesture mode switches itself off after
   `gesture.timeout_s` without user activity (default 300 s), before power-off
@@ -69,6 +69,8 @@
    photodiodes above the noise floor are compared.
    - Sessions with fewer than 4 usable frames are rejected.
    - A change smaller than `gesture.sensitivity` is rejected.
+   - Factory default sensitivity is 10, validated on the Adafruit APDS-9960
+     breakout (PID 3595); raise it if a particular enclosure produces false swipes.
    - A diagonal (neither axis 1.5× the other) is rejected.
    - A session longer than 1.5 s (a hovering hand) is rejected.
 2. **Cooldown:** after an accepted swipe, further swipes are ignored for
