@@ -63,6 +63,11 @@ struct BatteryState {
   uint32_t samples = 0, invalid = 0;
 };
 
+struct BatterySample {
+  BatteryRaw raw;
+  bool usb = false;
+};
+
 class BatteryMeter {
  public:
   static constexpr uint16_t kMinValidMv = 2500;  // below: reading, not battery, is wrong
@@ -87,5 +92,28 @@ class BatteryMeter {
   bool seeded_ = false;
   uint32_t ema_x16_ = 0;  // filtered value * 16
 };
+
+// Initial boot/wake sampling policy. A cold power-up can briefly produce an
+// implausible ADC result before the board's power/reference path has settled.
+// Retry only an Invalid result for a short bounded window; a valid battery or
+// USB reading is accepted immediately, and a persistent failure remains
+// Invalid so the UI still truthfully shows "?".
+struct InitialBatterySamplePolicy {
+  static constexpr int kMaxAttempts = 5;
+  static constexpr uint32_t kRetryDelayMs = 25;
+};
+
+template <typename ReadFn, typename WaitFn>
+const BatteryState &sample_initial_battery(BatteryMeter &meter, ReadFn read, WaitFn wait) {
+  const BatteryState *state = &meter.state();
+  for (int attempt = 0; attempt < InitialBatterySamplePolicy::kMaxAttempts; ++attempt) {
+    const BatterySample sample = read();
+    state = &meter.update(sample.raw, sample.usb);
+    if (state->display != PowerDisplay::Invalid) break;
+    if (attempt + 1 < InitialBatterySamplePolicy::kMaxAttempts)
+      wait(InitialBatterySamplePolicy::kRetryDelayMs);
+  }
+  return *state;
+}
 
 }  // namespace badge

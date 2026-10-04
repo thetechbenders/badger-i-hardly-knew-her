@@ -1,5 +1,6 @@
 #include "battery.hpp"
 #include "check.hpp"
+#include "renderer.hpp"
 
 using namespace badge;
 
@@ -113,6 +114,73 @@ TEST(battery_usb_and_invalid_states) {
   CHECK(m.state().invalid >= 4u);
   CHECK(m.update(raw_for(3900), false).display == PowerDisplay::Battery);  // recovers, re-seeded
   CHECK_EQ(m.state().bars, 3);
+}
+
+TEST(battery_wake_first_frame_retries_transient_invalid_sample) {
+  // Normal operation has a valid reading before the badge powers down.
+  BatteryMeter running;
+  running.configure(BatteryThresholds{});
+  CHECK(running.update(raw_for(3900), false).display == PowerDisplay::Battery);
+
+  App app;
+  AppConfig cfg;
+  cfg.qr_configured = true;
+  cfg.sleep_timeout_s = 60;
+  app.boot(cfg, -1, 0);
+  CHECK_EQ(app.on_button({Button::Down, Gesture::Long, 1000}), kActSleep);
+  CHECK(app.sleeping());
+
+  // A real Classic battery wake is a cold boot. Reproduce the observed
+  // sequence: the first ADC result is invalid, then the settled reading is
+  // valid before the first post-wake frame is constructed.
+  BatteryMeter wake;
+  wake.configure(BatteryThresholds{});
+  int reads = 0, waits = 0;
+  const BatteryState &first = sample_initial_battery(
+      wake,
+      [&]() {
+        ++reads;
+        return reads == 1 ? BatterySample{{0, 0}, false}
+                          : BatterySample{raw_for(3900), false};
+      },
+      [&](uint32_t) { ++waits; });
+  CHECK(first.display == PowerDisplay::Battery);
+  CHECK_EQ(reads, 2);
+  CHECK_EQ(waits, 1);
+
+  app.boot(cfg, int(Button::B), 0);
+  CHECK(app.view().screen == Screen::Card);
+  Settings settings;
+  settings_defaults(&settings);
+  RenderContext ctx;
+  ctx.settings = &settings;
+  ctx.status.battery = first;
+  Framebuffer fb;
+  render(fb, app.view(), ctx);
+
+  const Rect status = status_rect(app.view(), ctx);
+  bool status_drawn = false;
+  for (int y = status.y; y < status.bottom(); ++y)
+    for (int x = status.x; x < status.right(); ++x)
+      status_drawn |= fb.get(x, y) == Ink::Black;
+  CHECK(status_drawn);
+}
+
+TEST(battery_initial_sample_preserves_persistent_failure) {
+  BatteryMeter m;
+  m.configure(BatteryThresholds{});
+  int reads = 0, waits = 0;
+  const BatteryState &s = sample_initial_battery(
+      m,
+      [&]() {
+        ++reads;
+        return BatterySample{{0, 0}, false};
+      },
+      [&](uint32_t) { ++waits; });
+
+  CHECK(s.display == PowerDisplay::Invalid);
+  CHECK_EQ(reads, InitialBatterySamplePolicy::kMaxAttempts);
+  CHECK_EQ(waits, InitialBatterySamplePolicy::kMaxAttempts - 1);
 }
 
 TEST(battery_unsorted_thresholds_are_sanitised) {

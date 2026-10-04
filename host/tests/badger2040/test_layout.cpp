@@ -28,3 +28,22 @@ TEST(badger2040_card_caption_gives_way_to_contacts) {
   CHECK(!f.caption_shown);
   CHECK(f.caption);
 }
+
+
+// With the normal contact QR vertically clear of the top status strip, Card B
+// keeps power/gesture status at the physical upper-right instead of shifting
+// it left beside the QR.
+TEST(badger2040_card_status_uses_free_top_right) {
+  settings_defaults(&g_s);
+  set(g_s, "qr.payload", "https://example.com/alex");
+  RenderContext c = context(g_s);
+  View v;
+  v.screen = Screen::Card;
+  const CardGeometry card = card_geometry(c, false);
+  const Rect status = status_rect(v, c);
+
+  CHECK(card.qr_status == QrStatus::Ok);
+  CHECK(card.qr.y >= kStatusHeight);
+  CHECK_EQ(status.right(), Framebuffer::kWidth - 2);
+  CHECK(status.bottom() <= card.qr.y);
+}
