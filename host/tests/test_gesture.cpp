@@ -172,6 +172,7 @@ TEST(apds_start_forces_power_down_and_mode_toggles_emitter) {
   CHECK(s.state() == SensorState::Standby);
   CHECK(!bus.ir_enabled());
   CHECK_EQ(bus.regs[0xA3], 0x41);
+  CHECK_EQ(bus.regs[0x90], 0x01);  // no extra LED boost on the Adafruit breakout
   uint32_t t = 0;
   s.set_wanted(true);
   s.poll(t += 10);
