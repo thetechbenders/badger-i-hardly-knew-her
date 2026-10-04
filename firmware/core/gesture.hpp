@@ -25,7 +25,7 @@ struct GestureFrame {
 };
 
 struct GestureParams {
-  uint8_t sensitivity = 30;   // minimum |delta ratio| in percent
+  uint8_t sensitivity = 10;   // minimum |delta ratio| in percent
   uint8_t noise_floor = 10;   // per-channel counts
   uint8_t rotation = 0;       // 0..3, x 90 degrees clockwise
   bool mirror = false;
@@ -37,6 +37,9 @@ struct SessionResult {
   Swipe raw = Swipe::None;
   int16_t delta_ud = 0, delta_lr = 0;
   uint16_t frames = 0, valid_frames = 0;
+  // Retained only for diagnostics; these are samples already consumed from
+  // the FIFO, so exposing them never changes sensor state or drains data.
+  GestureFrame first{}, last{};
 };
 
 class GestureDecoder {

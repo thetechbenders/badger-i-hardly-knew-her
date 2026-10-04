@@ -266,7 +266,7 @@ void settings_defaults(Settings *s) {
   s->prefs.gesture_default_on = 0;
   s->prefs.gesture_rotation = 0;
   s->prefs.gesture_mirror = 0;
-  s->prefs.gesture_sensitivity = 30;
+  s->prefs.gesture_sensitivity = 10;
   s->prefs.gesture_timeout_s = 300;
   s->prefs.gesture_cooldown_ms = 700;
   for (size_t i = 0; i < kDefaultProfileCount; ++i) {

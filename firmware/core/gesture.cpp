@@ -37,6 +37,10 @@ SessionResult GestureDecoder::finish() {
   r.frames = frames_;
   r.valid_frames = valid_;
   active_ = false;
+  if (have_first_) {
+    r.first = first_;
+    r.last = last_;
+  }
   if (valid_ < 4) return r;  // too little data for a direction
   r.delta_ud = int16_t(ratio(last_.u, last_.d) - ratio(first_.u, first_.d));
   r.delta_lr = int16_t(ratio(last_.l, last_.r) - ratio(first_.l, first_.r));

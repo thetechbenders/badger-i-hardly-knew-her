@@ -38,6 +38,15 @@ struct SensorStats {
   Swipe last_swipe = Swipe::None;
 };
 
+struct SensorRegisterSnapshot {
+  bool valid = false;
+  uint8_t enable = 0;
+  uint8_t proximity = 0;
+  uint8_t gconf4 = 0;
+  uint8_t gstatus = 0;
+  uint8_t fifo_level = 0;
+};
+
 class Apds9960 {
  public:
   static constexpr uint8_t kAddr = 0x39;
@@ -61,6 +70,9 @@ class Apds9960 {
   bool wanted() const { return wanted_; }
   const SensorStats &stats() const { return stats_; }
   uint32_t gate_suppressed() const { return gate_.suppressed(); }
+  // Snapshot non-destructive APDS registers for bench diagnostics. This does
+  // not read GFIFO, change configuration, or alter the driver's fault state.
+  SensorRegisterSnapshot diagnostic_registers();
 
  private:
   bool reg_write(uint8_t reg, uint8_t v);

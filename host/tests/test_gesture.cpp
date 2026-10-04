@@ -88,6 +88,10 @@ Swipe run_swipe(Apds9960 &s, FakeApds &bus, uint32_t &t, const std::vector<Gestu
 }
 }  // namespace
 
+TEST(gesture_default_params_match_validated_hardware) {
+  CHECK_EQ(GestureParams{}.sensitivity, 10);
+}
+
 TEST(gesture_decoder_directions) {
   GestureDecoder d;
   struct { char axis; bool pos; Swipe want; } cases[] = {
@@ -172,6 +176,8 @@ TEST(apds_start_forces_power_down_and_mode_toggles_emitter) {
   CHECK(s.state() == SensorState::Standby);
   CHECK(!bus.ir_enabled());
   CHECK_EQ(bus.regs[0xA3], 0x41);
+  CHECK_EQ(bus.regs[0x90], 0x01);  // no extra LED boost on the Adafruit breakout
+  CHECK_EQ(bus.regs[0xA1], 60);    // measured idle UDLR is ~43-53, so 30 could never exit
   uint32_t t = 0;
   s.set_wanted(true);
   s.poll(t += 10);
@@ -186,6 +192,48 @@ TEST(apds_start_forces_power_down_and_mode_toggles_emitter) {
   s.shutdown();
   CHECK(!bus.ir_enabled());
   CHECK(!s.wanted());
+}
+
+TEST(apds_diagnostic_snapshot_is_nondestructive) {
+  FakeApds bus;
+  Apds9960 s(bus);
+  s.start(0);
+  s.set_wanted(true);
+  uint32_t t = 0;
+  s.poll(t += 10);  // enter Active
+  bus.regs[0x9C] = 87;
+  bus.engine = true;
+  bus.fifo.push_back({11, 22, 33, 44});
+  const size_t before = bus.fifo.size();
+
+  const SensorRegisterSnapshot r = s.diagnostic_registers();
+  CHECK(r.valid);
+  CHECK_EQ(r.enable, 0x4D);
+  CHECK_EQ(r.proximity, 87);
+  CHECK_EQ(r.gconf4 & 0x01, 1);
+  CHECK_EQ(r.gstatus & 0x01, 1);
+  CHECK_EQ(r.fifo_level, 1);
+  CHECK_EQ(bus.fifo.size(), before);  // diagnostics must not consume GFIFO
+}
+
+TEST(gesture_decoder_retains_endpoint_samples_for_diagnostics) {
+  GestureDecoder d;
+  const GestureFrame first{60, 180, 70, 170};
+  const GestureFrame last{180, 60, 170, 70};
+  d.begin(0);
+  d.add(first);
+  d.add({90, 150, 100, 140});
+  d.add({120, 120, 120, 120});
+  d.add(last);
+  const SessionResult r = d.finish();
+  CHECK_EQ(r.first.u, first.u);
+  CHECK_EQ(r.first.d, first.d);
+  CHECK_EQ(r.first.l, first.l);
+  CHECK_EQ(r.first.r, first.r);
+  CHECK_EQ(r.last.u, last.u);
+  CHECK_EQ(r.last.d, last.d);
+  CHECK_EQ(r.last.l, last.l);
+  CHECK_EQ(r.last.r, last.r);
 }
 
 TEST(apds_swipes_end_to_end_with_orientation) {

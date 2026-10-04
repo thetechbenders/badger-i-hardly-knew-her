@@ -84,6 +84,7 @@ TEST(settings_defaults_are_valid) {
   const FieldDesc *bad = nullptr;
   CHECK(settings_validate(g_a, &bad));
   CHECK(g_a.profile.name[0] != 0);
+  CHECK_EQ(g_a.prefs.gesture_sensitivity, 10);
   CHECK(sizeof(Settings) + 4 * 64 < kSettingsMaxRecord);  // encoded record always fits a sector
 }
 
