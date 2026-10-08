@@ -100,7 +100,8 @@ def create_app(workspace: Path | None = None) -> FastAPI:
         raise RuntimeError("Refusing symlinked Studio form")
     if not form_path.exists():
         form_path.write_text(template, encoding="utf-8")
-    active = {"target": "badger2040"}
+    active = {"target": "badger2350" if 'processed = "sample-badger2350.png"' in
+              form_path.read_text(encoding="utf-8") else "badger2040"}
 
     def validate(text: str, target: str) -> dict:
         if target not in TARGETS:
