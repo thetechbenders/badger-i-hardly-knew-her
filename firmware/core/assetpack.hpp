@@ -12,10 +12,12 @@
 //    12  u32 total_size
 //   Entries (entry_count x 24 bytes) follow the header, then entry data.
 //     0  u16 id (1 = portrait)      8 u32 offset (from pack start, 4-aligned)
-//     2  u8  format (1 = MONO1)    12 u32 length
+//     2  u8  format (1 MONO1, 2 GRAY2) 12 u32 length
 //     3  u8  reserved              16 u32 crc32 of the entry data
 //     4  u16 width, 6 u16 height   20 u32 reserved
 // MONO1: row-major, MSB first, 1 = black ink, stride = ceil(width / 8).
+// GRAY2: row-major MSB-first pairs, 0 white/1 light/2 dark/3 black,
+// stride = ceil(width / 4), unused low pairs zero. Badger 2350 only.
 #pragma once
 
 #include <cstddef>
@@ -27,11 +29,12 @@ constexpr uint32_t kAssetMagic = 0x4B504142;  // "BAPK"
 constexpr uint16_t kAssetVersion = 1;
 constexpr uint16_t kAssetIdPortrait = 1;
 constexpr uint8_t kAssetFormatMono1 = 1;
+constexpr uint8_t kAssetFormatGray2 = 2;
 constexpr uint32_t kAssetMaxEntries = 16;
 constexpr uint32_t kAssetMaxSize = 64 * 1024;
 
 enum class AssetStatus : uint8_t {
-  Ok, Missing, BadMagic, BadVersion, BadHeaderCrc, BadSize, BadDataCrc, BadEntry, BadEntryCrc
+  Ok, Missing, BadMagic, BadVersion, BadHeaderCrc, BadSize, BadDataCrc, BadEntry, BadEntryCrc, UnsupportedFormat
 };
 const char *asset_status_str(AssetStatus s);
 
@@ -39,6 +42,11 @@ struct MonoBitmap {
   const uint8_t *bits = nullptr;
   uint16_t width = 0, height = 0, stride = 0;
   bool valid() const { return bits != nullptr && width > 0 && height > 0; }
+};
+
+// A typed image; retaining the MONO1 view keeps existing callers compatible.
+struct Bitmap : MonoBitmap {
+  uint8_t format = kAssetFormatMono1;
 };
 
 struct AssetPackInfo {
@@ -52,5 +60,7 @@ struct AssetPackInfo {
 AssetPackInfo asset_pack_validate(const uint8_t *base, size_t avail);
 // Look up a MONO1 bitmap entry in a pack that already validated OK.
 bool asset_pack_bitmap(const uint8_t *base, uint16_t id, MonoBitmap *out);
+// Look up a supported typed image in a validated pack, clearing out on failure.
+bool asset_pack_image(const uint8_t *base, uint16_t id, Bitmap *out);
 
 }  // namespace badge

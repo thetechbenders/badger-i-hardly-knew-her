@@ -31,6 +31,7 @@ HEADER = 32
 ENTRY = 24
 ID_PORTRAIT = 1
 FMT_MONO1 = 1
+FMT_GRAY2 = 2
 MAX_SIZE = 64 * 1024
 # Badger 2040 values, the defaults (other targets: bhihkh_targets.py).
 PANEL_W, PANEL_H = TARGETS[DEFAULT].display_w, TARGETS[DEFAULT].display_h
@@ -79,6 +80,27 @@ def build_pack(entries: list[tuple[int, int, int, int, bytes]]) -> bytes:
     return head + body
 
 
+def pack_gray2(img, target: str) -> tuple[int, int, bytes]:
+    """Explicit opaque four-level image -> GRAY2; never auto-convert a photo."""
+    if target != "badger2350":
+        raise SystemExit("four-tone portraits require badger2350")
+    t = TARGETS[target]
+    w, h = img.size
+    if not (0 < w <= t.display_w and 0 < h <= t.display_h):
+        raise SystemExit("four-tone bitmap exceeds target panel")
+    px = img.convert("RGBA").load()
+    levels = {255: 0, 170: 1, 85: 2, 0: 3}
+    stride = (w + 3) // 4
+    out = bytearray(stride * h)
+    for y in range(h):
+        for x in range(w):
+            r, g, b, a = px[x, y]
+            if a != 255 or r != g or r != b or r not in levels:
+                raise SystemExit("four-tone input must be opaque neutral levels 0, 85, 170, 255")
+            out[y * stride + x // 4] |= levels[r] << (6 - 2 * (x & 3))
+    return w, h, bytes(out)
+
+
 def parse_pack(blob: bytes, target: str = DEFAULT) -> list[dict]:
     """Validate like the firmware and return entry descriptions (raises ValueError)."""
     t = TARGETS[target]
@@ -100,8 +122,15 @@ def parse_pack(blob: bytes, target: str = DEFAULT) -> list[dict]:
         eid, fmt, _r, w, h, off, ln, crc, _r2 = struct.unpack_from("<HBBHHIIII", blob, HEADER + i * ENTRY)
         if off < HEADER + ENTRY * count or off % 4 or off + ln > total:
             raise ValueError(f"entry {i}: bad offset")
-        if fmt == FMT_MONO1 and (not (0 < w <= t.display_w and 0 < h <= t.display_h) or ln != ((w + 7) // 8) * h):
+        if fmt not in (FMT_MONO1, FMT_GRAY2) or (fmt == FMT_GRAY2 and target != "badger2350"):
+            raise ValueError(f"entry {i}: unsupported format")
+        stride = (w + (7 if fmt == FMT_MONO1 else 3)) // (8 if fmt == FMT_MONO1 else 4)
+        if not (0 < w <= t.display_w and 0 < h <= t.display_h) or ln != stride * h:
             raise ValueError(f"entry {i}: bad bitmap geometry")
+        if fmt == FMT_GRAY2 and w % 4:
+            mask = (1 << (2 * (4 - w % 4))) - 1
+            if any(blob[off + (y + 1) * stride - 1] & mask for y in range(h)):
+                raise ValueError(f"entry {i}: bad bitmap padding")
         if zlib.crc32(blob[off:off + ln]) & 0xFFFFFFFF != crc:
             raise ValueError(f"entry {i}: bad crc")
         out.append({"id": eid, "format": fmt, "width": w, "height": h, "offset": off, "length": ln, "crc": crc})
@@ -138,6 +167,7 @@ def main(argv=None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     b = sub.add_parser("build")
     b.add_argument("--portrait", type=Path)
+    b.add_argument("--four-tone", action="store_true", help="explicit GRAY2 portrait (badger2350 only)")
     b.add_argument("--out", type=Path, required=True)
     b.add_argument("--cpp", type=Path)
     b.add_argument("--symbol", default="kBuiltinAssetPack")
@@ -167,9 +197,12 @@ def main(argv=None) -> int:
 
     from PIL import Image
     entries = []
+    if args.four_tone and (args.target != "badger2350" or not args.portrait):
+        raise SystemExit("--four-tone requires --target badger2350 and --portrait")
     if args.portrait:
-        w, h, data = pack_mono1(Image.open(args.portrait), args.target)
-        entries.append((ID_PORTRAIT, FMT_MONO1, w, h, data))
+        with Image.open(args.portrait) as image:
+            w, h, data = (pack_gray2 if args.four_tone else pack_mono1)(image, args.target)
+        entries.append((ID_PORTRAIT, FMT_GRAY2 if args.four_tone else FMT_MONO1, w, h, data))
     blob = build_pack(entries)
     parse_pack(blob, args.target)  # self-check
     args.out.parent.mkdir(parents=True, exist_ok=True)

@@ -32,7 +32,7 @@ struct StatusInfo {
 
 struct RenderContext {
   const Settings *settings = nullptr;
-  MonoBitmap portrait;           // may be invalid (missing asset)
+  Bitmap portrait;               // format explicitly opts a portrait into four tones
   const InfoLines *info = nullptr;
   StatusInfo status;
   const char *recovery_reason = nullptr;

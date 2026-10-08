@@ -1,5 +1,5 @@
 // Host preview: renders badge screens with the firmware renderer and writes
-// them as binary PBM (P4) at the target panel's native resolution (Badger
+// them as binary PBM (P4), or PGM (P5) when gray is present, at native resolution (Badger
 // 2040: 296x128, Badger 2350: 264x176; the host build's BHIHKH_TARGET).
 //
 //   badger_preview --out DIR [--pack FILE|--no-portrait] [--layout N]
@@ -27,9 +27,24 @@ extern const size_t kBuiltinAssetPack_size;
 
 using namespace badge;
 
-static bool write_pbm(const Framebuffer &fb, const std::string &path) {
+static bool has_gray(const Framebuffer &fb) {
+  for (int y = 0; y < Framebuffer::kHeight; ++y)
+    for (int x = 0; x < Framebuffer::kWidth; ++x)
+      if (fb.get(x, y) == Ink::LightGray || fb.get(x, y) == Ink::DarkGray) return true;
+  return false;
+}
+
+static bool write_pnm(const Framebuffer &fb, const std::string &path) {
   FILE *f = std::fopen(path.c_str(), "wb");
   if (!f) return false;
+  if (has_gray(fb)) {
+    std::fprintf(f, "P5\n%d %d\n255\n", Framebuffer::kWidth, Framebuffer::kHeight);
+    constexpr uint8_t levels[] = {255, 0, 170, 85};
+    for (int y = 0; y < Framebuffer::kHeight; ++y)
+      for (int x = 0; x < Framebuffer::kWidth; ++x) std::fputc(levels[uint8_t(fb.get(x, y))], f);
+    std::fclose(f);
+    return true;
+  }
   std::fprintf(f, "P4\n%d %d\n", Framebuffer::kWidth, Framebuffer::kHeight);
   const int stride = (Framebuffer::kWidth + 7) / 8;
   std::vector<uint8_t> row(stride);
@@ -120,7 +135,7 @@ int main(int argc, char **argv) {
   ctx.settings = &s;
   ctx.status = status;
   AssetPackInfo pi = asset_pack_validate(pack.data(), pack.size());
-  if (pi.status == AssetStatus::Ok && !no_portrait) asset_pack_bitmap(pack.data(), kAssetIdPortrait, &ctx.portrait);
+  if (pi.status == AssetStatus::Ok && !no_portrait) asset_pack_image(pack.data(), kAssetIdPortrait, &ctx.portrait);
   else if (!no_portrait) std::fprintf(stderr, "asset pack: %s (rendering without portrait)\n", asset_status_str(pi.status));
 
   static InfoLines info;
@@ -206,8 +221,8 @@ int main(int argc, char **argv) {
         std::string file = out + "/" + name;
         if (sc == Screen::Badge) file += lay ? "_layoutB" : "_layoutA";
         if (per_project && nproj > 1) file += "_" + std::to_string(p + 1);
-        file += suffix + ".pbm";
-        if (!write_pbm(fb, file)) { std::fprintf(stderr, "cannot write %s\n", file.c_str()); return 1; }
+        file += suffix + (has_gray(fb) ? ".pgm" : ".pbm");
+        if (!write_pnm(fb, file)) { std::fprintf(stderr, "cannot write %s\n", file.c_str()); return 1; }
         std::printf("%s\n", file.c_str());
       }
     }

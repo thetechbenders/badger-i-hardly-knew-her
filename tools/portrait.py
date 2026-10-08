@@ -93,7 +93,9 @@ def error_diffuse(g: np.ndarray, kernel: list[tuple[int, int, float]]) -> np.nda
 
 
 def convert(g: np.ndarray, method: str) -> np.ndarray:
-    """Return a bool array, True = white pixel."""
+    """Mono: bool/True white; explicit four-tone: uint8 levels 0,85,170,255."""
+    if method == "four-tone":
+        return (np.floor(np.clip(g, 0, 1) * 3 + 0.5) * 85).astype(np.uint8)
     if method == "threshold":
         return g >= otsu(g)
     if method == "bayer8":
@@ -109,6 +111,8 @@ def convert(g: np.ndarray, method: str) -> np.ndarray:
 
 
 def to_image(white: np.ndarray) -> Image.Image:
+    if white.dtype != np.bool_:
+        return Image.fromarray(white)
     return Image.fromarray((white * 255).astype(np.uint8)).convert("1", dither=Image.Dither.NONE)
 
 
@@ -130,8 +134,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--settings", type=Path, help="JSON with crop/size/tone/method keys")
     ap.add_argument("--crop", help="x,y,w,h in source pixels (default: the largest centred area)")
     ap.add_argument("--size", help="WxH output size")
-    ap.add_argument("--method", choices=METHODS)
-    ap.add_argument("--out", type=Path, help="1-bit PNG to write for the chosen method")
+    ap.add_argument("--method", choices=(*METHODS, "four-tone"))
+    ap.add_argument("--four-tone", action="store_true", help="four-level quantization, badger2350 only")
+    ap.add_argument("--out", type=Path, help="portrait PNG (mono or explicit four-tone)")
     ap.add_argument("--compare", type=Path, help="directory for per-method PNGs and a comparison sheet")
     ap.add_argument("--target", choices=sorted(TARGETS), default=DEFAULT, help=f"BHIHKH_TARGET (default {DEFAULT})")
     args = ap.parse_args(argv)
@@ -147,6 +152,10 @@ def main(argv: list[str] | None = None) -> int:
         cfg["size"] = [int(v) for v in args.size.lower().split("x")]
     if args.method:
         cfg["method"] = args.method
+    if args.four_tone:
+        cfg["method"] = "four-tone"
+    if cfg["method"] == "four-tone" and args.target != "badger2350":
+        raise SystemExit("four-tone portraits require badger2350")
     w, h = cfg["size"]
     if not (8 <= w <= t.display_w and 8 <= h <= t.display_h):
         raise SystemExit(f"size {w}x{h} does not fit the {t.display_w}x{t.display_h} panel")
@@ -163,6 +172,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.compare:
         args.compare.mkdir(parents=True, exist_ok=True)
         results = {m: to_image(convert(g, m)) for m in METHODS}
+        if cfg["method"] == "four-tone":
+            results["four-tone"] = to_image(convert(g, "four-tone"))
         for m, im in results.items():
             im.save(args.compare / f"portrait_{m}.png")
         gray = Image.fromarray((g * 255).round().astype(np.uint8))

@@ -35,7 +35,8 @@ conditionals, and the composition root is shared:
   previews are built once per target with it (`build/host`,
   `build/host-badger2350`), so they render what that firmware renders.
 
-**Display seam.** `Framebuffer` is a board-neutral row-major 1-bpp buffer at
+**Display seam.** `Framebuffer` is a portable row-major buffer (Classic 1 bpp,
+Badger 2350 2 bpp) at
 the target's size; `diff_bounds()` is pixel-exact. Each panel backend packs
 it into its controller's RAM layout (`badger2040/uc8151_pack.hpp`,
 `badger2350/ssd1680_pack.hpp`) and reports its partial-refresh granularity
@@ -43,8 +44,8 @@ it into its controller's RAM layout (`badger2040/uc8151_pack.hpp`,
 Badger 2040's packing and 8-row partial windows are byte-for-byte what they
 were (host tests compare against the Pimoroni driver's pixel layout; the
 previews are byte-identical). The SSD1680 can show four tones from two RAM
-planes; this firmware draws black and white only, and a later 2-bit phase
-would change the buffer and the packer behind the same `Panel` interface.
+planes; explicitly opted-in GRAY2 portraits use them behind the same `Panel`
+interface. Text, icons and status drawing retain monochrome ink semantics.
 QR codes stay pure black/white, integer-scaled, with their quiet zone.
 
 **Layouts.** The Badger 2350's 264×176 panel is 32 px narrower and 48 px

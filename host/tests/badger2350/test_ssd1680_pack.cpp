@@ -1,4 +1,5 @@
 // Badger 2350 only: the SSD1680 RAM image the panel backend sends.
+#include <initializer_list>
 #include "check.hpp"
 #include "framebuffer.hpp"
 #include "ssd1680_pack.hpp"
@@ -37,6 +38,43 @@ TEST(ssd1680_pack_matches_reference_driver_loop) {
   ssd1680::pack(fb, got);
   ref_plane(black, ref);
   CHECK(std::memcmp(got, ref, sizeof ref) == 0);
+  ssd1680::pack(fb, got, ssd1680::Plane::Red);
+  CHECK(std::memcmp(got, ref, sizeof ref) == 0);
+}
+
+TEST(ssd1680_four_tone_exact_vectors) {
+  static Framebuffer fb;
+  static uint8_t red[ssd1680::kPlaneBytes], bw[ssd1680::kPlaneBytes];
+  fb.clear(Ink::White);
+  const Ink inks[] = {Ink::White, Ink::LightGray, Ink::DarkGray, Ink::Black,
+                     Ink::Black, Ink::DarkGray, Ink::LightGray, Ink::White};
+  for (int y = 0; y < 8; ++y) fb.set(0, y, inks[y]);
+  fb.set(263, 175, Ink::DarkGray);
+  ssd1680::pack(fb, red, ssd1680::Plane::Red);
+  ssd1680::pack(fb, bw, ssd1680::Plane::Bw);
+  CHECK_EQ(red[0], 0x3c); CHECK_EQ(bw[0], 0x5a);
+  CHECK_EQ(red[sizeof red - 1], 1); CHECK_EQ(bw[sizeof bw - 1], 0);
+  for (size_t i = 1; i < sizeof red - 1; ++i) { CHECK_EQ(red[i], 0); CHECK_EQ(bw[i], 0); }
+}
+
+TEST(ssd1680_four_tone_matches_pinned_rgb_reference) {
+  static Framebuffer fb;
+  static uint8_t expected[ssd1680::kPlaneBytes], got[ssd1680::kPlaneBytes];
+  constexpr Ink tones[] = {Ink::Black, Ink::DarkGray, Ink::LightGray, Ink::White};
+  // Independent upstream RGB conversion: neutral RGB v=0,85,170,255.
+  for (int y = 0; y < 176; ++y)
+    for (int x = 0; x < 264; ++x) fb.set(x, y, tones[(x + 3 * y) & 3]);
+  for (int bit : {7, 6}) {
+    std::memset(expected, 0, sizeof expected);
+    for (int y = 0; y < 176; ++y)
+      for (int x = 0; x < 264; ++x) {
+        const uint8_t luminance = uint8_t(((x + 3 * y) & 3) * 85);
+        const uint8_t src = uint8_t(~(luminance >> bit)) & 1;
+        expected[(y + x * 176) / 8] |= uint8_t(src << (7 - (y & 7)));
+      }
+    ssd1680::pack(fb, got, bit == 7 ? ssd1680::Plane::Red : ssd1680::Plane::Bw);
+    CHECK(std::memcmp(got, expected, sizeof got) == 0);
+  }
 }
 
 TEST(ssd1680_pack_orientation) {

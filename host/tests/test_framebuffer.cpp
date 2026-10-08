@@ -9,7 +9,7 @@ constexpr int W = Framebuffer::kWidth, H = Framebuffer::kHeight;
 TEST(framebuffer_layout_is_row_major_msb_first) {
   static Framebuffer fb;
   static uint8_t ref[Framebuffer::kBytes];
-  CHECK_EQ(Framebuffer::kStride, (W + 7) / 8);
+  CHECK_EQ(Framebuffer::kStride, target::kFourTone ? (W + 3) / 4 : (W + 7) / 8);
   CHECK_EQ(Framebuffer::kBytes, size_t(Framebuffer::kStride) * H);
   std::memset(ref, 0, sizeof ref);
   fb.clear(Ink::White);
@@ -18,9 +18,11 @@ TEST(framebuffer_layout_is_row_major_msb_first) {
     seed = seed * 1103515245u + 12345u;
     const int x = int(seed >> 8) % W, y = int(seed >> 20) % H, v = (seed >> 3) & 1;
     fb.set(x, y, v ? Ink::Black : Ink::White);
-    uint8_t &b = ref[y * Framebuffer::kStride + x / 8];
-    const uint8_t m = uint8_t(0x80 >> (x % 8));
-    b = v ? uint8_t(b | m) : uint8_t(b & ~m);
+    const int ppb = Framebuffer::kPixelsPerByte, bpp = Framebuffer::kBpp;
+    uint8_t &b = ref[y * Framebuffer::kStride + x / ppb];
+    const int shift = 8 - bpp * (x % ppb + 1);
+    const uint8_t m = uint8_t(((1u << bpp) - 1) << shift);
+    b = uint8_t((b & ~m) | (v << shift));
   }
   CHECK(std::memcmp(fb.data(), ref, sizeof ref) == 0);
 }
