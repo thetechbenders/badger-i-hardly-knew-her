@@ -3,3 +3,4 @@ fastapi>=0.115,<1
 pydantic>=2,<3
 uvicorn>=0.34,<1
 httpx>=0.28,<1  # TestClient / localhost API tests
+tomlkit>=0.13,<1  # preserve comments and unsupported TOML fields in visual editor

@@ -1,9 +1,10 @@
-# BHIHKH! Studio (Phase 1)
+# BHIHKH! Studio (visual editor in progress)
 
 A **local-only** browser shell around the existing TOML-form validation
-pipeline. This initial slice is an editable TOML view, target selection and
-validation; the full visual editor, portrait upload, firmware-renderer
-previews and artifact exports are **not implemented yet**.
+pipeline. The visual editor now exposes identity, contacts, projects and QR options,
+with move/add/remove controls. The full original TOML remains available in
+Advanced mode. Portrait upload, compiled firmware-renderer previews and
+artifact exports are **not implemented yet**.
 
 ## Start
 
@@ -36,7 +37,7 @@ owner's launching terminal, not embedded in an unauthenticated page. It does **n
 programs running as your local user.
 
 The form starts from `config/badge-form.toml` with a bundled, non-personal
-sample portrait for each target. Studio Phase 1 refuses arbitrary TOML file
+sample portrait for each target. Studio currently refuses arbitrary TOML file
 references; there is no portrait import, firmware build, USB flashing, or
 filesystem browser. Only successfully validated TOML is saved; failed edits
 stay in the browser, and the old saved form is retained.
@@ -48,6 +49,8 @@ stay in the browser, and the old saved form is retained.
 | `GET /api/v1/targets` | Targets, display and designed portrait dimensions |
 | `GET /api/v1/workspace` | Saved TOML and active target |
 | `PUT /api/v1/workspace` | Validate with `badge_form.load_form()`, then save atomically |
+| `PUT /api/v1/parse` | Extract visual fields from a TOML document without saving it |
+| `PUT /api/v1/compose` | Apply edited fields, keeping other TOML options and comments |
 | Portrait upload, preview jobs, exports | Not yet implemented |
 
 Every API request must include `X-Studio-Token`, sourced from the locally
@@ -62,3 +65,11 @@ python -m unittest tests_py.test_studio -v
 The Studio tests cover target switching, validation, rejected input paths,
 foreign hosts/origins, token checks, and non-destructive invalid edits.
 The existing host and firmware CI remain the regression gates.
+
+### Visual-editor notes
+
+The editor keeps the existing TOML as the sole durable format. Unedited advanced
+settings and non-visual QR properties (e.g. vCard text) survive visual changes.
+Rebuilding contact/project tables may normalize comments *inside* those tables;
+other TOML comments/sections survive. Invalid edits cannot be saved. Portrait
+files cannot yet be imported; sample assets remain managed and local.

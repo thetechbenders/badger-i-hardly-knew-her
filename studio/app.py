@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "scripts"))
 import badge_form  # noqa: E402
+from studio import form_editor  # noqa: E402
 from bhihkh_targets import TARGETS  # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -29,6 +30,10 @@ MAX_JSON = 128 * 1024
 class Edit(BaseModel):
     target: str
     toml: str = Field(max_length=100_000)
+
+
+class Compose(Edit):
+    fields: dict
 
 
 def _host_ok(host: str) -> bool:
@@ -166,8 +171,8 @@ def create_app(workspace: Path | None = None) -> FastAPI:
     def get_workspace():
         return {"target": active["target"], "toml": form_path.read_text(encoding="utf-8")}
 
-    @app.put("/api/v1/workspace")
-    async def put_workspace(request: Request):
+    async def read_json(request: Request, model):
+        """Bound each request as it streams; validate the typed API envelope."""
         if request.headers.get("content-type", "").split(";")[0].strip() != "application/json":
             raise HTTPException(415, "JSON required")
         if request.headers.get("content-length"):
@@ -176,17 +181,43 @@ def create_app(workspace: Path | None = None) -> FastAPI:
                     raise HTTPException(413, "Request too large")
             except ValueError:
                 raise HTTPException(400, "Invalid Content-Length")
-        # Enforce the limit while reading, even if Content-Length is absent.
         chunks = bytearray()
         async for chunk in request.stream():
             if len(chunks) + len(chunk) > MAX_JSON:
                 raise HTTPException(413, "Request too large")
             chunks.extend(chunk)
-        raw = bytes(chunks)
         try:
-            update = Edit.model_validate_json(raw)
+            return model.model_validate_json(bytes(chunks))
         except ValueError:
             raise HTTPException(422, "Invalid request") from None
+
+    @app.put("/api/v1/parse")
+    async def parse_view(request: Request):
+        """Expose the editable model extracted from the supplied form text."""
+        data = await read_json(request, Edit)
+        try:
+            fields = form_editor.view(data.toml)
+        except (ValueError, TypeError) as error:
+            return JSONResponse({"ok": False, "problems": [str(error)], "notes": []}, status_code=422)
+        return {"ok": True, "fields": fields}
+
+    @app.put("/api/v1/compose")
+    async def compose_view(request: Request):
+        """Create TOML using tomlkit; never persist or bypass canonical save validation."""
+        data = await read_json(request, Compose)
+        try:
+            output = form_editor.apply(data.toml, data.fields)
+        except (ValueError, TypeError) as error:
+            return JSONResponse({"ok": False, "problems": [str(error)], "notes": []}, status_code=422)
+        if len(output) > 100_000:
+            raise HTTPException(413, "Composed form too large")
+        # Canonical validation is performed on the save endpoint. Composition
+        # allows unfinished edits so validation messages remain actionable.
+        return {"ok": True, "toml": output}
+
+    @app.put("/api/v1/workspace")
+    async def put_workspace(request: Request):
+        update = await read_json(request, Edit)
         check = validate(update.toml, update.target)
         if not check["ok"]:
             return JSONResponse(check, status_code=422)
