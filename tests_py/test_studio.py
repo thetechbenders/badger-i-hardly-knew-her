@@ -16,7 +16,8 @@ class StudioTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
-        self.client = TestClient(create_app(Path(self.temp.name) / "workspace"))
+        self.client = TestClient(create_app(Path(self.temp.name) / "workspace"),
+                                 base_url="http://127.0.0.1:8765")
         home = self.client.get("/")
         self.assertEqual(home.status_code, 200)
         import re
