@@ -1,0 +1,4 @@
+# Web editor dependencies, isolated from firmware/toolchain dependencies.
+fastapi>=0.115,<1
+uvicorn>=0.34,<1
+httpx>=0.28,<1  # TestClient / localhost API tests

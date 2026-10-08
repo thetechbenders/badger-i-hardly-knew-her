@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="studio-token" content="STUDIO_SESSION_TOKEN">
+<title>BHIHKH! Studio</title><link rel="stylesheet" href="/style.css">
+<script defer src="/app.js"></script>
+</head><body>
+<main><header><div><h1>BHIHKH! Studio</h1><p>Local badge editor · Phase 1</p></div><span class="local">Local only</span></header>
+<section class="panel">
+<label for="target">Hardware target</label><select id="target" aria-label="Hardware target"></select>
+<label for="toml">Badge form (TOML)</label>
+<textarea id="toml" spellcheck="false" aria-label="Badge TOML form"></textarea>
+<div class="actions"><button id="save" type="button">Validate &amp; save</button><span id="state" role="status" aria-live="polite">Loading…</span></div>
+<div id="problems" aria-live="polite"></div>
+</section><footer>Only validated forms are saved. Portrait upload, rendering and firmware export arrive in later phases. No cloud access or device writes.</footer>
+</main></body></html>
