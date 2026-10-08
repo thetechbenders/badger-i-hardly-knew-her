@@ -50,6 +50,72 @@ class StudioTests(unittest.TestCase):
                     headers={**self.auth, "Content-Type": "application/json"})
         self.assertEqual(result.status_code, 413)
 
+    def test_visual_parse_and_compose_preserves_advanced_fields(self):
+        from studio import form_editor
+        original = self.form["toml"]
+        parsed = self.client.put("/api/v1/parse", headers=self.auth,
+                 json={"target":"badger2040","toml":original})
+        self.assertEqual(parsed.status_code, 200, parsed.text)
+        fields = parsed.json()["fields"]
+        self.assertEqual(fields["person"]["name"], "Alex Example")
+        fields["person"]["name"] = "Studio Test"
+        fields["person"]["interests"] = ["3D printing", "embedded systems"]
+        fields["contacts"][0]["value"] = "studio@example.com"
+        fields["contacts"].append({"type":"text","label":"Booth","value":"A17","hidden":False})
+        fields["projects"][0]["title"] = "Quiet Duct"
+        fields["projects"].reverse()
+        fields["qr"]["caption"] = "Scan me"
+        composed = self.client.put("/api/v1/compose", headers=self.auth,
+            json={"target":"badger2040","toml":original,"fields":fields})
+        self.assertEqual(composed.status_code, 200, composed.text)
+        text = composed.json()["toml"]
+        self.assertIn("sleep.timeout_s = 120", text)
+        self.assertIn("#  BHIHKH! personal badge form", text)
+        self.assertIn("Studio Test", text)
+        roundtrip = form_editor.view(text)
+        self.assertEqual(roundtrip, fields)
+        saved = self.client.put("/api/v1/workspace", headers=self.auth,
+            json={"target":"badger2040","toml":text})
+        self.assertEqual(saved.status_code, 200, saved.text)
+
+    def test_visual_invalid_input_never_changes_workspace(self):
+        baseline = self.form["toml"]
+        view = self.client.put("/api/v1/parse", headers=self.auth,
+                 json={"target":"badger2040","toml":baseline}).json()["fields"]
+        view["person"]["name"] = "x" * 300
+        rendered = self.client.put("/api/v1/compose", headers=self.auth,
+            json={"target":"badger2040","toml":baseline,"fields":view})
+        self.assertEqual(rendered.status_code, 200, rendered.text)
+        refused = self.client.put("/api/v1/workspace", headers=self.auth,
+            json={"target":"badger2040","toml":rendered.json()["toml"]})
+        self.assertEqual(refused.status_code, 422, refused.text)
+        self.assertEqual(self.client.get("/api/v1/workspace", headers=self.auth).json()["toml"], baseline)
+
+    def test_visual_rejects_over_count_and_extra_fields(self):
+        view = self.client.put("/api/v1/parse", headers=self.auth,
+                 json={"target":"badger2040","toml":self.form["toml"]}).json()["fields"]
+        view["contacts"] *= 3
+        r = self.client.put("/api/v1/compose", headers=self.auth,
+            json={"target":"badger2040","toml":self.form["toml"],"fields":view})
+        self.assertEqual(r.status_code, 422)
+        view["contacts"] = view["contacts"][:1]
+        view["person"]["invalid"] = "inject"
+        r = self.client.put("/api/v1/compose", headers=self.auth,
+            json={"target":"badger2040","toml":self.form["toml"],"fields":view})
+        self.assertEqual(r.status_code, 422)
+
+    def test_visual_keeps_nonvisual_qr_settings(self):
+        form = self.form["toml"].replace('caption = "Scan for my website"',
+            'caption = "Scan for my website"\\n# keep me\\nvcard = "BEGIN:VCARD\\\\nEND:VCARD"')
+        # Use a syntactically valid nonvisual field without making it active.
+        from studio import form_editor
+        data = form_editor.view(form)
+        data["person"]["name"] = "Jane Example"
+        updated = form_editor.apply(form, data)
+        self.assertIn("# keep me", updated)
+        self.assertIn("vcard =", updated)
+        self.assertIn("Jane Example", updated)
+
     def test_template_round_trip_and_metadata(self):
         targets = self.client.get("/api/v1/targets", headers=self.auth).json()["targets"]
         self.assertEqual({x["id"] for x in targets}, {"badger2040", "badger2350"})
