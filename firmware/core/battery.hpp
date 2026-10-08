@@ -63,6 +63,17 @@ struct BatteryState {
   uint32_t samples = 0, invalid = 0;
 };
 
+struct BatterySample {
+  BatteryRaw raw;
+  bool usb = false;
+};
+
+struct BatteryMeasurement {
+  uint16_t mv = 0;
+  uint16_t vdd_mv = 0;
+  bool valid = false;
+};
+
 class BatteryMeter {
  public:
   static constexpr uint16_t kMinValidMv = 2500;  // below: reading, not battery, is wrong
@@ -73,6 +84,11 @@ class BatteryMeter {
   void configure(const BatteryThresholds &t);
   // Feed one measurement. `usb` = VBUS detected (reading then reflects USB).
   const BatteryState &update(const BatteryRaw &raw, bool usb);
+  // Inspect a raw sample without changing filter/display state.
+  BatteryMeasurement inspect(const BatteryRaw &raw) const;
+  // Reject a sampled value at a higher-level acquisition boundary (for
+  // example, startup never settled) without letting it seed the EMA.
+  const BatteryState &mark_invalid(const BatteryRaw &raw);
   const BatteryState &state() const { return st_; }
   // Pure conversion (exposed for tests and diagnostics); 0 if invalid.
   static uint16_t to_mv(const BatteryRaw &raw, uint16_t cal_permille, uint16_t *vdd_mv,
@@ -87,5 +103,61 @@ class BatteryMeter {
   bool seeded_ = false;
   uint32_t ema_x16_ = 0;  // filtered value * 16
 };
+
+// Initial boot/wake sampling policy. A cold power-up can briefly produce a
+// plausible but wrong battery reading while the analog path settles. Observe
+// raw samples without touching the EMA until a short stable run is seen.
+// USB is accepted immediately. Failure to reach a stable valid run remains
+// Invalid so the first frame never invents a battery level.
+struct InitialBatterySamplePolicy {
+  static constexpr int kStableSamples = 3;
+  static constexpr uint16_t kStableSpreadMv = 50;
+  static constexpr uint32_t kRetryDelayMs = 25;
+  // Physical Classic retest showed the analog path can still be unsettled
+  // after the previous 175 ms window. Give cold start up to 1.5 s, while a
+  // stable battery still returns as soon as three samples agree.
+  static constexpr uint32_t kMaxSettleMs = 1500;
+  static constexpr int kMaxAttempts = 1 + kMaxSettleMs / kRetryDelayMs;
+};
+
+template <typename ReadFn, typename WaitFn>
+const BatteryState &sample_initial_battery(BatteryMeter &meter, ReadFn read, WaitFn wait) {
+  BatterySample last{};
+  uint16_t stable_min = 0, stable_max = 0;
+  int stable_samples = 0;
+
+  for (int attempt = 0; attempt < InitialBatterySamplePolicy::kMaxAttempts; ++attempt) {
+    last = read();
+    if (last.usb) return meter.update(last.raw, true);
+
+    const BatteryMeasurement measurement = meter.inspect(last.raw);
+    if (measurement.valid) {
+      if (stable_samples == 0) {
+        stable_min = stable_max = measurement.mv;
+        stable_samples = 1;
+      } else {
+        const uint16_t next_min = measurement.mv < stable_min ? measurement.mv : stable_min;
+        const uint16_t next_max = measurement.mv > stable_max ? measurement.mv : stable_max;
+        if (uint16_t(next_max - next_min) <= InitialBatterySamplePolicy::kStableSpreadMv) {
+          stable_min = next_min;
+          stable_max = next_max;
+          ++stable_samples;
+        } else {
+          stable_min = stable_max = measurement.mv;
+          stable_samples = 1;
+        }
+      }
+      if (stable_samples >= InitialBatterySamplePolicy::kStableSamples)
+        return meter.update(last.raw, false);
+    } else {
+      stable_samples = 0;
+    }
+
+    if (attempt + 1 < InitialBatterySamplePolicy::kMaxAttempts)
+      wait(InitialBatterySamplePolicy::kRetryDelayMs);
+  }
+
+  return meter.mark_invalid(last.raw);
+}
 
 }  // namespace badge

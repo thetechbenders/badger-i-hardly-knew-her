@@ -160,6 +160,21 @@ void sample_battery(uint32_t now) {
   g_battery_sample_ms = now;
 }
 
+// The first frame after a real battery wake is also a cold boot on Classic.
+// Observe a short run of startup samples before seeding the battery EMA so a
+// plausible-but-transient low reading cannot become the first displayed state.
+// The board-level sampling sequence and reference-settle delay are unchanged.
+void sample_initial_battery_for_frame() {
+  g_ctx.status.battery = sample_initial_battery(
+      g_battery,
+      [] {
+        g_usb = board::usb_powered();
+        return BatterySample{board::read_battery_raw(), g_usb};
+      },
+      [](uint32_t delay_ms) { sleep_ms(delay_ms); });
+  g_battery_sample_ms = now_ms();
+}
+
 void fmt_mv(char *buf, size_t n, uint32_t mv) {
   std::snprintf(buf, n, "%lu.%02lu V", (unsigned long)(mv / 1000), (unsigned long)(mv % 1000 / 10));
 }
@@ -583,7 +598,7 @@ int main() {
   g_ctx.recovery_reason = reason;
 
   configure_from_prefs();
-  sample_battery(now_ms());
+  sample_initial_battery_for_frame();
   g_app.boot(app_config(boot.safe_mode), wake ? board::wake_button() : -1, now_ms());
   // Probe the optional gesture sensor and force it into its powered-down
   // state; a missing sensor or bus fault only disables gestures.

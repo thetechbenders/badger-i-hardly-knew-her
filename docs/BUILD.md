@@ -59,6 +59,78 @@ before running `fetch-deps.sh`.
 - For `picotool save` backups on Windows, use the prebuilt picotool from the
   official `raspberrypi/pico-sdk-tools` releases, or usbipd + WSL.
 
+## macOS (Apple Silicon)
+
+Tested on an Apple Silicon Mac (M4) with Apple Clang 21 and Python 3.14.
+Intel Macs are untested.
+
+Install the Xcode Command Line Tools and the host tools with Homebrew. macOS
+ships Bash 3.2, which cannot run `scripts/fetch-deps.sh`, so a current Bash is
+needed too:
+
+```
+xcode-select --install
+brew install cmake ninja python git zbar bash
+```
+
+### Arm toolchain
+
+Do not take the cross compiler from Homebrew: the `arm-none-eabi-gcc` formula
+has no newlib, and the `gcc-arm-embedded` cask installs the latest release, not
+the pinned one. Download Arm GNU Toolchain 13.2.Rel1 from Arm's
+[download page](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)
+(`arm-gnu-toolchain-13.2.Rel1-darwin-arm64-arm-none-eabi.pkg`), install it, and
+put it on `PATH`, for example in `~/.zshrc`:
+
+```
+export PATH="/Applications/ArmGNUToolchain/13.2.Rel1/arm-none-eabi/bin:$PATH"
+```
+
+`arm-none-eabi-gcc --version` should report 13.2.1. This is Arm's own build,
+not Ubuntu's `15:13.2.rel1-2` package, so the artifacts are not guaranteed to
+match CI byte for byte.
+
+### Build
+
+Homebrew's Python refuses `pip install --user`, so use a venv, kept outside the
+checkout:
+
+```
+python3 -m venv ~/venvs/badger
+source ~/venvs/badger/bin/activate
+python3 -m pip install -r tools/requirements.txt
+
+"$(brew --prefix)/bin/bash" scripts/fetch-deps.sh
+scripts/run-host-tests.sh
+scripts/build-firmware.sh
+scripts/build-firmware.sh -DBHIHKH_TARGET=badger2350
+```
+
+If the QR decoding tests cannot load zbar, run
+`export DYLD_LIBRARY_PATH="$(brew --prefix zbar)/lib"` first. For picotool USB
+support, run `brew install libusb pkg-config` before `fetch-deps.sh`.
+
+### Known issues on macOS
+
+Apple Clang reports `DisplayService::nbuf_` as an unused private field, and
+`-Werror` stops the host build (GCC on Linux has no such warning). Until that is
+fixed, configure the host builds with the warning downgraded:
+
+```
+rm -rf build/host build/host-badger2350
+CXXFLAGS="-Wno-error=unused-private-field" scripts/run-host-tests.sh
+```
+
+Two backup tests in `tests_py/test_badge_form.py` fail because the macOS
+temporary directory `/var` is a symbolic link to `/private/var`, which the
+backup check reports as an input reached through a link.
+
+### Flashing
+
+Hold BOOT while plugging the badge in; a Badger 2040 mounts as `RPI-RP2` in
+Finder. Copy the firmware UF2 onto it, then the assets UF2 the same way. The
+serial port for `tools/badgerctl.py` is `/dev/cu.usbmodem*`.
+
 ## Hardware target
 
 | CMake option | Default |

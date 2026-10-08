@@ -1,5 +1,6 @@
 #include "battery.hpp"
 #include "check.hpp"
+#include "renderer.hpp"
 
 using namespace badge;
 
@@ -113,6 +114,175 @@ TEST(battery_usb_and_invalid_states) {
   CHECK(m.state().invalid >= 4u);
   CHECK(m.update(raw_for(3900), false).display == PowerDisplay::Battery);  // recovers, re-seeded
   CHECK_EQ(m.state().bars, 3);
+}
+
+TEST(battery_wake_first_frame_retries_transient_invalid_sample) {
+  // Normal operation has a valid reading before the badge powers down.
+  BatteryMeter running;
+  running.configure(BatteryThresholds{});
+  CHECK(running.update(raw_for(3900), false).display == PowerDisplay::Battery);
+
+  App app;
+  AppConfig cfg;
+  cfg.qr_configured = true;
+  cfg.sleep_timeout_s = 60;
+  app.boot(cfg, -1, 0);
+  CHECK_EQ(app.on_button({Button::Down, Gesture::Long, 1000}), kActSleep);
+  CHECK(app.sleeping());
+
+  // A real Classic battery wake is a cold boot. An invalid first conversion
+  // must not seed the filter; only a stable run is committed before the first
+  // post-wake frame is constructed.
+  BatteryMeter wake;
+  wake.configure(BatteryThresholds{});
+  int reads = 0, waits = 0;
+  const BatteryState &first = sample_initial_battery(
+      wake,
+      [&]() {
+        ++reads;
+        return reads == 1 ? BatterySample{{0, 0}, false}
+                          : BatterySample{raw_for(3900), false};
+      },
+      [&](uint32_t) { ++waits; });
+  CHECK(first.display == PowerDisplay::Battery);
+  CHECK_EQ(first.samples, 1u);
+  CHECK_EQ(reads, 1 + InitialBatterySamplePolicy::kStableSamples);
+  CHECK_EQ(waits, reads - 1);
+
+  app.boot(cfg, int(Button::B), 0);
+  CHECK(app.view().screen == Screen::Card);
+  Settings settings;
+  settings_defaults(&settings);
+  RenderContext ctx;
+  ctx.settings = &settings;
+  ctx.status.battery = first;
+  Framebuffer fb;
+  render(fb, app.view(), ctx);
+
+  const Rect status = status_rect(app.view(), ctx);
+  const int battery_x = status.right() - 16;
+  const int battery_y = status.y;
+  for (int bar = 0; bar < 4; ++bar) {
+    // Probe the interior of each 2x3 fill block, not the battery outline.
+    CHECK_EQ(fb.get(battery_x + 2 + 3 * bar, battery_y + 3) == Ink::Black,
+             bar < first.bars);
+  }
+}
+
+TEST(battery_initial_sample_ignores_plausible_low_until_stable) {
+  BatteryMeter m;
+  m.configure(BatteryThresholds{});
+  int reads = 0, waits = 0;
+  const BatteryState &s = sample_initial_battery(
+      m,
+      [&]() {
+        ++reads;
+        // Physical Classic reproduction: the first wake reading can be a
+        // plausible LOW value even though the cell is actually about 4.1 V.
+        return BatterySample{raw_for(reads == 1 ? 3200 : 4100), false};
+      },
+      [&](uint32_t) { ++waits; });
+
+  CHECK(s.display == PowerDisplay::Battery);
+  CHECK_EQ(s.samples, 1u);  // transient candidates never entered the EMA
+  CHECK_EQ(s.bars, 4);
+  CHECK(!s.low);
+  CHECK(s.filtered_mv >= 4050);
+  CHECK_EQ(reads, 1 + InitialBatterySamplePolicy::kStableSamples);
+  CHECK_EQ(waits, reads - 1);
+
+  // The next ordinary sample must stay full instead of climbing an EMA that
+  // was seeded by the transient low startup reading.
+  const BatteryState &next = m.update(raw_for(4100), false);
+  CHECK_EQ(next.bars, 4);
+  CHECK(!next.low);
+  CHECK(next.filtered_mv >= 4050);
+}
+
+TEST(battery_initial_sample_allows_slow_classic_cold_settle) {
+  BatteryMeter m;
+  m.configure(BatteryThresholds{});
+  uint32_t elapsed_ms = 0;
+  int reads = 0, waits = 0;
+  const BatteryState &s = sample_initial_battery(
+      m,
+      [&]() {
+        ++reads;
+        // The first hardware follow-up still timed out after the former
+        // 175 ms window. Model a Classic analog path that does not become
+        // trustworthy until 600 ms after cold boot.
+        if (elapsed_ms < 600)
+          return BatterySample{raw_for(reads & 1 ? 3200 : 4100), false};
+        return BatterySample{raw_for(4100), false};
+      },
+      [&](uint32_t delay_ms) {
+        ++waits;
+        elapsed_ms += delay_ms;
+      });
+
+  CHECK(s.display == PowerDisplay::Battery);
+  CHECK_EQ(s.samples, 1u);
+  CHECK_EQ(s.bars, 4);
+  CHECK(!s.low);
+  CHECK(s.filtered_mv >= 4050);
+  CHECK(elapsed_ms >= 600u);
+  CHECK(elapsed_ms < InitialBatterySamplePolicy::kMaxSettleMs);
+  CHECK_EQ(waits, reads - 1);
+}
+
+TEST(battery_initial_sample_rejects_never_stable_plausible_values) {
+  BatteryMeter m;
+  m.configure(BatteryThresholds{});
+  int reads = 0, waits = 0;
+  const BatteryState &s = sample_initial_battery(
+      m,
+      [&]() {
+        ++reads;
+        return BatterySample{raw_for(reads & 1 ? 3200 : 4100), false};
+      },
+      [&](uint32_t) { ++waits; });
+
+  CHECK(s.display == PowerDisplay::Invalid);
+  CHECK_EQ(s.samples, 1u);
+  CHECK_EQ(s.invalid, 1u);
+  CHECK_EQ(reads, InitialBatterySamplePolicy::kMaxAttempts);
+  CHECK_EQ(waits, InitialBatterySamplePolicy::kMaxAttempts - 1);
+}
+
+TEST(battery_initial_sample_accepts_usb_immediately) {
+  BatteryMeter m;
+  m.configure(BatteryThresholds{});
+  int reads = 0, waits = 0;
+  const BatteryState &s = sample_initial_battery(
+      m,
+      [&]() {
+        ++reads;
+        return BatterySample{{0, 0}, true};
+      },
+      [&](uint32_t) { ++waits; });
+
+  CHECK(s.display == PowerDisplay::Usb);
+  CHECK_EQ(reads, 1);
+  CHECK_EQ(waits, 0);
+}
+
+TEST(battery_initial_sample_preserves_persistent_failure) {
+  BatteryMeter m;
+  m.configure(BatteryThresholds{});
+  int reads = 0, waits = 0;
+  const BatteryState &s = sample_initial_battery(
+      m,
+      [&]() {
+        ++reads;
+        return BatterySample{{0, 0}, false};
+      },
+      [&](uint32_t) { ++waits; });
+
+  CHECK(s.display == PowerDisplay::Invalid);
+  CHECK_EQ(s.samples, 1u);
+  CHECK_EQ(s.invalid, 1u);
+  CHECK_EQ(reads, InitialBatterySamplePolicy::kMaxAttempts);
+  CHECK_EQ(waits, InitialBatterySamplePolicy::kMaxAttempts - 1);
 }
 
 TEST(battery_unsorted_thresholds_are_sanitised) {
