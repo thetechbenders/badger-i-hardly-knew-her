@@ -17,7 +17,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ninja-build libzbar0
-          python3 -m pip install --user -r tools/requirements.txt
+          python3 -m pip install --user -r tools/requirements.txt -r studio/requirements.txt
       # Builds and runs the C++ tests once per BHIHKH_TARGET (each renders at
       # its own panel size), then the Python tests and both targets' previews.
       - name: Unit, render, QR-decode and tooling tests
