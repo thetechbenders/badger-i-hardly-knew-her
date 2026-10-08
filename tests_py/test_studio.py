@@ -20,10 +20,35 @@ class StudioTests(unittest.TestCase):
                                  base_url="http://127.0.0.1:8765")
         home = self.client.get("/")
         self.assertEqual(home.status_code, 200)
-        import re
-        self.token = re.search(r'name="studio-token" content="([^"]+)"', home.text).group(1)
+        self.assertNotIn('studio-token', home.text)
+        self.token = self.client.app.state.studio_token
         self.auth = {"X-Studio-Token": self.token}
         self.form = self.client.get("/api/v1/workspace", headers=self.auth).json()
+
+    def test_token_not_available_to_other_local_clients(self):
+        home = self.client.get("/")
+        self.assertNotIn(self.token, home.text)
+        self.assertEqual(self.client.get("/api/v1/workspace").status_code, 403)
+        self.assertEqual(self.client.get("/api/v1/workspace",
+                         headers={"X-Studio-Token": self.token}).status_code, 200)
+
+    def test_restart_ignores_target_names_in_comments(self):
+        work = Path(self.temp.name) / "workspace"
+        with (work / "badge.toml").open("a", encoding="utf-8") as stream:
+            stream.write('\\n# processed = "sample-badger2350.png"\\n')
+        restarted = TestClient(create_app(work), base_url="http://127.0.0.1:8765")
+        data = restarted.get("/api/v1/workspace",
+               headers={"X-Studio-Token": restarted.app.state.studio_token}).json()
+        self.assertEqual(data["target"], "badger2040")
+
+    def test_streaming_upload_exceeds_limit_without_content_length(self):
+        def chunks():
+            yield b'{"target":"badger2040","toml":"'
+            yield b"A" * (128 * 1024)
+            yield b'"}'
+        result = self.client.put("/api/v1/workspace", content=chunks(),
+                    headers={**self.auth, "Content-Type": "application/json"})
+        self.assertEqual(result.status_code, 413)
 
     def test_template_round_trip_and_metadata(self):
         targets = self.client.get("/api/v1/targets", headers=self.auth).json()["targets"]

@@ -6,7 +6,6 @@ provide authentication against malware running as the same local user.
 """
 from __future__ import annotations
 
-import json
 import re
 import secrets
 import shutil
@@ -25,7 +24,6 @@ from bhihkh_targets import TARGETS  # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "static"
 MAX_JSON = 128 * 1024
-LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
 
 
 class Edit(BaseModel):
@@ -75,6 +73,7 @@ def _safe_references(text: str, target: str) -> list[str]:
 def create_app(workspace: Path | None = None) -> FastAPI:
     app = FastAPI(title="BHIHKH Studio", docs_url=None, redoc_url=None, openapi_url=None)
     token = secrets.token_urlsafe(32)
+    app.state.studio_token = token  # Accessible only inside this Python process, not through HTTP.
     raw_work = workspace or ROOT / "local" / "studio"
     if raw_work.is_symlink():
         raise RuntimeError("Refusing symlinked Studio workspace")
@@ -101,8 +100,12 @@ def create_app(workspace: Path | None = None) -> FastAPI:
         raise RuntimeError("Refusing symlinked Studio form")
     if not form_path.exists():
         form_path.write_text(template, encoding="utf-8")
-    active = {"target": "badger2350" if 'processed = "sample-badger2350.png"' in
-              form_path.read_text(encoding="utf-8") else "badger2040"}
+    # Parse TOML rather than matching a sample filename in comment text.
+    saved = badge_form.parse_form(form_path)
+    portrait = saved.get("portrait", {})
+    selected = portrait.get("processed") if isinstance(portrait, dict) else None
+    active = {"target": next((name for name in TARGETS
+               if selected == f"sample-{name}.png"), "badger2040")}
 
     def validate(text: str, target: str) -> dict:
         if target not in TARGETS:
@@ -140,7 +143,6 @@ def create_app(workspace: Path | None = None) -> FastAPI:
     @app.get("/")
     def home():
         html = (STATIC / "index.html").read_text(encoding="utf-8")
-        html = html.replace("STUDIO_SESSION_TOKEN", token)
         return HTMLResponse(html)
 
     @app.get("/app.js")
@@ -174,9 +176,13 @@ def create_app(workspace: Path | None = None) -> FastAPI:
                     raise HTTPException(413, "Request too large")
             except ValueError:
                 raise HTTPException(400, "Invalid Content-Length")
-        raw = await request.body()
-        if len(raw) > MAX_JSON:
-            raise HTTPException(413, "Request too large")
+        # Enforce the limit while reading, even if Content-Length is absent.
+        chunks = bytearray()
+        async for chunk in request.stream():
+            if len(chunks) + len(chunk) > MAX_JSON:
+                raise HTTPException(413, "Request too large")
+            chunks.extend(chunk)
+        raw = bytes(chunks)
         try:
             update = Edit.model_validate_json(raw)
         except ValueError:
@@ -207,8 +213,12 @@ def main():
     args = parser.parse_args()
     if not 1 <= args.port <= 65535:
         parser.error("port must be 1..65535")
-    print(f"BHIHKH Studio: http://127.0.0.1:{args.port}/")
-    uvicorn.run(create_app(), host="127.0.0.1", port=args.port, access_log=False)
+    app = create_app()
+    # Fragment is never sent in HTTP requests. The browser reads it and
+    # drops it from history; no unauthenticated token bootstrap endpoint.
+    print(f"BHIHKH Studio: http://127.0.0.1:{args.port}/#token={app.state.studio_token}", flush=True)
+    print("Keep this local launch URL private: it grants access to the workspace.", flush=True)
+    uvicorn.run(app, host="127.0.0.1", port=args.port, access_log=False)
 
 
 if __name__ == "__main__":

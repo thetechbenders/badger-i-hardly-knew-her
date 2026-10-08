@@ -1,5 +1,7 @@
 "use strict";
-const token = document.querySelector('meta[name="studio-token"]').content;
+// Token arrives only via the private launch URL fragment, never via HTTP.
+const token = new URLSearchParams(window.location.hash.slice(1)).get('token') || '';
+if (token) history.replaceState(null, '', window.location.pathname);
 const target = document.getElementById("target");
 const editor = document.getElementById("toml");
 const status = document.getElementById("state");
@@ -9,8 +11,13 @@ async function call(path, options={}) {
   const res = await fetch('/api/v1/' + path, {
     ...options, headers: {'X-Studio-Token':token,...(options.headers||{})}
   });
-  const data = await res.json();
-  if (!res.ok && res.status !== 422) throw new Error(data.detail || 'Request failed');
+  let data = {};
+  try { data = await res.json(); } catch (_) { /* HTTP error may be non-JSON */ }
+  if (!res.ok && res.status !== 422) {
+    const detail = data.detail;
+    throw new Error(typeof detail === 'string' ? detail :
+      (detail ? JSON.stringify(detail) : res.status + ' ' + res.statusText));
+  }
   return {res,data};
 }
 function present(data) {
@@ -25,6 +32,7 @@ function present(data) {
 }
 async function initialize() {
   try {
+    if (!token) throw new Error('Open the private launch URL printed by Studio');
     const [{data:t},{data:w}] = await Promise.all([call('targets'),call('workspace')]);
     t.targets.forEach(x => {const o=document.createElement('option');o.value=x.id;
       o.textContent=x.name + ' (' + x.display.join(' × ') + ')';target.append(o);});
@@ -32,7 +40,10 @@ async function initialize() {
   } catch (e) {status.textContent='Cannot connect: ' + e.message;}
 }
 target.addEventListener('change',()=>{
-  editor.value=editor.value.replace(/sample-badger(?:2040|2350)\.png/g,sampleFor(target.value));
+  // Match any server-provided target, including future additions.
+  const oldNames = Array.from(target.options, o => sampleFor(o.value));
+  editor.value = editor.value.replace(/sample-[a-z0-9_-]+\.png/g,
+    name => oldNames.includes(name) ? sampleFor(target.value) : name);
   status.textContent='Unsaved changes';
 });
 editor.addEventListener('input',()=>{status.textContent='Unsaved changes';});

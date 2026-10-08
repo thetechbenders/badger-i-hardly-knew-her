@@ -17,14 +17,22 @@ pip install -r tools/requirements.txt -r studio/requirements.txt
 python -m studio.app --port 8765
 ```
 
-Open `http://127.0.0.1:8765/` in your browser. On WSL, a host browser
+Open the **complete private launch URL** printed in the terminal, including
+its `#token=...` fragment. The fragment is not transmitted in the HTTP
+request. The browser removes it from its address bar after loading, and
+includes the token only in same-origin API requests. Anyone who obtains
+the complete launch URL can access your workspace; do not share it.
+The root page does not disclose the token. A separate local OS account
+that can connect to loopback without the token cannot access the private
+API, but malware with your OS account permissions is outside this model. On WSL, a host browser
 may be able to reach the forwarded localhost port. Never port-forward Studio
 to another machine or run it behind a public reverse proxy.
 
 Studio keeps its editable form and sample portrait files under
 `local/studio/`, which is ignored by Git. The server binds to
 `127.0.0.1`, rejects arbitrary Host/Origin values, and requires a fresh
-per-process token for all API access. It does **not** authenticate other
+per-process token for all API access. Token material is printed to the
+owner's launching terminal, not embedded in an unauthenticated page. It does **not** authenticate other
 programs running as your local user.
 
 The form starts from `config/badge-form.toml` with a bundled, non-personal
