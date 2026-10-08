@@ -35,7 +35,7 @@ class StudioTests(unittest.TestCase):
     def test_restart_ignores_target_names_in_comments(self):
         work = Path(self.temp.name) / "workspace"
         with (work / "badge.toml").open("a", encoding="utf-8") as stream:
-            stream.write('\\n# processed = "sample-badger2350.png"\\n')
+            stream.write('\n# processed = "sample-badger2350.png"\n')
         restarted = TestClient(create_app(work), base_url="http://127.0.0.1:8765")
         data = restarted.get("/api/v1/workspace",
                headers={"X-Studio-Token": restarted.app.state.studio_token}).json()
