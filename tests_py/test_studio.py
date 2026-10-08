@@ -106,7 +106,7 @@ class StudioTests(unittest.TestCase):
 
     def test_visual_keeps_nonvisual_qr_settings(self):
         form = self.form["toml"].replace('caption = "Scan for my website"',
-            'caption = "Scan for my website"\\n# keep me\\nvcard = "BEGIN:VCARD\\\\nEND:VCARD"')
+            'caption = "Scan for my website"\n# keep me\nvcard = "BEGIN:VCARD\\nEND:VCARD"')
         # Use a syntactically valid nonvisual field without making it active.
         from studio import form_editor
         data = form_editor.view(form)

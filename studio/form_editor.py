@@ -9,7 +9,6 @@ from __future__ import annotations
 import tomllib
 
 import tomlkit
-from tomlkit.items import AoT
 
 PERSON = ("name", "title", "affiliation", "event", "interests")
 QR = ("show", "link", "caption")
@@ -76,6 +75,15 @@ def apply(toml_text: str, changes: dict) -> str:
                     raise EditorError(f"{sec} #{i}.{k}: must be text")
             if sec == "contacts" and row["type"] not in CONTACT_TYPES:
                 raise EditorError(f"contacts #{i}.type: invalid contact type")
+    # Do not silently delete unknown fields stored in an array-of-tables.
+    # No stable per-row IDs exist yet, so preserve safety over convenience.
+    source = tomllib.loads(toml_text)
+    for section, allowed in (("contacts", set(CONTACT)), ("projects", set(PROJECT))):
+        for index, row in enumerate(source.get(section, []), 1):
+            extra = set(row) - allowed
+            if extra:
+                raise EditorError(f"{section} #{index}: unsupported keys {', '.join(sorted(extra))}; "
+                                  "edit them in Advanced TOML until visual support is added")
     document = tomlkit.parse(toml_text)
     for sec in ("person", "qr"):
         table = document.get(sec)
