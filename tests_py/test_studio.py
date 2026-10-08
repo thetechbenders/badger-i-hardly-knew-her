@@ -72,7 +72,7 @@ class StudioTests(unittest.TestCase):
         r=self.client.put("/api/v1/workspace",headers={**self.auth,"Origin":"http://evil.example"},
             json=self.form)
         self.assertEqual(r.status_code,403)
-        r=self.client.put("/api/v1/workspace",headers=self.auth,json={"target":"badger2040","toml":"A"*130000})
+        r=self.client.put("/api/v1/workspace",headers=self.auth,json={"target":"badger2040","toml":"A"*140000})
         self.assertEqual(r.status_code,413)
 
 
