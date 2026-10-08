@@ -1,13 +1,16 @@
-# Badger 2350 smoke test (physical badge, pending)
+# Badger 2350 smoke test (reusable physical checklist)
 
-The `badger2350` target builds in CI, passes the host tests and artifact
-checks, and renders every screen at 264×176, but **nothing on this page has
-been run on a real Badger 2350 yet**. Run it before calling the target
-supported. Record each result (pass/fail, notes, the `version` output) in a
-file under `docs/test-records/`.
+**Core parity physical testing has passed for the documented scope.** The
+owner-reported results are preserved in
+[`test-records/2026-10-08-badger2350-parity-b3125aa-dc20680.md`](test-records/2026-10-08-badger2350-parity-b3125aa-dc20680.md):
+most tests ran on `b3125aa`, with targeted A2/B5/E2 retests on `dc20680`.
+This checklist remains reusable for other hardware and future firmware heads;
+never treat an older test record as proof of a new binary.
 
-Measured values asked for below (refresh time, current, battery voltage)
-have no expected number: there is none yet. Record what you see.
+Record the `version` output and each pass/fail in a new file under
+`docs/test-records/`. Measure refresh timing, battery voltage and current
+instead of assuming fixed values. Sleep current is not yet measured on the
+owner's device and remains optional characterization.
 
 Before starting: back up the stock flash (`picotool save -a
 badger-2350-full-backup.bin` in BOOTSEL mode) and have SWD available if you
@@ -43,8 +46,11 @@ with **HOME in place of USR**, and check every step:
    once after release (quiet browsing). DOWN held 3 s on the index: power off.
 4. UP long: gesture mode on/off. HOME short: diagnostics. HOME long:
    layout B, then A again.
-5. Both badge layouts: name, title and interests readable; portrait full
-   height, not cut.
+5. Both badge layouts: name, title and interests readable; portrait
+   rendered at its **intended asset geometry**, vertically centered and not
+   clipped or distorted. The designed 2350 sample is 104×176, but valid
+   smaller assets such as the owner's preferred 104×128 Classic one-bit
+   portrait are intentionally supported. Do not fail only for blank margins.
 6. Press buttons repeatedly **during** a refresh. **Expect**: exactly one more
    refresh with the newest screen afterwards (`diag refresh`: one entry per
    finished frame, reason `no partial on this panel` or `first frame`).
@@ -104,7 +110,11 @@ with **HOME in place of USR**, and check every step:
    from at least two phones (record models), at arm's length and close.
    **Expect**: each opens its own link.
 
-## H. Gesture sensor (only if an APDS-9960 is on Qw/ST)
+## H. Gesture sensor (optional; deferred from the core parity gate)
+
+The owner has put APDS-9960 experimentation on the backburner. These checks
+are optional and should be run **only if** an APDS-9960 is actually fitted;
+do not require them for Badger 2350 core parity acceptance.
 
 1. Boot with the sensor attached; UP long. **Expect**: the gesture indicator
    (not struck through); `diag gesture` shows the sensor on I2C0 SDA 4 SCL 5.
