@@ -1,7 +1,11 @@
 "use strict";
 // Token arrives only via the private launch URL fragment, never via HTTP.
-const token = new URLSearchParams(window.location.hash.slice(1)).get('token') || '';
-if (token) history.replaceState(null, '', window.location.pathname);
+const fragmentToken = new URLSearchParams(window.location.hash.slice(1)).get('token');
+if (fragmentToken) {
+  sessionStorage.setItem('studio-token', fragmentToken);
+  history.replaceState(null, '', window.location.pathname);
+}
+const token = fragmentToken || sessionStorage.getItem('studio-token') || '';
 const target = document.getElementById("target");
 const editor = document.getElementById("toml");
 const status = document.getElementById("state");
