@@ -7,16 +7,23 @@ each dependency at its pinned tag and **fails if the commit differs**.
 
 | Component | Version | Commit |
 |---|---|---|
-| Raspberry Pi Pico SDK | 2.2.0 | `a1438dff1d38bd9c65dbd693f0e5db4b9ae91779` |
+| Raspberry Pi Pico SDK | 2.3.1 | `079c6f39023649b154152db30f1d781e884879bc` |
 | TinyUSB (SDK submodule) | as pinned by the SDK | `86ad6e56c1700e85f1c5678607a762cfe3aa2f47` |
 | pimoroni-pico (UC8151 driver only) | v1.29.0-2 | `39b017a30717ed68e5ff15163bac89489acd09df` |
-| picotool (UF2 generation) | 2.2.0 | `a7eb3988f0645239185fadb4e25d8279478c2dbb` |
+| picotool (UF2 generation) | 2.3.1 | `2041936441b48a3cc53ae3da9e805229fe8f4e18` |
 | Arm GNU toolchain | 13.2.Rel1 (Ubuntu 24.04 `gcc-arm-none-eabi 15:13.2.rel1-2`) | – |
 | Pillow (font rasterisation) | 12.3.0 | – |
 
-Pimoroni's own CI builds pimoroni-pico v1.29.0-2 against pico-sdk 2.2.0, so
-the pair is known to be compatible. The board definition used is the SDK's
-`pimoroni_badger2040` (RP2040, 2 MiB W25Q16 flash).
+pico-sdk 2.3.1 is the first tagged SDK release with the official
+`pimoroni_badger2350` board header (upstream commit `8b0d07ed`); 2.2.0 and
+2.3.0 do not have it. That is the only reason for the update from 2.2.0. Its
+TinyUSB submodule is the same commit as 2.2.0's, and the SDK 2.3 build
+requires picotool 2.3.x, so picotool moved to 2.3.1, released alongside
+SDK 2.3.1. Nothing else changed (toolchain, pimoroni-pico, Pillow).
+pimoroni-pico v1.29.0-2 is built against 2.2.0 by Pimoroni's own CI; only its
+UC8151 driver is used here (Badger 2040 only), and it builds against 2.3.1.
+Board definitions: the SDK's `pimoroni_badger2040` (RP2040, 2 MiB W25Q16
+flash) and `pimoroni_badger2350` (RP2350A, 16 MiB flash).
 
 ## Linux (Ubuntu 24.04) or WSL2
 
@@ -27,8 +34,9 @@ sudo apt install cmake ninja-build python3 python3-pip git \
 python3 -m pip install --user -r tools/requirements.txt   # or use a venv
 
 scripts/fetch-deps.sh        # ~150 MB into deps/ (git-ignored); also builds picotool
-scripts/run-host-tests.sh    # host tests + previews in build/previews/
-scripts/build-firmware.sh    # firmware in build/fw/
+scripts/run-host-tests.sh    # host tests + previews in build/previews/ (Badger 2350: build/previews/badger2350/)
+scripts/build-firmware.sh    # Badger 2040 firmware in build/fw/
+scripts/build-firmware.sh -DBHIHKH_TARGET=badger2350   # Badger 2350 firmware in build/fw-badger2350/
 ```
 
 To build picotool with USB support (for `picotool save`, `info` and
@@ -51,16 +59,95 @@ before running `fetch-deps.sh`.
 - For `picotool save` backups on Windows, use the prebuilt picotool from the
   official `raspberrypi/pico-sdk-tools` releases, or usbipd + WSL.
 
+## macOS (Apple Silicon)
+
+Tested on an Apple Silicon Mac (M4) with Apple Clang 21 and Python 3.14.
+Intel Macs are untested.
+
+Install the Xcode Command Line Tools and the host tools with Homebrew. macOS
+ships Bash 3.2, which cannot run `scripts/fetch-deps.sh`, so a current Bash is
+needed too:
+
+```
+xcode-select --install
+brew install cmake ninja python git zbar bash
+```
+
+### Arm toolchain
+
+Do not take the cross compiler from Homebrew: the `arm-none-eabi-gcc` formula
+has no newlib, and the `gcc-arm-embedded` cask installs the latest release, not
+the pinned one. Download Arm GNU Toolchain 13.2.Rel1 from Arm's
+[download page](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)
+(`arm-gnu-toolchain-13.2.Rel1-darwin-arm64-arm-none-eabi.pkg`), install it, and
+put it on `PATH`, for example in `~/.zshrc`:
+
+```
+export PATH="/Applications/ArmGNUToolchain/13.2.Rel1/arm-none-eabi/bin:$PATH"
+```
+
+`arm-none-eabi-gcc --version` should report 13.2.1. This is Arm's own build,
+not Ubuntu's `15:13.2.rel1-2` package, so the artifacts are not guaranteed to
+match CI byte for byte.
+
+### Build
+
+Homebrew's Python refuses `pip install --user`, so use a venv, kept outside the
+checkout:
+
+```
+python3 -m venv ~/venvs/badger
+source ~/venvs/badger/bin/activate
+python3 -m pip install -r tools/requirements.txt
+
+"$(brew --prefix)/bin/bash" scripts/fetch-deps.sh
+scripts/run-host-tests.sh
+scripts/build-firmware.sh
+scripts/build-firmware.sh -DBHIHKH_TARGET=badger2350
+```
+
+If the QR decoding tests cannot load zbar, run
+`export DYLD_LIBRARY_PATH="$(brew --prefix zbar)/lib"` first. For picotool USB
+support, run `brew install libusb pkg-config` before `fetch-deps.sh`.
+
+### Known issues on macOS
+
+Apple Clang reports `DisplayService::nbuf_` as an unused private field, and
+`-Werror` stops the host build (GCC on Linux has no such warning). Until that is
+fixed, configure the host builds with the warning downgraded:
+
+```
+rm -rf build/host build/host-badger2350
+CXXFLAGS="-Wno-error=unused-private-field" scripts/run-host-tests.sh
+```
+
+Two backup tests in `tests_py/test_badge_form.py` fail because the macOS
+temporary directory `/var` is a symbolic link to `/private/var`, which the
+backup check reports as an input reached through a link.
+
+### Flashing
+
+Hold BOOT while plugging the badge in; a Badger 2040 mounts as `RPI-RP2` in
+Finder. Copy the firmware UF2 onto it, then the assets UF2 the same way. The
+serial port for `tools/badgerctl.py` is `/dev/cu.usbmodem*`.
+
 ## Hardware target
 
 | CMake option | Default |
 |---|---|
-| `-DBHIHKH_TARGET=<name>` | `badger2040`, the original Badger 2040 and the only implemented target |
+| `-DBHIHKH_TARGET=<name>` | `badger2040`, the original Badger 2040; or `badger2350`, the Badger 2350 (working name BadgHer™ NEO) |
 
-`badger2350` (Badger 2350, working name BadgHer™ NEO) is planned and not
-implemented: selecting it stops the configure step with an error, and so does
-an unknown name or a `PICO_BOARD`/`PICO_PLATFORM` that contradicts the target.
-Use a fresh build directory per target. See
+| Target | Build directory (`build-firmware.sh`) | Artifacts | UF2 family |
+|---|---|---|---|
+| `badger2040` | `build/fw/` | `badger_badge.uf2`, `badger_badge-assets.uf2` (+ `.elf`, `.bin`, `.map`) | RP2040 |
+| `badger2350` | `build/fw-badger2350/` | `badger2350_badge.uf2`, `badger2350_badge-assets.uf2` (+ `.elf`, `.bin`, `.map`) | RP2350 Arm Secure, after picotool's RP2350-E10 ignore block |
+
+An unknown name stops the configure step with an error, and so does a
+`PICO_BOARD`/`PICO_PLATFORM` that contradicts the target or a build
+directory configured for the other board; nothing falls back to the other
+badge. Verify a build with `scripts/verify_artifacts.py <dir> --target <name>`.
+The Badger 2350 build is CI-tested but not yet validated on hardware (see
+[BADGER2350_SMOKE_TEST.md](BADGER2350_SMOKE_TEST.md)). See
 [ARCHITECTURE.md](ARCHITECTURE.md#hardware-targets).
 
 ## Content selection at build time
@@ -68,7 +155,7 @@ Use a fresh build directory per target. See
 | CMake option | Default |
 |---|---|
 | `-DBADGER_PROFILE=<json>` | `local/profile.json` if present, else `config/sample-profile.json` (a `.toml` form needs `-DBADGER_PORTRAIT` too: configuring fails without it) |
-| `-DBADGER_PORTRAIT=<png>` | `local/portrait.png` if present, else `assets/sample/portrait_placeholder.png`; `none` = no built-in portrait |
+| `-DBADGER_PORTRAIT=<png>` | `local/portrait.png` if present, else `assets/sample/portrait_placeholder.png` (Badger 2350: `local/badger2350/portrait.png`, else `assets/sample/portrait_placeholder_badger2350.png`, 104×176); `none` = no built-in portrait |
 
 CMake prints which files were used. For a filled-in form, use
 `scripts/build-badge.sh local/badge.toml` instead
@@ -143,12 +230,16 @@ copy of the settings (staged, committed, store work buffers) holds the
 1. **host**: the C++ unit tests (ASan/UBSan), Python tool tests, zbar QR
    decoding of the rendered screens, a font reproducibility check and the
    previews (uploaded as an artifact).
-2. **firmware**: a real RP2040 cross-build for `BHIHKH_TARGET=badger2040`
-   with the pinned toolchain and dependencies, using the public sample
-   content. It then runs `verify_artifacts.py --require-clean --target
-   badger2040`, runs the second-checkout reproducibility check (configured
-   without the option, so it also checks the default target), and uploads
-   the UF2, ELF, map, bin, memory report and SHA256SUMS.
+2. **firmware**: a matrix over both targets, `badger2040` (RP2040) and
+   `badger2350` (RP2350), each a real cross-build with the pinned toolchain
+   and dependencies and the public sample content; any compiler warning
+   fails the job. Each runs `verify_artifacts.py --require-clean --target
+   <target>`, checks that a copy of its artifacts without the CMake cache is
+   refused as the other board's (wrong UF2 family), packages and verifies
+   the release ZIP, runs the second-checkout reproducibility check (the
+   badger2040 one is configured without the option, so it also checks the
+   default target), and uploads the UF2s, ELF, map, bin, memory report and
+   SHA256SUMS.
 
 ## Regenerating assets
 

@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   host:
-    name: Host tests and previews
+    name: Host tests and previews (both targets)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -18,6 +18,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends ninja-build libzbar0
           python3 -m pip install --user -r tools/requirements.txt
+      # Builds and runs the C++ tests once per BHIHKH_TARGET (each renders at
+      # its own panel size), then the Python tests and both targets' previews.
       - name: Unit, render, QR-decode and tooling tests
         run: scripts/run-host-tests.sh
       - uses: actions/upload-artifact@v4
@@ -26,12 +28,24 @@ jobs:
           path: build/previews/
 
   firmware:
-    name: RP2040 cross-build
+    name: Firmware cross-build (${{ matrix.target }})
     runs-on: ubuntu-24.04
-    # The hardware target this job builds (cmake/bhihkh_target.cmake). Only
-    # badger2040 is implemented; a second target becomes a matrix over this.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: badger2040
+            build: build/fw
+            prefix: badger_badge
+            portrait: assets/sample/portrait_placeholder.png
+            other: badger2350
+          - target: badger2350
+            build: build/fw-badger2350
+            prefix: badger2350_badge
+            portrait: assets/sample/portrait_placeholder_badger2350.png
+            other: badger2040
     env:
-      BHIHKH_TARGET: badger2040
+      BHIHKH_TARGET: ${{ matrix.target }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -68,35 +82,64 @@ jobs:
             -DBHIHKH_TARGET="$BHIHKH_TARGET" \
             -DPython3_EXECUTABLE="$BADGER_PYTHON" \
             -DBADGER_PROFILE="$PWD/config/sample-profile.json" \
-            -DBADGER_PORTRAIT="$PWD/assets/sample/portrait_placeholder.png"
+            -DBADGER_PORTRAIT="$PWD/${{ matrix.portrait }}" 2>&1 | tee "$RUNNER_TEMP/build.log"
+          # Warnings are defects (the SDK's own sources included).
+          if grep -E "(warning|Warning):" "$RUNNER_TEMP/build.log"; then echo "::error::build warnings"; exit 1; fi
       - name: Memory report
-        run: cat build/fw/memory-report.txt | head -12
+        run: cat ${{ matrix.build }}/memory-report.txt | head -12
       - name: Verify artifacts (UF2 regions, linker placement, metadata, checksums)
-        run: '"$BADGER_PYTHON" scripts/verify_artifacts.py build/fw --require-clean --target "$BHIHKH_TARGET"'
-      # Configured without -DBHIHKH_TARGET, so this also shows the default
-      # target builds the same image.
+        run: '"$BADGER_PYTHON" scripts/verify_artifacts.py ${{ matrix.build }} --require-clean --target "$BHIHKH_TARGET"'
+      # The other board's facts must reject this build: a package can never
+      # pass as firmware for the wrong badge. Checked on a copy of the
+      # artifacts without CMakeCache.txt, so the refusal has to come from the
+      # UF2s and image themselves, not from the cache naming the other target.
+      - name: Artifacts are refused as the other board's
+        run: |
+          stage="$RUNNER_TEMP/cross-artifacts"
+          mkdir -p "$stage/generated"
+          (cd ${{ matrix.build }} && cp $(awk '{print $2}' SHA256SUMS) SHA256SUMS "$stage/")
+          cp ${{ matrix.build }}/generated/builtin_assets.bin "$stage/generated/"
+          test ! -e "$stage/CMakeCache.txt"
+          if "$BADGER_PYTHON" scripts/verify_artifacts.py "$stage" --target ${{ matrix.other }} \
+               --name ${{ matrix.prefix }} > "$RUNNER_TEMP/cross.txt"; then
+            cat "$RUNNER_TEMP/cross.txt"; echo "::error::accepted as ${{ matrix.other }}"; exit 1
+          fi
+          cat "$RUNNER_TEMP/cross.txt"
+          grep -q "^skip  CMakeCache.txt" "$RUNNER_TEMP/cross.txt"
+          if grep -q "build directory configured" "$RUNNER_TEMP/cross.txt"; then exit 1; fi
+          grep -E "^FAIL  ${{ matrix.prefix }}(-assets)?\.uf2: every block tagged family" "$RUNNER_TEMP/cross.txt"
+      - name: Package and verify the release ZIP
+        run: |
+          "$BADGER_PYTHON" scripts/package_firmware.py ${{ matrix.build }} "$RUNNER_TEMP/${{ matrix.prefix }}.zip"
+          "$BADGER_PYTHON" scripts/package_firmware.py --verify "$RUNNER_TEMP/${{ matrix.prefix }}.zip"
+      # badger2040 is configured without -DBHIHKH_TARGET, so this also shows
+      # the default target builds the same image.
       - name: Reproducible from a different checkout path and build-directory name
         run: |
           repro="$RUNNER_TEMP/repro"
           git clone -q "$PWD" "$repro"
           git -C "$repro" checkout -q "$GITHUB_SHA"
           ln -s "$PWD/deps" "$repro/deps"
-          (cd "$repro" && BUILD_DIR="$repro/build/repro-other-name" scripts/build-firmware.sh \
+          args=()
+          [ "$BHIHKH_TARGET" = badger2040 ] || args=(-DBHIHKH_TARGET="$BHIHKH_TARGET")
+          (cd "$repro" && env -u BHIHKH_TARGET BUILD_DIR="$repro/build/repro-other-name" scripts/build-firmware.sh \
+            "${args[@]}" \
             -DPython3_EXECUTABLE="$BADGER_PYTHON" \
             -DBADGER_PROFILE="$repro/config/sample-profile.json" \
-            -DBADGER_PORTRAIT="$repro/assets/sample/portrait_placeholder.png" > /dev/null)
-          for f in badger_badge.uf2 badger_badge.bin badger_badge.elf badger_badge-assets.uf2; do
-            cmp "build/fw/$f" "$repro/build/repro-other-name/$f"
+            -DBADGER_PORTRAIT="$repro/${{ matrix.portrait }}" > /dev/null)
+          p=${{ matrix.prefix }}
+          for f in $p.uf2 $p.bin $p.elf $p-assets.uf2; do
+            cmp "${{ matrix.build }}/$f" "$repro/build/repro-other-name/$f"
             echo "identical: $f"
           done
       - uses: actions/upload-artifact@v4
         with:
-          name: firmware-sample
+          name: firmware-sample-${{ matrix.target }}
           path: |
-            build/fw/badger_badge.uf2
-            build/fw/badger_badge-assets.uf2
-            build/fw/badger_badge.elf
-            build/fw/badger_badge.elf.map
-            build/fw/badger_badge.bin
-            build/fw/memory-report.txt
-            build/fw/SHA256SUMS
+            ${{ matrix.build }}/${{ matrix.prefix }}.uf2
+            ${{ matrix.build }}/${{ matrix.prefix }}-assets.uf2
+            ${{ matrix.build }}/${{ matrix.prefix }}.elf
+            ${{ matrix.build }}/${{ matrix.prefix }}.elf.map
+            ${{ matrix.build }}/${{ matrix.prefix }}.bin
+            ${{ matrix.build }}/memory-report.txt
+            ${{ matrix.build }}/SHA256SUMS

@@ -2,12 +2,16 @@
 """Verify a firmware build directory before anything is flashed.
 
   scripts/verify_artifacts.py build/fw [--require-clean]
+  scripts/verify_artifacts.py build/fw-badger2350 --target badger2350
 
 Checks, all offline (no device involved):
   - UF2 files: valid blocks, the target's family ID, 256-byte pages; the firmware
     UF2 covers exactly the .bin from XIP_BASE and ends before the asset
     region; the asset UF2 lies inside the asset region and matches the
     generated pack; neither touches the guard gap or the settings sectors.
+    RP2350: each flash UF2 starts with picotool's RP2350-E10 block (family
+    "absolute", flagged RP2_IGNORE_BLOCK, at the target's address), which the
+    boot ROM never writes; it is checked and then left out of the regions.
   - Linker placement: both 4 KiB stacks in their scratch banks, core 1's
     stack array where multicore_launch_core1() puts the stack, and the crash
     record in the NOLOAD .uninitialized_data section, outside .data/.bss.
@@ -50,11 +54,17 @@ def tool(name: str, override: str | None) -> str:
     return t
 
 
-def uf2_blocks(path: Path, family: int) -> list[tuple[int, int, int, bytes]]:
+def uf2_blocks(path: Path, family: int, abs_block: int | None = None) -> list[tuple[int, int, int, bytes]]:
     blob = path.read_bytes()
     check(len(blob) % 512 == 0 and blob, f"{path.name}: whole 512-byte blocks")
     out = []
-    for off in range(0, len(blob) - 511, 512):
+    first = 0
+    if abs_block is not None:
+        b = blob[:512]
+        ok = len(b) == 512 and uf2.is_abs_block(b) and struct.unpack("<I", b[12:16])[0] == abs_block
+        check(ok, f"{path.name}: starts with the RP2350-E10 ignore block at 0x{abs_block:08x}")
+        first = 512 if ok else 0
+    for off in range(first, len(blob) - 511, 512):
         b = blob[off:off + 512]
         m0, m1, flags, addr, size, _no, _n, fam = struct.unpack("<8I", b[:32])
         (mend,) = struct.unpack("<I", b[508:])
@@ -79,14 +89,14 @@ def overlaps(lo: int, hi: int, rlo: int, rhi: int) -> bool:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("build", type=Path)
-    ap.add_argument("--name", default="badger_badge")
+    ap.add_argument("--name", help="artifact prefix (default: the target's, e.g. badger_badge, badger2350_badge)")
     ap.add_argument("--nm")
     ap.add_argument("--readelf")
     ap.add_argument("--require-clean", action="store_true", help="fail if the embedded version is -dirty")
     ap.add_argument("--target", choices=sorted(TARGETS), default=DEFAULT, help=f"BHIHKH_TARGET (default {DEFAULT})")
     a = ap.parse_args(argv)
-    d, n = a.build, a.name
     t = TARGETS[a.target]
+    d, n = a.build, a.name or t.artifact
     XIP, FLASH_SIZE, STACK = t.xip_base, t.flash_size, t.stack_size
     ASSET_OFF, ASSET_SIZE = t.asset_off, t.asset_size
     SETTINGS_OFF, SETTINGS_SIZE = t.settings_off, t.settings_size
@@ -102,7 +112,7 @@ def main(argv=None) -> int:
         print(f"skip  CMakeCache.txt (not a CMake build directory); checking as {t.name}")
 
     # --- UF2 / flash regions ------------------------------------------------
-    fw = uf2_blocks(d / f"{n}.uf2", t.uf2_family)
+    fw = uf2_blocks(d / f"{n}.uf2", t.uf2_family, t.uf2_abs_block)
     lo, hi = span(fw)
     image = b"".join(p for _, _, _, p in sorted(fw))
     binary = (d / f"{n}.bin").read_bytes()
@@ -111,7 +121,7 @@ def main(argv=None) -> int:
     check(image[:len(binary)] == binary and set(image[len(binary):]) <= {0xFF, 0x00},
           f"firmware UF2 payload == {n}.bin ({len(binary)} B)")
     check(hi <= XIP + ASSET_OFF, f"firmware ends at 0x{hi:08x}, before the asset region 0x{XIP + ASSET_OFF:08x}")
-    assets = uf2_blocks(d / f"{n}-assets.uf2", t.uf2_family)
+    assets = uf2_blocks(d / f"{n}-assets.uf2", t.uf2_family, t.uf2_abs_block)
     alo, ahi = span(assets)
     check(alo == XIP + ASSET_OFF and ahi <= XIP + ASSET_OFF + ASSET_SIZE,
           f"asset UF2 inside the asset region (0x{alo:08x}..0x{ahi:08x})")
@@ -167,6 +177,9 @@ def main(argv=None) -> int:
     # name is not used: it only appears when a profile links the repository.
     check(b"BHIHKH!\0" in binary and t.description.encode() + b"\0" in binary,
           "program name and target description embedded")
+    others = [o.name for o in TARGETS.values() if o.name != t.name and o.description.encode() in binary]
+    check(f"\0{t.name}\0".encode() in binary and not others,
+          f"image built for {t.name} (build_info target), no other board's description")
     try:
         desc = subprocess.run(["git", "-C", str(ROOT), "describe", "--always", "--dirty", "--tags", "--abbrev=12"],
                               capture_output=True, text=True, check=True).stdout.strip()

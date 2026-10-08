@@ -3,35 +3,32 @@
 
 using namespace badge;
 
-// Reference: pimoroni::UC8151_Legacy::pixel() for a 296x128 panel.
-static void ref_pixel(uint8_t *fb, int x, int y, int v) {
-  const int height = 128;
-  uint8_t *p = &fb[(y / 8) + (x * (height / 8))];
-  uint8_t o = 7 - (y & 0b111);
-  uint8_t m = ~(1 << o);
-  uint8_t b = (v == 0 ? 0 : 1) << o;
-  *p &= m;
-  *p |= b;
-}
+constexpr int W = Framebuffer::kWidth, H = Framebuffer::kHeight;
 
-TEST(framebuffer_layout_matches_uc8151_driver) {
+// The board-neutral layout: row-major, MSB first, 1 = black (as MONO1/PBM).
+TEST(framebuffer_layout_is_row_major_msb_first) {
   static Framebuffer fb;
   static uint8_t ref[Framebuffer::kBytes];
+  CHECK_EQ(Framebuffer::kStride, (W + 7) / 8);
+  CHECK_EQ(Framebuffer::kBytes, size_t(Framebuffer::kStride) * H);
   std::memset(ref, 0, sizeof ref);
   fb.clear(Ink::White);
   uint32_t seed = 1;
   for (int i = 0; i < 5000; ++i) {
     seed = seed * 1103515245u + 12345u;
-    const int x = int(seed >> 8) % 296, y = int(seed >> 20) % 128, v = (seed >> 3) & 1;
+    const int x = int(seed >> 8) % W, y = int(seed >> 20) % H, v = (seed >> 3) & 1;
     fb.set(x, y, v ? Ink::Black : Ink::White);
-    ref_pixel(ref, x, y, v);
+    uint8_t &b = ref[y * Framebuffer::kStride + x / 8];
+    const uint8_t m = uint8_t(0x80 >> (x % 8));
+    b = v ? uint8_t(b | m) : uint8_t(b & ~m);
   }
   CHECK(std::memcmp(fb.data(), ref, sizeof ref) == 0);
 }
 
 TEST(framebuffer_fill_rect_matches_set) {
   static Framebuffer a, b;
-  const Rect rects[] = {{0, 0, 296, 128}, {3, 5, 17, 9}, {290, 120, 20, 20}, {-5, -5, 10, 10}, {10, 7, 1, 1}, {0, 8, 296, 8}};
+  const Rect rects[] = {{0, 0, W, H}, {3, 5, 17, 9}, {W - 6, H - 8, 20, 20}, {-5, -5, 10, 10}, {10, 7, 1, 1}, {0, 8, W, 8},
+                        {7, 0, 2, H}, {1, 3, 14, 1}};
   for (const Rect &r : rects) {
     a.clear(Ink::White);
     b.clear(Ink::White);
@@ -48,20 +45,20 @@ TEST(framebuffer_clip_and_bounds) {
   static Framebuffer fb;
   fb.clear(Ink::White);
   fb.set(-1, 0, Ink::Black);
-  fb.set(296, 0, Ink::Black);
-  fb.set(0, 128, Ink::Black);
+  fb.set(W, 0, Ink::Black);
+  fb.set(0, H, Ink::Black);
   CHECK_EQ(fb.hash(), Framebuffer().hash());
   fb.set_clip({10, 10, 5, 5});
-  fb.fill_rect({0, 0, 296, 128}, Ink::Black);
+  fb.fill_rect({0, 0, W, H}, Ink::Black);
   fb.reset_clip();
   int black = 0;
-  for (int x = 0; x < 296; ++x)
-    for (int y = 0; y < 128; ++y) black += fb.get(x, y) == Ink::Black;
+  for (int x = 0; x < W; ++x)
+    for (int y = 0; y < H; ++y) black += fb.get(x, y) == Ink::Black;
   CHECK_EQ(black, 25);
   CHECK(fb.get(10, 10) == Ink::Black && fb.get(15, 10) == Ink::White);
 }
 
-TEST(framebuffer_diff_bounds_is_partial_window_aligned) {
+TEST(framebuffer_diff_bounds_is_pixel_exact) {
   static Framebuffer a, b;
   a.clear(Ink::White);
   b.clear(Ink::White);
@@ -71,10 +68,37 @@ TEST(framebuffer_diff_bounds_is_partial_window_aligned) {
   Rect d = a.diff_bounds(b);
   CHECK_EQ(d.x, 100);
   CHECK_EQ(d.w, 41);
-  CHECK_EQ(d.y, 8);
-  CHECK_EQ(d.h, 24);  // rows 8..31
-  CHECK_EQ(d.y % 8, 0);
-  CHECK_EQ(d.h % 8, 0);
+  CHECK_EQ(d.y, 13);
+  CHECK_EQ(d.h, 18);  // rows 13..30
+  // Corners and single pixels inside one byte.
+  a.clear(Ink::White);
+  b.clear(Ink::White);
+  b.set(W - 1, H - 1, Ink::Black);
+  d = a.diff_bounds(b);
+  CHECK(d.x == W - 1 && d.y == H - 1 && d.w == 1 && d.h == 1);
+  b.set(0, 0, Ink::Black);
+  d = a.diff_bounds(b);
+  CHECK(d.x == 0 && d.y == 0 && d.w == W && d.h == H);
+  b.clear(Ink::White);
+  b.set(3, 5, Ink::Black);
+  b.set(5, 5, Ink::Black);
+  d = a.diff_bounds(b);
+  CHECK(d.x == 3 && d.w == 3 && d.y == 5 && d.h == 1);
+  // A random set of changes: the bounds are exactly their extent.
+  uint32_t seed = 7;
+  for (int round = 0; round < 50; ++round) {
+    b.copy_from(a);
+    int x0 = W, x1 = -1, y0 = H, y1 = -1;
+    for (int i = 0; i < 1 + round % 5; ++i) {
+      seed = seed * 1103515245u + 12345u;
+      const int x = int(seed >> 8) % W, y = int(seed >> 20) % H;
+      b.set(x, y, Ink::Black);
+      x0 = x < x0 ? x : x0; x1 = x > x1 ? x : x1;
+      y0 = y < y0 ? y : y0; y1 = y > y1 ? y : y1;
+    }
+    d = a.diff_bounds(b);
+    CHECK(d.x == x0 && d.y == y0 && d.right() == x1 + 1 && d.bottom() == y1 + 1);
+  }
 }
 
 TEST(framebuffer_blit_mono_row_major) {

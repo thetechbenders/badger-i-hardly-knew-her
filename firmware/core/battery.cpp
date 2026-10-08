@@ -10,14 +10,14 @@ void BatteryMeter::configure(const BatteryThresholds &t) {
   if (t_.cal_permille < 900 || t_.cal_permille > 1100) t_.cal_permille = 1000;
 }
 
-uint16_t BatteryMeter::to_mv(const BatteryRaw &raw, uint16_t cal, uint16_t *vdd_mv) {
+uint16_t BatteryMeter::to_mv(const BatteryRaw &raw, uint16_t cal, uint16_t *vdd_mv, BatteryCircuit c) {
   if (raw.ref_counts == 0 || raw.ref_counts >= 4095) {
     if (vdd_mv) *vdd_mv = 0;
     return 0;
   }
-  const uint32_t vdd = (1240u * 4095u + raw.ref_counts / 2) / raw.ref_counts;
+  const uint32_t vdd = (uint32_t(c.ref_mv) * 4095u + raw.ref_counts / 2) / raw.ref_counts;
   if (vdd_mv) *vdd_mv = uint16_t(vdd > 65535 ? 65535 : vdd);
-  const uint64_t mv = (3ull * 1240ull * raw.bat_counts * cal + (uint64_t(raw.ref_counts) * 1000) / 2) /
+  const uint64_t mv = (uint64_t(c.divider) * c.ref_mv * raw.bat_counts * cal + (uint64_t(raw.ref_counts) * 1000) / 2) /
                       (uint64_t(raw.ref_counts) * 1000);
   return uint16_t(mv > 65535 ? 65535 : mv);
 }
@@ -28,12 +28,31 @@ uint8_t BatteryMeter::level_for(uint16_t mv) const {
   return n;
 }
 
+BatteryMeasurement BatteryMeter::inspect(const BatteryRaw &raw) const {
+  BatteryMeasurement m;
+  m.mv = to_mv(raw, t_.cal_permille, &m.vdd_mv, circuit_);
+  m.valid = m.vdd_mv >= kMinVddMv && m.vdd_mv <= kMaxVddMv &&
+            m.mv >= kMinValidMv && m.mv <= kMaxValidMv;
+  return m;
+}
+
+const BatteryState &BatteryMeter::mark_invalid(const BatteryRaw &raw) {
+  ++st_.samples;
+  const BatteryMeasurement m = inspect(raw);
+  st_.last_mv = m.mv;
+  st_.vdd_mv = m.vdd_mv;
+  ++st_.invalid;
+  st_.display = PowerDisplay::Invalid;
+  seeded_ = false;
+  return st_;
+}
+
 const BatteryState &BatteryMeter::update(const BatteryRaw &raw, bool usb) {
   ++st_.samples;
-  uint16_t vdd = 0;
-  const uint16_t mv = to_mv(raw, t_.cal_permille, &vdd);
+  const BatteryMeasurement measurement = inspect(raw);
+  const uint16_t mv = measurement.mv;
   st_.last_mv = mv;
-  st_.vdd_mv = vdd;
+  st_.vdd_mv = measurement.vdd_mv;
   if (usb) {
     // On USB the sense point is fed from VBUS, so it says nothing about the
     // cell; restart filtering when USB goes away.
@@ -41,8 +60,7 @@ const BatteryState &BatteryMeter::update(const BatteryRaw &raw, bool usb) {
     seeded_ = false;
     return st_;
   }
-  const bool valid = vdd >= kMinVddMv && vdd <= kMaxVddMv && mv >= kMinValidMv && mv <= kMaxValidMv;
-  if (!valid) {
+  if (!measurement.valid) {
     ++st_.invalid;
     st_.display = PowerDisplay::Invalid;
     seeded_ = false;

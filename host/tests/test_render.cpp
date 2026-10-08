@@ -14,6 +14,7 @@ extern const size_t kBuiltinAssetPack_size;
 using namespace badge;
 
 namespace {
+constexpr int W = Framebuffer::kWidth, H = Framebuffer::kHeight;
 Settings g_s;
 Framebuffer g_fb, g_fb2;
 
@@ -90,8 +91,8 @@ TEST(render_worst_case_text_stays_in_bounds) {
     View v;
     v.layout = layout;
     render(g_fb, v, c);
-    const int px = layout ? 296 - c.portrait.width : 0;
-    CHECK(portrait_intact(g_fb, c.portrait, px, (128 - c.portrait.height) / 2));
+    const int px = layout ? W - c.portrait.width : 0;
+    CHECK(portrait_intact(g_fb, c.portrait, px, (H - c.portrait.height) / 2));
   }
   RenderContext c = ctx_with();
   View v;
@@ -103,7 +104,7 @@ TEST(render_worst_case_text_stays_in_bounds) {
   static Framebuffer qr_only;
   qr_only.clear(Ink::White);
   QrSymbol sym;
-  qr_encode(g_s.profile.qr_payload, 128, &sym);
+  qr_encode(g_s.profile.qr_payload, target::kQrCardMaxPx, &sym);
   qr_draw(qr_only, sym, g.qr.x, g.qr.y);
   for (int x = g.qr.x; x < g.qr.right(); ++x)
     for (int y = g.qr.y; y < g.qr.bottom(); ++y) CHECK(g_fb.get(x, y) == qr_only.get(x, y));
@@ -134,7 +135,7 @@ TEST(render_missing_optional_fields_disappear) {
   set("interests", "");
   set("event", "");
   render(g_fb, v, c);
-  CHECK(region_white(g_fb, {110, 60, 186, 68}));  // nothing below the title block
+  CHECK(region_white(g_fb, {110, int16_t(H - 68), W - 110, 68}));  // nothing below the title block
 }
 
 TEST(render_without_portrait_uses_full_width) {
@@ -157,7 +158,8 @@ TEST(qr_geometry_integer_modules_and_quiet_zone) {
       CardGeometry g = card_geometry(c, full);
       CHECK(g.qr_status == QrStatus::Ok);
       CHECK(g.qr_scale >= kQrMinScale);
-      CHECK(g.qr.x >= 0 && g.qr.y >= 0 && g.qr.right() <= 296 && g.qr.bottom() <= 128);
+      CHECK(g.qr.x >= 0 && g.qr.y >= 0 && g.qr.right() <= W && g.qr.bottom() <= H);
+      CHECK(g.qr.w <= (full ? target::kQrFullMaxPx : target::kQrCardMaxPx));
       View v;
       v.screen = full ? Screen::QrFull : Screen::Card;
       render(g_fb, v, c);
@@ -215,7 +217,7 @@ TEST(render_status_area_reserved_on_every_screen) {
           v.layout = layout;
           render(g_fb, v, c);  // status Unknown/Off: nothing drawn there
           const Rect sr = status_rect(v, c);
-          CHECK(sr.x >= 0 && sr.right() <= 296);
+          CHECK(sr.x >= 0 && sr.right() <= W);
           if (v.screen == Screen::Recovery) {
             for (int x = sr.x; x < sr.right(); ++x)
               for (int y = sr.y; y < sr.bottom(); ++y) CHECK(g_fb.get(x, y) == Ink::Black);  // inside the header
@@ -225,8 +227,8 @@ TEST(render_status_area_reserved_on_every_screen) {
           // Drawing the fullest status changes nothing outside its rectangle.
           c.status = status_of(PowerDisplay::Battery, 0, true, GestureIndicator::Fault);
           render(g_fb2, v, c);
-          for (int x = 0; x < 296; ++x)
-            for (int y = 0; y < 128; ++y) {
+          for (int x = 0; x < W; ++x)
+            for (int y = 0; y < H; ++y) {
               const bool inside = x >= sr.x && x < sr.right() && y >= sr.y && y < sr.bottom();
               if (!inside) CHECK(g_fb.get(x, y) == g_fb2.get(x, y));
             }
@@ -304,8 +306,8 @@ TEST(render_unconfigured_qr_leaves_no_trace) {
   View v;
   v.screen = Screen::Card;
   render(g_fb, v, c);
-  CHECK(region_white(g_fb, {150, 0, 146, 128}));  // right part of the card is empty
-  CHECK(status_rect(v, c).right() == 294);        // status back in the top-right corner
+  CHECK(region_white(g_fb, {150, 0, W - 150, H}));  // right part of the card is empty
+  CHECK(status_rect(v, c).right() == W - 2);        // status back in the top-right corner
   // The full-screen QR request falls back to the card.
   v.screen = Screen::QrFull;
   render(g_fb2, v, c);
@@ -314,7 +316,7 @@ TEST(render_unconfigured_qr_leaves_no_trace) {
   set("contact1.value", maxlen("contact1.value", "W").c_str());
   v.screen = Screen::Card;
   render(g_fb, v, c);
-  CHECK(!region_white(g_fb, {200, 20, 80, 90}));
+  CHECK(!region_white(g_fb, {200, 20, W - 216, 90}));
 }
 
 // With every contact empty the card shows identity only: no placeholder
@@ -329,7 +331,7 @@ TEST(render_card_without_contacts_is_clean) {
   View v;
   v.screen = Screen::Card;
   render(g_fb, v, c);
-  CHECK(region_white(g_fb, {0, 60, 296, 68}));  // nothing below the name/title/rule block
+  CHECK(region_white(g_fb, {0, 60, W, H - 60}));  // nothing below the name/title/rule block
 }
 
 // Maximum-length content with wrapped titles, every status state and a
@@ -366,8 +368,8 @@ TEST(render_maximum_content_all_screens_and_states) {
         render(g_fb, v, c);  // ASan/UBSan catch any overrun
         CHECK(g_fb.hash() != Framebuffer().hash());
         if (v.screen == Screen::Badge) {
-          const int px = layout ? 296 - c.portrait.width : 0;
-          CHECK(portrait_intact(g_fb, c.portrait, px, (128 - c.portrait.height) / 2));
+          const int px = layout ? W - c.portrait.width : 0;
+          CHECK(portrait_intact(g_fb, c.portrait, px, (H - c.portrait.height) / 2));
         }
       }
 }
@@ -454,7 +456,7 @@ TEST(render_card_contact_icons) {
   CHECK_EQ(find_icon(g_fb, icons::discord), 1);
   // The icons sit in the label column at the card's left margin, one line apart.
   int gy = -1, dy = -1;
-  for (int y = 0; y < 128 - 12; ++y) {
+  for (int y = 0; y < H - 12; ++y) {
     if (icon_at(g_fb, icons::github, 8, y)) gy = y;
     if (icon_at(g_fb, icons::discord, 8, y)) dy = y;
   }
@@ -486,7 +488,7 @@ TEST(render_teaser_banner_without_link) {
   render(g_fb, v, c);
   // A solid black band spans the column below the title.
   int band_rows = 0;
-  for (int y = 0; y < 128; ++y) {
+  for (int y = 0; y < H; ++y) {
     bool solid = true;
     for (int x = 10; x < 20 && solid; ++x) solid = g_fb.get(x, y) == Ink::Black;
     band_rows += solid;
@@ -585,10 +587,10 @@ TEST(render_teaser_has_no_qr_hint) {
   View v;
   v.screen = Screen::Projects;
   render(g_fb, v, c);
-  CHECK(region_white(g_fb, {8, 128 - 14, 296 - 30, 14}));
+  CHECK(region_white(g_fb, {8, H - 14, W - 30, 14}));
   set("project1.link", "https://github.com/a/b");
   render(g_fb, v, c);
-  CHECK(!region_white(g_fb, {8, 128 - 14, 296 - 30, 14}));
+  CHECK(!region_white(g_fb, {8, H - 14, W - 30, 14}));
 }
 
 // ------------------------------------------------- identity-screen fit report
@@ -638,9 +640,14 @@ TEST(screen_fit_reports_cut_identity_fields) {
   CHECK(!screen_fit(g_fb, c, Screen::Badge, 0).event);
   CHECK(!screen_fit(g_fb, c, Screen::Badge, 1).event);
   CHECK(screen_fit(g_fb, c, Screen::Card, 0).event);  // the card does not show the event
-  // Interests need four lines: layout A has three, layout B's band two.
+  // Interests needing more lines than layout A allows (target::
+  // kBadgeInterestLines; layout B's band has two). On the Badger 2040 this
+  // list needs four lines; the taller Badger 2350 column takes any natural
+  // list that fits the field, so it gets wide filler words instead.
   settings_defaults(&g_s);
-  set("interests", "printing, electronics, embedded systems, sensors, firmware, e-paper displays, robotics, metrology");
+  set("interests", target::kBadgeInterestLines <= 3
+                       ? "printing, electronics, embedded systems, sensors, firmware, e-paper displays, robotics, metrology"
+                       : maxlen("interests", "WWW ").c_str());
   CHECK(!screen_fit(g_fb, c, Screen::Badge, 0).interests);
   CHECK(!screen_fit(g_fb, c, Screen::Badge, 1).interests);
 }
@@ -660,32 +667,16 @@ TEST(screen_fit_reports_cut_and_dropped_contacts) {
   set("contact2.label", "Mobile phone");
   set("contact2.type", "github");
   CHECK(screen_fit(g_fb, c, Screen::Card, 0).contact_label[1]);
-  // Six lines under a two-line title and an affiliation: the last are dropped.
-  clear_contacts();
-  set("title", "Principal Instrumentation Engineer");
-  set("affiliation", "Example Laboratories");
-  for (int i = 1; i <= kMaxContacts; ++i) {
-    set(("contact" + std::to_string(i) + ".label").c_str(), "Web");
-    set(("contact" + std::to_string(i) + ".value").c_str(), "example.com");
-  }
-  f = screen_fit(g_fb, c, Screen::Card, 0);
-  CHECK(f.contact_value[0]);
-  CHECK(!f.contact_value[kMaxContacts - 1] && !f.contact_label[kMaxContacts - 1]);
+  // How many lines fit under a two-line title: tests/<target>/test_layout.cpp.
 }
 
-TEST(screen_fit_card_caption_gives_way_but_is_not_cut) {
+TEST(screen_fit_card_caption_is_not_cut) {
   settings_defaults(&g_s);
   RenderContext c = ctx_with();
   set("qr.payload", "https://example.com/alex");
   set("qr.caption", "Scan to save my contact");
   CHECK(all_complete(screen_fit(g_fb, c, Screen::Card, 0)));  // two contacts: room for it
-  for (int i = 1; i <= 5; ++i) {
-    set(("contact" + std::to_string(i) + ".label").c_str(), "Web");
-    set(("contact" + std::to_string(i) + ".value").c_str(), "example.com");
-  }
-  ScreenFit f = screen_fit(g_fb, c, Screen::Card, 0);
-  CHECK(!f.caption_shown);  // contact lines win, by design
-  CHECK(f.caption);
+  // Whether it gives way to more contact lines: tests/<target>/test_layout.cpp.
   CHECK(screen_fit(g_fb, c, Screen::QrFull, 0).caption);  // shown in full there
   set("qr.caption", "");
   CHECK(screen_fit(g_fb, c, Screen::Card, 0).caption_shown);  // nothing configured, nothing missing

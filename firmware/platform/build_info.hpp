@@ -2,6 +2,7 @@
 
 namespace badge::build {
 extern const char *const kName;
+extern const char *const kTarget;     // BHIHKH_TARGET
 extern const char *const kVersion;    // git describe
 extern const char *const kBuildType;
 extern const char *const kDate;

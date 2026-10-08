@@ -82,6 +82,15 @@ redraw.
 The choice should be made on the physical badge, since ghosting depends on
 the panel and the temperature.
 
+### Badger 2350
+
+The SSD1680 backend has one waveform (Pimoroni's reference LUT) and no
+partial update, so every changed frame is a full refresh (`diag refresh`
+gives the reason "no partial on this panel" and speed `-`), and
+`refresh.speed` / `refresh.partial` have no effect. Coalescing, suppression
+of unchanged frames, clean-refresh requests and the 15 s BUSY timeout work
+as on the Badger 2040. Its refresh time has not been measured.
+
 ## Measuring on the badge (pending: physical test)
 
 `diag refresh` prints the last 16 frames: sequence, request time, wait

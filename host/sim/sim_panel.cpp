@@ -26,15 +26,26 @@ bool SimPanel::set_speed(uint8_t speed) {
   return true;
 }
 
-void SimPanel::start_full(const Framebuffer &fb) {
+bool SimPanel::start_full(const Framebuffer &fb) {
   if (busy()) ++violations;
+  if (start_fails) {  // nothing written, nothing triggered
+    ops.push_back({'f', speed_, {}});
+    return false;
+  }
   image.copy_from(fb);
   busy_until_ = now() + expected_ms();
   ops.push_back({'F', speed_, {0, 0, Framebuffer::kWidth, Framebuffer::kHeight}});
+  return true;
+}
+
+Rect SimPanel::partial_window(Rect d) const {
+  const int y0 = d.y & ~7, y1 = (d.bottom() + 7) & ~7;
+  return {d.x, int16_t(y0), d.w, int16_t(y1 - y0)};
 }
 
 void SimPanel::start_partial(const Framebuffer &fb, Rect r) {
   if (busy()) ++violations;
+  if (!partial) ++violations;
   if (r.y % 8 || r.h % 8) ++violations;  // UC8151 partial window granularity
   for (int x = r.x; x < r.right(); ++x)
     for (int y = r.y; y < r.bottom(); ++y) image.set(x, y, fb.get(x, y));

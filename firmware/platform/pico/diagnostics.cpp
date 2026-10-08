@@ -6,7 +6,7 @@
 #include <cstdio>
 #include <cstring>
 
-#include "hardware/structs/vreg_and_chip_reset.h"
+#include "board.hpp"
 #include "hardware/sync.h"
 #include "hardware/watchdog.h"
 #include "pico/bootrom.h"
@@ -32,16 +32,7 @@ extern char __flash_binary_end, __bss_end__, end;
 }  // namespace
 
 const BootInfo &boot(bool force_safe) {
-  // WATCHDOG.REASON is cleared by every chip-level reset; CHIP_RESET is not
-  // updated by a watchdog reset (it keeps describing the last chip reset,
-  // usually the original power-on), so it is only read for chip resets.
-  const uint32_t chip = vreg_and_chip_reset_hw->chip_reset;
-  ResetFlags f;
-  f.watchdog = watchdog_caused_reboot();
-  f.por = chip & VREG_AND_CHIP_RESET_CHIP_RESET_HAD_POR_BITS;
-  f.run_pin = chip & VREG_AND_CHIP_RESET_CHIP_RESET_HAD_RUN_BITS;
-  f.debugger = chip & VREG_AND_CHIP_RESET_CHIP_RESET_HAD_PSM_RESTART_BITS;
-  g_info = classify_boot(g_rec, f, force_safe);
+  g_info = classify_boot(g_rec, board::reset_flags(), force_safe);
   return g_info;
 }
 

@@ -8,6 +8,7 @@ result applies only to the firmware it names, never to later builds.
 | Record | Firmware | Date | Scope |
 |---|---|---|---|
 | [2026-10-01-usb-023b3c6.md](2026-10-01-usb-023b3c6.md) | personalised local build `023b3c6` | 2026-10-01 | USB-only checklist, owner-reported; identification and full-flash backup before the first flash |
+| [2026-10-08-badger2350-parity-b3125aa-dc20680.md](2026-10-08-badger2350-parity-b3125aa-dc20680.md) | Badger 2350 personalized `b3125aa` plus targeted `dc20680` retests | 2026-10-08 | Core parity physical milestone, owner-reported; original and retest heads distinguished; optional APDS deferred |
 
 The blank, reusable checklists are
 [../USB_HARDWARE_CHECKLIST.md](../USB_HARDWARE_CHECKLIST.md) (USB power only)

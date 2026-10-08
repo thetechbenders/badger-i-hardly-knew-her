@@ -212,7 +212,7 @@ void render_badge(Framebuffer &fb, const View &v, const RenderContext &ctx, Scre
       fb.hline(cx, c.y + 1, 24, Ink::Black);
       c.y += 6;
       cut = false;
-      col_wrapped(fb, c, fonts::sans_10, p.interests, 3, 0, Ink::Black, &cut);
+      col_wrapped(fb, c, fonts::sans_10, p.interests, target::kBadgeInterestLines, 0, Ink::Black, &cut);
       f.interests = !cut;
     } else if (!str_empty(p.interests)) {
       f.interests = false;  // no room left below the title
@@ -264,7 +264,9 @@ void render_badge(Framebuffer &fb, const View &v, const RenderContext &ctx, Scre
 // never be left over from another screen or project.
 CardGeometry qr_geometry_impl(const char *payload, bool full) {
   CardGeometry g{};
-  const int max_px = H;  // the symbol + quiet zone may use the full height
+  // Largest side the symbol + quiet zone may take (target layout; on the
+  // Badger 2040 both are the full height).
+  const int max_px = full ? target::kQrFullMaxPx : target::kQrCardMaxPx;
   g.qr_status = qr_encode(payload ? payload : "", max_px, &g_qr);
   if (g.qr_status == QrStatus::Ok) {
     const int side = g_qr.px;
@@ -519,6 +521,10 @@ void col_body(Framebuffer &fb, Column &c, const char *s, ProjectFit *fit) {
 void project_header(Framebuffer &fb, Column &c, int n, int total) {
   char hdr[24];
   std::snprintf(hdr, sizeof hdr, "PROJECT %d/%d", n + 1, total);
+  // Rows 0..kStatusHeight-1 at the right edge belong to the status area
+  // (default position, W - 2): a header that would reach it starts below.
+  if (c.x + text_width(fonts::sans_bold_10, hdr) > W - 2 - kStatusWidth && c.y < kStatusHeight + 1)
+    c.y = kStatusHeight + 1;
   const Font *hc[] = {&fonts::sans_bold_10};
   col_line(fb, c, hc, 1, hdr, 1);
 }
@@ -618,19 +624,37 @@ void render_project_qr(Framebuffer &fb, const View &v, const RenderContext &ctx,
   Column c{x, W - x - 8, 3, H - 2};
   project_header(fb, c, n, total);
   bool cut = false;
-  col_line(fb, c, kNameChainSmall, 2, p.projects[nth_configured_project(p, n)].title, 4, Align::Left, Ink::Black,
-           &cut);
+  const char *title = p.projects[nth_configured_project(p, n)].title;
+  if (target::kQrPageWraps && text_width(fonts::sans_bold_17, title) > c.w) {
+    // Narrow column beside a large QR (Badger 2350): wrap a long title onto
+    // two lines of the name font (bold 14 if a word is still too wide)
+    // instead of shrinking it onto one line or cutting it.
+    WrapLine probe[2];
+    const int n17 = wrap_text(fonts::sans_bold_17, title, c.w, probe, 2);
+    const bool fits17 = n17 > 0 && !probe[n17 - 1].ellipsized;
+    col_wrapped(fb, c, fits17 ? fonts::sans_bold_17 : fonts::sans_bold_14, title, 2, 4, Ink::Black, &cut);
+  } else {
+    col_line(fb, c, kNameChainSmall, 2, title, 4, Align::Left, Ink::Black, &cut);
+  }
   if (fit) fit->qr_title = !cut;
   col_wrapped(fb, c, fonts::sans_11, "Scan to open the repository", 2, 4);
+  const char *back = "hold B: back to project";
+  const Font &hf = fonts::sans_10;
+  const bool back_wraps = target::kQrPageWraps && text_width(hf, back) > c.w;
+  const int back_h = (back_wraps ? 2 : 1) * hf.line_height;
   Column u = c;
-  u.bottom = H - fonts::sans_10.line_height - 3;
+  u.bottom = H - back_h - 3;
   char label[sizeof(Project::link)];
   repo_label(url, label, sizeof label);
-  col_url(fb, u, fonts::sans_bold_10, label, 2);
-  const Font *hc[] = {&fonts::sans_10};
-  const char *back = "hold B: back to project";
-  FitResult r = fit_text(hc, 1, back, c.w);
-  draw_fitted(fb, r, back, c.x, H - fonts::sans_10.line_height - 1, c.w);
+  col_url(fb, u, fonts::sans_bold_10, label, target::kQrPageWraps ? 3 : 2);
+  if (back_wraps) {
+    Column h{c.x, c.w, H - back_h - 1, H};
+    col_wrapped(fb, h, hf, back, 2, 0);
+  } else {
+    const Font *hc[] = {&hf};
+    FitResult r = fit_text(hc, 1, back, c.w);
+    draw_fitted(fb, r, back, c.x, H - hf.line_height - 1, c.w);
+  }
 }
 
 // ------------------------------------------------------------ project index
@@ -744,7 +768,11 @@ int status_right(const View &v, const RenderContext &ctx) {
       return W - 2;
     case Screen::Card: {
       const CardGeometry g = card_geometry_impl(ctx, false);
-      return g.qr_status == QrStatus::Empty ? W - 2 : g.qr.x - 4;
+      // Keep the status in the true top-right whenever the vertically
+      // centred QR starts below the status strip. Only move it left when
+      // the QR actually occupies rows 0..kStatusHeight-1.
+      if (g.qr_status == QrStatus::Empty || g.qr.y >= kStatusHeight) return W - 2;
+      return g.qr.x - 4;
     }
     case Screen::Recovery: return W - 4;
     default: return W - 2;

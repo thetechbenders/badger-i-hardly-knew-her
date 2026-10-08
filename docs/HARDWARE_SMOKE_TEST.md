@@ -1,5 +1,8 @@
 # Hardware smoke test (physical badge)
 
+This is the Badger 2040 checklist. For the Badger 2350 (`badger2350`
+target), see [BADGER2350_SMOKE_TEST.md](BADGER2350_SMOKE_TEST.md).
+
 Host tests and the cross-build cannot prove the behaviours below; they need
 the real board. Record results (pass/fail, notes, firmware `version`) for
 each run. Keep a serial terminal open on USB where noted (`status`, `diag all`).

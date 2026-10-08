@@ -17,6 +17,24 @@ Firmware before the project portfolio used format 1 in two 4 KiB slots at
 0x1FE000 and 0x1FF000, which now lie inside format-2 slot B. See
 [Migration from format 1](#migration-from-format-1).
 
+### Badger 2350 (16 MiB)
+
+The same arrangement at the top of the larger flash, and the same settings
+and asset formats (`firmware/platform/badger2350/flash_layout.hpp`):
+
+| Offset | Size | Contents | Written by |
+|---|---|---|---|
+| 0x000000 | ≤ 0xFE0000 | Firmware image (build fails if larger) | UF2 / picotool |
+| 0xFE0000 | 64 KiB | Asset pack | `badger2350_badge-assets.uf2` only (never at runtime) |
+| 0xFF0000 | 48 KiB | Unused guard | – |
+| 0xFFC000 | 8 KiB | Settings slot A (format 2) | `commit` |
+| 0xFFE000 | 8 KiB | Settings slot B (format 2) | `commit` |
+
+There are no format-1 records on this board. No partition table: both UF2s
+are absolute, in the RP2350 Arm Secure family, and each starts with
+picotool's RP2350-E10 block (family "absolute", 0x10FFFF00, flagged
+RP2_IGNORE_BLOCK, so the boot ROM never writes it).
+
 ## Settings record (one per 8 KiB slot)
 
 ```
@@ -112,9 +130,19 @@ flashed pack, then the built-in pack, then no portrait.
 
 ## Framebuffer / panel layout
 
-Byte `x * 16 + y / 8`, bit `7 - y % 8`, 1 = black. This is identical to
-`UC8151_Legacy::pixel()`, and a host test compares against a transcription of
-that function.
+The renderer's `Framebuffer` is board-neutral: row-major, byte
+`y * stride + x / 8` (stride = width / 8), bit `7 - x % 8`, 1 = black, the
+same packing as MONO1 assets and PBM previews. Each panel backend converts
+it to its controller's RAM:
+
+- Badger 2040 (UC8151, 296×128): byte `x * 16 + y / 8`, bit `7 - y % 8`,
+  1 = black (`badger2040/uc8151_pack.hpp`). Identical to
+  `UC8151_Legacy::pixel()`; a host test compares against a transcription of
+  that function.
+- Badger 2350 (SSD1680, 264×176): byte `x * 22 + y / 8`, bit `7 - y % 8`,
+  1 = black, the same plane sent to both RAMs (0x26 and 0x24)
+  (`badger2350/ssd1680_pack.hpp`); a host test compares against the plane
+  loop of Pimoroni's reference driver.
 
 ## Profile JSON (`config/sample-profile.json`)
 
