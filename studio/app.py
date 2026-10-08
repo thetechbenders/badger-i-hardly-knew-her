@@ -75,12 +75,13 @@ def _safe_references(text: str, target: str) -> list[str]:
 def create_app(workspace: Path | None = None) -> FastAPI:
     app = FastAPI(title="BHIHKH Studio", docs_url=None, redoc_url=None, openapi_url=None)
     token = secrets.token_urlsafe(32)
-    work = (workspace or ROOT / "local" / "studio").resolve()
+    raw_work = workspace or ROOT / "local" / "studio"
+    if raw_work.is_symlink():
+        raise RuntimeError("Refusing symlinked Studio workspace")
+    work = raw_work.resolve()
+    if workspace is None and not work.is_relative_to((ROOT / "local").resolve()):
+        raise RuntimeError("Studio workspace must be under local/")
     work.mkdir(parents=True, exist_ok=True)
-    if work.is_symlink() or not work.is_relative_to((ROOT / "local").resolve()):
-        # Tests can supply an isolated workspace outside the repository.
-        if workspace is None:
-            raise RuntimeError("Studio workspace must be under local/")
     template = (ROOT / "config" / "badge-form.toml").read_text(encoding="utf-8")
     template = template.replace('processed = "../assets/sample/portrait_placeholder.png"',
                                 'processed = "sample-badger2040.png"')
