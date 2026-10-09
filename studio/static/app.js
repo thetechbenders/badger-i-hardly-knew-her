@@ -442,5 +442,39 @@ target.addEventListener("change",()=>{
   cropIds.forEach(id=>{$(id).value="";});
   portraitNote("Target changed. Compare again before selecting a portrait.");
 });
+$("screens-preview").addEventListener("click",async()=>{
+  const button=$("screens-preview");
+  button.disabled=true;
+  $("screens-status").textContent="Building and rendering screens…";
+  $("screens-results").replaceChildren();
+  try {
+    // Compose unsaved visual edits without saving them to the workspace.
+    let toml=editor.value;
+    if(activeView==="visual"){
+      const {res,data}=await call("compose",{method:"PUT",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({target:target.value,toml,fields:model})});
+      if(!res.ok) throw new Error((data.problems||["Cannot compose form"]).join("; "));
+      toml=data.toml;
+    }
+    const {res,data}=await call("screens/preview",{method:"PUT",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({target:target.value,toml})});
+    if(!res.ok) throw new Error((data.problems||[data.detail||"Rendering failed"]).join("; "));
+    for(const item of data.screens){
+      const figure=document.createElement("figure");
+      const img=document.createElement("img");
+      img.src="data:image/png;base64,"+item.png;
+      img.alt=item.name+" screen rendered by the C++ badge renderer";
+      const caption=document.createElement("figcaption");
+      caption.textContent=item.name;
+      figure.append(img,caption);
+      $("screens-results").append(figure);
+    }
+    $("screens-status").textContent=data.screens.length+
+      " screens rendered. Text fit and QR verification passed.";
+  }catch(error){$("screens-status").textContent="Preview failed: "+error.message;}
+  finally{button.disabled=false;}
+});
 if (token) connect(token);
 else lockSession("Paste the private launch URL printed by the running Studio server.");
