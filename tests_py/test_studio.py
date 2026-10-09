@@ -50,6 +50,29 @@ class StudioTests(unittest.TestCase):
                     headers={**self.auth, "Content-Type": "application/json"})
         self.assertEqual(result.status_code, 413)
 
+    def test_visual_html_has_every_javascript_dom_target(self):
+        """Catch HTML/JavaScript selector mismatches before browser rendering."""
+        import re
+        from html.parser import HTMLParser
+
+        class Elements(HTMLParser):
+            def __init__(self):
+                super().__init__()
+                self.ids = set()
+
+            def handle_starttag(self, tag, attrs):
+                self.ids.update(value for key, value in attrs if key == "id")
+
+        parser = Elements()
+        parser.feed((ROOT / "studio/static/index.html").read_text(encoding="utf-8"))
+        script = (ROOT / "studio/static/app.js").read_text(encoding="utf-8")
+        selectors = set(re.findall(r'\$\("([a-z][a-z0-9-]*)"\)', script))
+        # list() resolves $(section+"-list") for "contacts" and "projects".
+        selectors.update(("contacts-list", "projects-list"))
+        self.assertIn('$(section+"-list")', script)
+        self.assertFalse(selectors - parser.ids,
+                         f"Missing editor elements: {sorted(selectors - parser.ids)}")
+
     def test_visual_parse_and_compose_preserves_advanced_fields(self):
         from studio import form_editor
         original = self.form["toml"]
