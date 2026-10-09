@@ -70,9 +70,9 @@ owner's launching terminal, not embedded in an unauthenticated page. It does **n
 programs running as your local user.
 
 The form starts from `config/badge-form.toml` with a bundled, non-personal
-sample portrait for each target. Studio currently refuses arbitrary TOML file
-references; there is no portrait import, firmware build, USB flashing, or
-filesystem browser. Only successfully validated TOML is saved; failed edits
+sample portrait for each target. Studio refuses arbitrary TOML file references; managed portrait import and
+host-rendered badge screen previews are supported. Firmware build, USB flashing,
+and a filesystem browser are not implemented. Only successfully validated TOML is saved; failed edits
 stay in the browser, and the old saved form is retained.
 
 ### API contract
@@ -103,8 +103,8 @@ The existing host and firmware CI remain the regression gates.
 The editor keeps the existing TOML as the sole durable format. Unedited advanced
 settings and non-visual QR properties (e.g. vCard text) survive visual changes.
 Rebuilding contact/project tables may normalize comments *inside* those tables;
-other TOML comments/sections survive. Invalid edits cannot be saved. Portrait
-files cannot yet be imported; sample assets remain managed and local.
+other TOML comments/sections survive. Invalid edits cannot be saved. Portraits can be imported through the managed workshop; sample and selected
+portraits remain in the local private workspace.
 
 ### Portrait workshop
 
@@ -124,8 +124,8 @@ Python converter, not an independent browser approximation. Comparing regenerate
 all four methods; clicking a method displays a 104×128 pixel 1:1 CSS preview.
 Physical e-paper size and optical appearance are not simulated. Badge 2350 still supports its taller target
 elsewhere in the existing converter, but the Studio workflow intentionally
-preserves the original shorter portrait composition. Existing firmware-accurate
-whole-screen previews and export remain later milestones.
+preserves the original shorter portrait composition. Firmware-accurate whole-screen previews are implemented; firmware artifact
+export remains a later milestone.
 
 ### Firmware-accurate screen previews
 
