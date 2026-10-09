@@ -3,8 +3,7 @@
 A **local-only** browser shell around the existing TOML-form validation
 pipeline. The visual editor now exposes identity, contacts, projects and QR options,
 with move/add/remove controls. The full original TOML remains available in
-Advanced mode. Portrait upload, compiled firmware-renderer previews and
-artifact exports are **not implemented yet**.
+Advanced mode. Portrait upload and four-method monochrome comparison are available. Compiled firmware-renderer previews and artifact exports are **not implemented yet**.
 
 ## Start
 
@@ -85,7 +84,7 @@ stay in the browser, and the old saved form is retained.
 | `PUT /api/v1/workspace` | Validate with `badge_form.load_form()`, then save atomically |
 | `PUT /api/v1/parse` | Extract visual fields from a TOML document without saving it |
 | `PUT /api/v1/compose` | Apply edited fields, keeping other TOML options and comments |
-| Portrait upload, preview jobs, exports | Not yet implemented |
+| `PUT /api/v1/portrait/preview` | Decode a bounded PNG/JPEG and return four in-memory 1-bit comparisons |\n| `PUT /api/v1/portrait/select` | Stage a selected native-size, 1-bit PNG in the managed workspace |\n| Firmware screen preview jobs and exports | Not yet implemented |
 
 Every API request must include `X-Studio-Token`, sourced from a verified private launch URL or reconnect form. Mutations require JSON and accept bounded payloads.
 
@@ -106,3 +105,19 @@ settings and non-visual QR properties (e.g. vCard text) survive visual changes.
 Rebuilding contact/project tables may normalize comments *inside* those tables;
 other TOML comments/sections survive. Invalid edits cannot be saved. Portrait
 files cannot yet be imported; sample assets remain managed and local.
+
+### Portrait workshop
+
+Choose a PNG or JPEG no larger than 1 MiB, then **Compare dithering**.
+Studio creates four monochrome comparisons using the existing portrait converter:
+threshold, Bayer 8×8, Floyd–Steinberg, and Atkinson. Choosing a comparison
+and clicking **Use selected portrait** stores only that processed 1-bit PNG
+under the private Studio workspace. Finish with **Validate & save** to persist
+the TOML reference. The original uploaded photo is never retained.
+
+The initial workshop uses an automatic center crop at the native 104×128
+composition on both devices; manual drag-to-crop and tonal adjustment controls
+are not included in this slice. Badge 2350 still supports its taller target
+elsewhere in the existing converter, but the Studio workflow intentionally
+preserves the original shorter portrait composition. Existing firmware-accurate
+whole-screen previews and export remain later milestones.
