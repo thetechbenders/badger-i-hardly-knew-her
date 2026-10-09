@@ -242,7 +242,7 @@ $("connection-form").addEventListener("submit",async event=>{
 function cropValues() {
   const values = ["crop-x","crop-y","crop-w","crop-h"].map(id=>$(id).value.trim());
   if (values.every(v=>v==="")) return null;
-  if (values.some(v=>v==="" || !/^\\d+$/.test(v))) throw new Error("Enter all four crop values as positive integers.");
+  if (values.some(v=>v==="" || !/^\d+$/.test(v))) throw new Error("Enter all four crop values as positive integers.");
   return values.map(Number);
 }
 const cropIds = ["crop-x","crop-y","crop-w","crop-h"];
