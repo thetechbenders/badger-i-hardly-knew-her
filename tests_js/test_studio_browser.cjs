@@ -15,6 +15,7 @@ function fakeNode(tag="div") {
   const classes = new Set();
   return {
     tag, children: [], options: [], listeners: {}, value: "", textContent: "",
+    hidden: false, style: {}, naturalWidth: 1254, naturalHeight: 1254,
     checked: false, disabled: false,
     classList: {
       add(s) { classes.add(s); },
@@ -70,11 +71,12 @@ function browser({hash="", cached="", serverToken=VALID}={}) {
     if(url.endsWith("/compose")) data={ok:true,toml:"form = 1"};
     return {ok:true,status:200,statusText:"OK",json:async()=>data};
   };
+  const mockURL={...URL, createObjectURL(){return "blob:portrait-test";}, revokeObjectURL(){}};
   const context = {document,window,history,sessionStorage:{
     getItem(k){return storage.get(k)||null;},
     setItem(k,v){storage.set(k,v);},
     removeItem(k){storage.delete(k);}
-  },fetch,URL,URLSearchParams,console};
+  },fetch,URL:mockURL,URLSearchParams,console};
   vm.runInNewContext(javascript,context,{filename:"app.js"});
   return {
     elements,body,storage,requests,context,
@@ -151,4 +153,21 @@ test("portrait crop accepts integer coordinates and rejects malformed values", a
   assert.equal(JSON.stringify(b.context.cropValues()),JSON.stringify(values));
   b.elements.get("crop-w").value="abc";
   assert.throws(()=>b.context.cropValues(),/four crop values/);
+});
+
+test("selected photo makes the draggable crop surface visible", async()=>{
+  const b=browser({hash:"#token="+VALID});
+  await b.settle();
+  const fileInput=b.elements.get("portrait-file");
+  fileInput.files=[{type:"image/png",size:1200}];
+  b.elements.get("portrait-crop-stage").hidden=true;
+  fileInput.listeners.change();
+  const source=b.elements.get("portrait-source");
+  assert.equal(source.src,"blob:portrait-test");
+  source.onload();
+  assert.equal(b.elements.get("portrait-crop-stage").hidden,false);
+  assert.equal(b.elements.get("crop-x").value,"118");
+  assert.equal(b.elements.get("crop-y").value,"0");
+  assert.ok(b.elements.get("portrait-crop-box").style.width.endsWith("%"));
+  assert.match(b.elements.get("portrait-status").textContent,/Source image ready/);
 });
