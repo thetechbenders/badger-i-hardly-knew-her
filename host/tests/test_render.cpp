@@ -369,7 +369,16 @@ TEST(render_maximum_content_all_screens_and_states) {
         CHECK(g_fb.hash() != Framebuffer().hash());
         if (v.screen == Screen::Badge) {
           const int px = layout ? W - c.portrait.width : 0;
-          CHECK(portrait_intact(g_fb, c.portrait, px, (H - c.portrait.height) / 2));
+          const Rect sr = status_rect(v, c);
+          CHECK(sr.right() == W - 2);
+          for (int y = 0; y < c.portrait.height; ++y)
+            for (int x = 0; x < c.portrait.width; ++x) {
+              const int xx = px + x, yy = (H - c.portrait.height) / 2 + y;
+              if (layout && xx >= sr.x && xx < sr.right() && yy < sr.bottom()) continue;
+              const bool ink = (c.portrait.bits[y * c.portrait.stride + (x >> 3)] &
+                                (0x80 >> (x & 7))) != 0;
+              CHECK((g_fb.get(xx, yy) == Ink::Black) == ink);
+            }
         }
       }
 }
