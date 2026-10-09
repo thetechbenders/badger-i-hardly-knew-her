@@ -115,8 +115,9 @@ and clicking **Use selected portrait** stores only that processed 1-bit PNG
 under the private Studio workspace. Finish with **Validate & save** to persist
 the TOML reference. The original uploaded photo is never retained.
 
-The initial workshop uses an automatic center crop at the native 104×128
-composition on both devices; manual drag-to-crop and tonal adjustment controls
+The workshop starts with an automatic center crop at the 104×128
+composition on both devices. Numerical X/Y/width/height fields allow subsequent
+crop adjustments. Interactive drag handles and tonal adjustment controls
 are not included in this slice. Badge 2350 still supports its taller target
 elsewhere in the existing converter, but the Studio workflow intentionally
 preserves the original shorter portrait composition. Existing firmware-accurate
