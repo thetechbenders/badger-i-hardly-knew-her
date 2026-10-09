@@ -6,12 +6,18 @@ provide authentication against malware running as the same local user.
 """
 from __future__ import annotations
 
+import base64
+import binascii
+import io
+import tempfile
 import re
 import secrets
 import socket
 import shutil
 import sys
 from pathlib import Path
+
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, Response
@@ -21,11 +27,13 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "scripts"))
 import badge_form  # noqa: E402
+import portrait as portrait_tool  # noqa: E402
 from studio import form_editor  # noqa: E402
 from bhihkh_targets import TARGETS  # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "static"
 MAX_JSON = 128 * 1024
+MAX_PORTRAIT_JSON = 2 * 1024 * 1024
 
 
 class Edit(BaseModel):
@@ -35,6 +43,39 @@ class Edit(BaseModel):
 
 class Compose(Edit):
     fields: dict
+
+
+class PortraitRequest(BaseModel):
+    target: str
+    image: str = Field(max_length=1_500_000)
+    crop: list[int] | None = None
+
+
+class PortraitSelection(BaseModel):
+    target: str
+    image: str = Field(max_length=200_000)
+
+
+def decode_image(value: str) -> bytes:
+    try:
+        raw = base64.b64decode(value, validate=True)
+    except (ValueError, binascii.Error):
+        raise HTTPException(422, "Invalid base64") from None
+    if len(raw) > 1024 * 1024:
+        raise HTTPException(413, "Image exceeds 1 MiB")
+    return raw
+
+
+def output_size(target: str) -> tuple[int, int]:
+    if target not in TARGETS:
+        raise HTTPException(422, "Unsupported target")
+    return TARGETS[target].portrait_w, min(TARGETS[target].portrait_h, 128)
+
+
+def image64(image: Image.Image) -> str:
+    stream = io.BytesIO()
+    image.save(stream, format="PNG")
+    return base64.b64encode(stream.getvalue()).decode("ascii")
 
 
 def _host_ok(host: str) -> bool:
@@ -69,8 +110,8 @@ def _safe_references(text: str, target: str) -> list[str]:
             value = table.get(key)
             if value is None or value == "":
                 continue
-            permitted = f"sample-{target}.png" if section == "portrait" and key == "processed" else None
-            if value != permitted:
+            permitted = (f"sample-{target}.png", f"portrait-{target}.png") if section == "portrait" and key == "processed" else ()
+            if value not in permitted:
                 errors.append(f"{section}.{key}: Studio Phase 1 only supports its managed sample portrait; "
                               "arbitrary file references and uploads are not enabled yet")
     return errors
@@ -111,7 +152,7 @@ def create_app(workspace: Path | None = None) -> FastAPI:
     portrait = saved.get("portrait", {})
     selected = portrait.get("processed") if isinstance(portrait, dict) else None
     active = {"target": next((name for name in TARGETS
-               if selected == f"sample-{name}.png"), "badger2040")}
+               if selected in (f"sample-{name}.png", f"portrait-{name}.png")), "badger2040")}
 
     def validate(text: str, target: str) -> dict:
         if target not in TARGETS:
@@ -172,25 +213,85 @@ def create_app(workspace: Path | None = None) -> FastAPI:
     def get_workspace():
         return {"target": active["target"], "toml": form_path.read_text(encoding="utf-8")}
 
-    async def read_json(request: Request, model):
+    async def read_json(request: Request, model, limit=MAX_JSON):
         """Bound each request as it streams; validate the typed API envelope."""
         if request.headers.get("content-type", "").split(";")[0].strip() != "application/json":
             raise HTTPException(415, "JSON required")
         if request.headers.get("content-length"):
             try:
-                if int(request.headers["content-length"]) > MAX_JSON:
+                if int(request.headers["content-length"]) > limit:
                     raise HTTPException(413, "Request too large")
             except ValueError:
                 raise HTTPException(400, "Invalid Content-Length")
         chunks = bytearray()
         async for chunk in request.stream():
-            if len(chunks) + len(chunk) > MAX_JSON:
+            if len(chunks) + len(chunk) > limit:
                 raise HTTPException(413, "Request too large")
             chunks.extend(chunk)
         try:
             return model.model_validate_json(bytes(chunks))
         except ValueError:
             raise HTTPException(422, "Invalid request") from None
+
+    @app.put("/api/v1/portrait/preview")
+    async def preview_portrait(request: Request):
+        data = await read_json(request, PortraitRequest, MAX_PORTRAIT_JSON)
+        size = output_size(data.target)
+        raw = decode_image(data.image)
+        try:
+            with Image.open(io.BytesIO(raw)) as source:
+                if source.format not in ("JPEG", "PNG"):
+                    raise HTTPException(422, "Only JPEG and PNG are supported")
+                if (source.width < 32 or source.height < 32
+                        or source.width * source.height > 12_000_000):
+                    raise HTTPException(422, "Image dimensions out of range")
+                source.load()
+                image = ImageOps.exif_transpose(source).convert("RGB")
+        except (OSError, UnidentifiedImageError, Image.DecompressionBombError):
+            raise HTTPException(422, "Invalid image") from None
+        if data.crop is None:
+            cw = min(image.width, int(image.height * size[0] / size[1]))
+            ch = round(cw * size[1] / size[0])
+            crop = [(image.width - cw) // 2, (image.height - ch) // 2, cw, ch]
+        else:
+            crop = data.crop
+        if (len(crop) != 4 or any(type(n) is not int for n in crop)
+                or crop[0] < 0 or crop[1] < 0 or crop[2] < 8 or crop[3] < 8
+                or crop[0] + crop[2] > image.width or crop[1] + crop[3] > image.height
+                or abs(crop[2] / crop[3] - size[0] / size[1]) > 0.025):
+            raise HTTPException(422, "Invalid crop or crop aspect")
+        with tempfile.TemporaryDirectory(dir=work) as temp:
+            source_path = Path(temp) / "source.png"
+            image.save(source_path)
+            try:
+                gray = portrait_tool.load_gray(source_path, tuple(crop), size, 1.0, 1.0, 2.0, 0.6)
+                variants = {method: image64(portrait_tool.to_image(portrait_tool.convert(gray, method)))
+                            for method in portrait_tool.METHODS}
+            except (ValueError, SystemExit) as error:
+                raise HTTPException(422, str(error)) from None
+        return {"width": image.width, "height": image.height, "crop": crop,
+                "output": list(size), "variants": variants}
+
+    @app.put("/api/v1/portrait/select")
+    async def select_portrait(request: Request):
+        data = await read_json(request, PortraitSelection)
+        size = output_size(data.target)
+        raw = decode_image(data.image)
+        try:
+            with Image.open(io.BytesIO(raw)) as image:
+                image.load()
+                if image.format != "PNG" or image.mode != "1" or image.size != size:
+                    raise HTTPException(422, "Expected native-size 1-bit PNG")
+        except (OSError, UnidentifiedImageError, Image.DecompressionBombError):
+            raise HTTPException(422, "Invalid processed image") from None
+        name = f"portrait-{data.target}.png"
+        path = work / name
+        stage = work / (name + ".tmp")
+        if path.is_symlink() or stage.is_symlink():
+            raise HTTPException(409, "Unsafe portrait path")
+        stage.write_bytes(raw)
+        stage.replace(path)
+        return {"ok": True, "processed": name}
 
     @app.put("/api/v1/parse")
     async def parse_view(request: Request):
