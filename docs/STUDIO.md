@@ -3,7 +3,7 @@
 A **local-only** browser shell around the existing TOML-form validation
 pipeline. The visual editor now exposes identity, contacts, projects and QR options,
 with move/add/remove controls. The full original TOML remains available in
-Advanced mode. Portrait upload and four-method monochrome comparison are available. Compiled firmware-renderer previews and artifact exports are **not implemented yet**.
+Advanced mode. Portrait upload and four-method monochrome comparison are available. The firmware-accurate C++ screen preview is available; artifact exports are **not implemented yet**.
 
 ## Start
 
@@ -84,7 +84,7 @@ stay in the browser, and the old saved form is retained.
 | `PUT /api/v1/workspace` | Validate with `badge_form.load_form()`, then save atomically |
 | `PUT /api/v1/parse` | Extract visual fields from a TOML document without saving it |
 | `PUT /api/v1/compose` | Apply edited fields, keeping other TOML options and comments |
-| `PUT /api/v1/portrait/preview` | Decode a bounded PNG/JPEG and return four in-memory 1-bit comparisons |\n| `PUT /api/v1/portrait/select` | Stage a selected native-size, 1-bit PNG in the managed workspace |\n| Firmware screen preview jobs and exports | Not yet implemented |
+| `PUT /api/v1/portrait/preview` | Decode a bounded PNG/JPEG and return four in-memory 1-bit comparisons |\n| `PUT /api/v1/portrait/select` | Stage a selected native-size, 1-bit PNG in the managed workspace |\n| `PUT /api/v1/screens/preview` | Validate unsaved TOML and render all screens with the existing C++ host renderer, text-fit and QR gates |\n| Firmware artifact exports | Not yet implemented |
 
 Every API request must include `X-Studio-Token`, sourced from a verified private launch URL or reconnect form. Mutations require JSON and accept bounded payloads.
 
@@ -126,3 +126,19 @@ Physical e-paper size and optical appearance are not simulated. Badge 2350 still
 elsewhere in the existing converter, but the Studio workflow intentionally
 preserves the original shorter portrait composition. Existing firmware-accurate
 whole-screen previews and export remain later milestones.
+
+### Firmware-accurate screen previews
+
+Click **Render badge screens** to validate and render the current visual or Advanced
+TOML edits without saving. The existing `badge_form.preview()` and C++ host
+renderer generate native monochrome screens for the selected hardware target,
+including badge, contact card, QR, project index, and configured project screens.
+Existing text-fit and QR decoding checks must pass; otherwise Studio reports
+validation errors without pretending the output is ready. Rendering can take
+longer the first time because the host executable is built as needed.
+
+The host CMake/Ninja build directories are shared and preview generation is
+serialized within a Studio process. The intermediate files are temporary,
+stored beneath the private workspace, and deleted after the preview request.
+Do not run multiple separate Studio processes against the same host build
+directories. No device flashing, firmware build, or workspace save occurs.
