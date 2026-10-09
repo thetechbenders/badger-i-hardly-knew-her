@@ -447,6 +447,7 @@ $("screens-preview").addEventListener("click",async()=>{
   button.disabled=true;
   $("screens-status").textContent="Building and rendering screens…";
   $("screens-results").replaceChildren();
+  $("screens-notes").textContent="";
   try {
     // Compose unsaved visual edits without saving them to the workspace.
     let toml=editor.value;
@@ -471,8 +472,11 @@ $("screens-preview").addEventListener("click",async()=>{
       figure.append(img,caption);
       $("screens-results").append(figure);
     }
-    $("screens-status").textContent=data.screens.length+
-      " screens rendered. Text fit and QR verification passed.";
+    const qrResults=Object.entries(data.qr||{});
+    const verified=qrResults.filter(([,value])=>value.ok===true).length;
+    $("screens-status").textContent=data.screens.length+" screens rendered for "+data.target+
+      ". Text fit passed; "+verified+" QR screen(s) decoded successfully.";
+    $("screens-notes").textContent=(data.notes||[]).join(" · ");
   }catch(error){$("screens-status").textContent="Preview failed: "+error.message;}
   finally{button.disabled=false;}
 });
