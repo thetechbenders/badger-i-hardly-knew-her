@@ -6,10 +6,12 @@ provide authentication against malware running as the same local user.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import binascii
 import io
 import tempfile
+import threading
 import re
 import secrets
 import socket
@@ -35,6 +37,7 @@ STATIC = Path(__file__).resolve().parent / "static"
 MAX_JSON = 128 * 1024
 MAX_PORTRAIT_BYTES = 10 * 1024 * 1024
 MAX_PORTRAIT_JSON = 15 * 1024 * 1024
+PREVIEW_LOCK = threading.Lock()  # shared CMake/Ninja host output directories
 
 
 class Edit(BaseModel):
@@ -237,6 +240,41 @@ def create_app(workspace: Path | None = None) -> FastAPI:
             return model.model_validate_json(bytes(chunks))
         except ValueError:
             raise HTTPException(422, "Invalid request") from None
+
+    @app.put("/api/v1/screens/preview")
+    async def screen_preview(request: Request):
+        """Render an unsaved but validated TOML through the canonical C++ pipeline."""
+        update = await read_json(request, Edit)
+        check = validate(update.toml, update.target)
+        if not check["ok"]:
+            return JSONResponse(check, status_code=422)
+
+        def build_preview():
+            # host_preview_binary uses shared per-target CMake output. Keep this
+            # serialized across all Studio app instances in this Python process.
+            if not PREVIEW_LOCK.acquire(blocking=False):
+                raise HTTPException(409, "Another screen preview is already running")
+            try:
+                with tempfile.TemporaryDirectory(prefix="screen-preview-", dir=work) as folder:
+                    form = badge_form.load_form(form_path, text=update.toml, target=update.target)
+                    prepared = badge_form.preview(form, Path(folder) / "output")
+                    native = prepared["previews"] / "native"
+                    names = sorted(native.glob("*.png"))
+                    if len(names) > 40:
+                        raise HTTPException(500, "Unexpected number of rendered screens")
+                    images = [{"name": p.stem, "png": base64.b64encode(p.read_bytes()).decode("ascii")}
+                              for p in names if p.is_file() and not p.is_symlink()]
+                    return {"ok": True, "target": update.target, "screens": images,
+                            "notes": form.notes, "qr": prepared["report"].get("screens", {})}
+            finally:
+                PREVIEW_LOCK.release()
+
+        try:
+            return await asyncio.to_thread(build_preview)
+        except badge_form.FormError as error:
+            return JSONResponse({"ok": False, "problems": error.problems}, status_code=422)
+        except (OSError, RuntimeError, SystemExit) as error:
+            raise HTTPException(503, "Host renderer unavailable: " + str(error)[-500:]) from None
 
     @app.put("/api/v1/portrait/preview")
     async def preview_portrait(request: Request):
