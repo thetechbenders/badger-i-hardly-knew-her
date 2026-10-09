@@ -28,11 +28,18 @@
 
 namespace badge {
 
+// Lowest plausible reading for a single-cell LiPo; below it the reading, not
+// the cell, is wrong. A 2xAAA pack (Badger 2040, battery_pack.hpp) runs
+// lower, so its floor is lower; no supported pack reads below that one.
+constexpr uint16_t kLipoMinValidMv = 2500;
+constexpr uint16_t kTwoAaaMinValidMv = 1800;
+
 struct BatteryThresholds {
   uint16_t low_mv = 3500;  // 0 disables LOW
   uint16_t bar_mv[4] = {3600, 3700, 3800, 3950};
   uint16_t hyst_mv = 40;
   uint16_t cal_permille = 1000;
+  uint16_t min_valid_mv = kLipoMinValidMv;  // pack dependent (battery_pack.hpp)
 };
 
 struct BatteryRaw {
@@ -76,7 +83,7 @@ struct BatteryMeasurement {
 
 class BatteryMeter {
  public:
-  static constexpr uint16_t kMinValidMv = 2500;  // below: reading, not battery, is wrong
+  static constexpr uint16_t kMinValidMv = kLipoMinValidMv;  // below: reading, not battery, is wrong
   static constexpr uint16_t kMaxValidMv = 4600;  // above a LiPo's 4.2 V + margin
   static constexpr uint16_t kMinVddMv = 1800, kMaxVddMv = 3700;
 
@@ -86,6 +93,9 @@ class BatteryMeter {
   const BatteryState &update(const BatteryRaw &raw, bool usb);
   // Inspect a raw sample without changing filter/display state.
   BatteryMeasurement inspect(const BatteryRaw &raw) const;
+  // The same, judged against another pack's floor (pack detection reads a
+  // cell the configured pack would reject).
+  BatteryMeasurement inspect(const BatteryRaw &raw, uint16_t min_valid_mv) const;
   // Reject a sampled value at a higher-level acquisition boundary (for
   // example, startup never settled) without letting it seed the EMA.
   const BatteryState &mark_invalid(const BatteryRaw &raw);
@@ -120,11 +130,26 @@ struct InitialBatterySamplePolicy {
   static constexpr int kMaxAttempts = 1 + kMaxSettleMs / kRetryDelayMs;
 };
 
+// Consecutive valid readings that agree within kStableSpreadMv. A reading
+// outside the spread starts a new run with itself; an invalid one ends it.
+class StableReadingRun {
+ public:
+  void add(uint16_t mv);
+  void reset() { length_ = 0; }
+  int length() const { return length_; }
+  bool stable() const { return length_ >= InitialBatterySamplePolicy::kStableSamples; }
+  uint16_t lowest_mv() const { return lowest_mv_; }
+  uint16_t highest_mv() const { return highest_mv_; }
+
+ private:
+  uint16_t lowest_mv_ = 0, highest_mv_ = 0;
+  int length_ = 0;
+};
+
 template <typename ReadFn, typename WaitFn>
 const BatteryState &sample_initial_battery(BatteryMeter &meter, ReadFn read, WaitFn wait) {
   BatterySample last{};
-  uint16_t stable_min = 0, stable_max = 0;
-  int stable_samples = 0;
+  StableReadingRun run;
 
   for (int attempt = 0; attempt < InitialBatterySamplePolicy::kMaxAttempts; ++attempt) {
     last = read();
@@ -132,25 +157,10 @@ const BatteryState &sample_initial_battery(BatteryMeter &meter, ReadFn read, Wai
 
     const BatteryMeasurement measurement = meter.inspect(last.raw);
     if (measurement.valid) {
-      if (stable_samples == 0) {
-        stable_min = stable_max = measurement.mv;
-        stable_samples = 1;
-      } else {
-        const uint16_t next_min = measurement.mv < stable_min ? measurement.mv : stable_min;
-        const uint16_t next_max = measurement.mv > stable_max ? measurement.mv : stable_max;
-        if (uint16_t(next_max - next_min) <= InitialBatterySamplePolicy::kStableSpreadMv) {
-          stable_min = next_min;
-          stable_max = next_max;
-          ++stable_samples;
-        } else {
-          stable_min = stable_max = measurement.mv;
-          stable_samples = 1;
-        }
-      }
-      if (stable_samples >= InitialBatterySamplePolicy::kStableSamples)
-        return meter.update(last.raw, false);
+      run.add(measurement.mv);
+      if (run.stable()) return meter.update(last.raw, false);
     } else {
-      stable_samples = 0;
+      run.reset();
     }
 
     if (attempt + 1 < InitialBatterySamplePolicy::kMaxAttempts)

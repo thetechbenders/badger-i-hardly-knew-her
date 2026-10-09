@@ -1,18 +1,10 @@
 #include "battery.hpp"
+#include "battery_helpers.hpp"
 #include "check.hpp"
 #include "renderer.hpp"
 
 using namespace badge;
-
-namespace {
-// Counts that produce `mv` at a nominal 3.30 V supply (inverse of to_mv()).
-BatteryRaw raw_for(uint32_t mv, uint32_t vdd_mv = 3300) {
-  BatteryRaw r;
-  r.ref_counts = uint16_t((1240u * 4095u + vdd_mv / 2) / vdd_mv);
-  r.bat_counts = uint16_t((mv * r.ref_counts + 1860) / 3720);
-  return r;
-}
-}  // namespace
+using battery_test::raw_for;
 
 TEST(battery_conversion_matches_upstream_formula) {
   // Pimoroni: vdd = 1.24 * 65535 / ref ; vbat = bat / 65535 * 3 * vdd (16-bit
@@ -292,4 +284,52 @@ TEST(battery_unsorted_thresholds_are_sanitised) {
   m.configure(t);
   const BatteryState &s = m.update(raw_for(4100), false);
   CHECK_EQ(s.bars, 4);
+}
+
+// The run sample_initial_battery and pack detection both rely on: readings
+// within kStableSpreadMv of each other, restarted by an outlier.
+TEST(battery_stable_run_restarts_on_an_outlier) {
+  StableReadingRun run;
+  CHECK(!run.stable());
+  run.add(3300);
+  run.add(3340);
+  CHECK_EQ(run.length(), 2);
+  run.add(3360);  // spread 60 > 50: a new run starts here
+  CHECK_EQ(run.length(), 1);
+  CHECK_EQ(run.lowest_mv(), 3360);
+  run.add(3320);
+  run.add(3350);
+  CHECK(run.stable());
+  CHECK_EQ(run.lowest_mv(), 3320);
+  CHECK_EQ(run.highest_mv(), 3360);
+  run.reset();
+  CHECK(!run.stable());
+  run.add(1000);  // a reset run starts afresh, whatever came before
+  CHECK_EQ(run.lowest_mv(), 1000);
+  CHECK_EQ(run.highest_mv(), 1000);
+}
+
+// The validity floor belongs to the pack: a 2xAAA pair at 2.3 V is a cell,
+// for a LiPo it is a fault. Floors below every pack's are raised to the
+// lowest one.
+TEST(battery_validity_floor_follows_the_pack) {
+  BatteryMeter lipo;
+  lipo.configure(BatteryThresholds{});
+  CHECK(!lipo.inspect(raw_for(2300)).valid);
+  CHECK(lipo.update(raw_for(2300), false).display == PowerDisplay::Invalid);
+  CHECK(lipo.inspect(raw_for(2300), kTwoAaaMinValidMv).valid);  // judged as another pack
+
+  BatteryThresholds pair;
+  pair.min_valid_mv = kTwoAaaMinValidMv;
+  BatteryMeter aaa;
+  aaa.configure(pair);
+  CHECK(aaa.update(raw_for(2300), false).display == PowerDisplay::Battery);
+  CHECK(aaa.inspect(raw_for(1850)).valid);
+  CHECK(!aaa.inspect(raw_for(1750)).valid);
+
+  BatteryThresholds too_low;
+  too_low.min_valid_mv = 500;
+  BatteryMeter clamped;
+  clamped.configure(too_low);
+  CHECK(!clamped.inspect(raw_for(1750)).valid);
 }

@@ -1,8 +1,9 @@
-# Battery meter (single-cell LiPo)
+# Battery meter (single-cell LiPo, or 2xAAA on the Badger 2040)
 
 This page describes the original Badger 2040. The Badger 2350 uses the same
 meter (filter, hysteresis, thresholds, `USB` and `?` states) with its own
-circuit: see [Badger 2350](#badger-2350).
+circuit: see [Badger 2350](#badger-2350). The Badger 2040 can also run from a
+pair of AAA cells, alkaline or NiMH: see [2xAAA pack](#2xaaa-pack-badger-2040).
 
 ## Circuit and what was verified
 
@@ -102,6 +103,68 @@ Sampling does not reset the idle timer and never delays power-off.
 5. `diag battery` also prints the raw ADC counts and the derived ADC supply,
    for checking the reference.
 
+## 2xAAA pack (Badger 2040)
+
+The Badger 2040 has no charger, so besides a LiPo it can run from two AAA
+cells. Their voltages need their own thresholds: a fresh alkaline pair
+(about 3.3 V) reads like a nearly empty LiPo, and a charged NiMH pair (2.4 to
+2.6 V) is below the LiPo's validity floor, so under LiPo rules the first
+showed as empty and the second as `?`.
+
+| Setting | Values | Default |
+|---|---|---|
+| `battery.pack` | 0 = LiPo, 1 = 2xAAA | 0 |
+| `battery.aaa_cells` | 0 = alkaline, 1 = NiMH | 0 |
+| `battery.auto` | switch the pack on unambiguous readings | on |
+
+Presets for the pair (resting voltage; first estimates, to be checked
+against a multimeter as below):
+
+| Pack | Bars at (mV) | LOW below | Valid from |
+|---|---|---|---|
+| LiPo | `battery.bar1_mv` to `bar4_mv` | `battery.low_mv` | 2500 mV |
+| 2xAAA alkaline | 2300 / 2500 / 2700 / 2900 | 2200 mV | 1800 mV |
+| 2xAAA NiMH | 2300 / 2400 / 2500 / 2650 | 2200 mV | 1800 mV |
+
+Alkaline cells fall steadily as they discharge, so their bars follow the
+charge well. NiMH cells stay nearly flat around 2.4 to 2.5 V for most of their
+charge, so their bars are coarse. `battery.hyst_mv` and
+`battery.cal_permille` apply to every pack.
+
+**Choosing the pack on the badge.** On the Info screen (USR short), DOWN
+short steps LiPo, AAA alkaline, AAA NiMH (UP steps back). The choice is
+saved at once, and the battery line shows it, for example
+`Battery   AAA alkaline auto | 3.30 V (3.31 V) | 4/4`. Over USB:
+`set battery.pack 1`, `set battery.aaa_cells 1`, `commit`.
+
+**Automatic switching** (`battery.auto`, on by default). Only a stable run of
+three readings (within 50 mV) that no other pack can produce switches the
+pack, and the switch is saved:
+
+- every reading at or above 3600 mV: LiPo (no AAA pair gets there);
+- every reading at or below 2900 mV: 2xAAA with the chosen chemistry (a LiPo
+  is long past LOW there).
+
+Between the two, where a fresh alkaline pair and a nearly empty LiPo
+overlap, the remembered pack is kept. Every wake is a cold boot on the
+Badger 2040, so a swapped pack is checked before the first frame. Alkaline
+and NiMH can never be told apart by voltage, so the chemistry is only ever
+chosen. In practice:
+
+- AAA to LiPo: switches by itself.
+- LiPo to NiMH, or to used alkaline cells: switches by itself.
+- LiPo to **fresh alkaline** cells: inside the overlap, so choose AAA
+  alkaline on the Info screen once.
+
+To pin a pack, set `battery.auto 0`; otherwise a chosen pack that the
+readings clearly contradict is switched back.
+
+A switch is saved on its own: only the pack fields of the stored settings
+change, so unsaved USB edits stay unsaved. Nothing switches in safe mode.
+
+**Validating** works as for the LiPo (below): compare the Info screen with a
+multimeter across the holder's terminals at several charge levels.
+
 ## Badger 2350
 
 | Signal | GPIO / ADC | Source |
@@ -117,7 +180,9 @@ averaging as the Badger 2040 (`BatteryCircuit{1100, 2}` in
 BadgeWare's own range is 3.00–4.10 V; the meter keeps this firmware's LiPo
 thresholds (3.60/3.70/3.80/3.95 V, LOW below 3.50 V), which are settings.
 
-The board has a charger. With VBUS present the status shows **USB** (the
+The board has a charger, so it only ever runs from a LiPo: `battery.pack`
+accepts only 0 there, the Info screen offers no pack choice and nothing
+switches automatically. With VBUS present the status shows **USB** (the
 cell is then on the charger and reads high); it never shows "charging",
 because the charge-status line is not readable without the wireless chip.
 **Not validated on a badge yet**: compare `diag battery` with a multimeter

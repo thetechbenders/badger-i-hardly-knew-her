@@ -8,6 +8,7 @@ void BatteryMeter::configure(const BatteryThresholds &t) {
   for (int i = 1; i < 4; ++i)
     if (t_.bar_mv[i] <= t_.bar_mv[i - 1]) t_.bar_mv[i] = uint16_t(t_.bar_mv[i - 1] + 1);
   if (t_.cal_permille < 900 || t_.cal_permille > 1100) t_.cal_permille = 1000;
+  if (t_.min_valid_mv < kTwoAaaMinValidMv) t_.min_valid_mv = kTwoAaaMinValidMv;
 }
 
 uint16_t BatteryMeter::to_mv(const BatteryRaw &raw, uint16_t cal, uint16_t *vdd_mv, BatteryCircuit c) {
@@ -28,12 +29,27 @@ uint8_t BatteryMeter::level_for(uint16_t mv) const {
   return n;
 }
 
-BatteryMeasurement BatteryMeter::inspect(const BatteryRaw &raw) const {
+BatteryMeasurement BatteryMeter::inspect(const BatteryRaw &raw) const { return inspect(raw, t_.min_valid_mv); }
+
+BatteryMeasurement BatteryMeter::inspect(const BatteryRaw &raw, uint16_t min_valid_mv) const {
   BatteryMeasurement m;
   m.mv = to_mv(raw, t_.cal_permille, &m.vdd_mv, circuit_);
   m.valid = m.vdd_mv >= kMinVddMv && m.vdd_mv <= kMaxVddMv &&
-            m.mv >= kMinValidMv && m.mv <= kMaxValidMv;
+            m.mv >= min_valid_mv && m.mv <= kMaxValidMv;
   return m;
+}
+
+void StableReadingRun::add(uint16_t mv) {
+  const uint16_t run_lowest = mv < lowest_mv_ ? mv : lowest_mv_;
+  const uint16_t run_highest = mv > highest_mv_ ? mv : highest_mv_;
+  if (length_ == 0 || uint16_t(run_highest - run_lowest) > InitialBatterySamplePolicy::kStableSpreadMv) {
+    lowest_mv_ = highest_mv_ = mv;  // a new run starts with this reading
+    length_ = 1;
+    return;
+  }
+  lowest_mv_ = run_lowest;
+  highest_mv_ = run_highest;
+  ++length_;
 }
 
 const BatteryState &BatteryMeter::mark_invalid(const BatteryRaw &raw) {

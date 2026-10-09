@@ -84,6 +84,9 @@ Text limits are in UTF-8 bytes (one less than the storage size).
 | `battery.bar1_mv`..`bar4_mv` | 3000..4500 | 1–4 bars at or above (defaults 3600/3700/3800/3950; strictly increasing) |
 | `battery.hyst_mv` | 0..300 | Hysteresis around thresholds (default 40) |
 | `battery.cal_permille` | 900..1100 | Multimeter calibration factor (default 1000) |
+| `battery.pack` | 0..1 | Pack fitted: 0 = LiPo, 1 = 2xAAA (default 0). Badger 2040 only: the Badger 2350 accepts 0 only. Changes by itself with `battery.auto` ([BATTERY.md](BATTERY.md#2xaaa-pack-badger-2040)) |
+| `battery.aaa_cells` | 0..1 | Chemistry of a 2xAAA pack: 0 = alkaline, 1 = NiMH (default 0) |
+| `battery.auto` | bool | Switch LiPo / 2xAAA on unambiguous readings (default on) |
 | `gesture.default_on` | bool | Gesture mode on after boot (default false) |
 | `gesture.rotation` | 0..3 | Sensor mounting rotation × 90° clockwise |
 | `gesture.mirror` | bool | Swap left/right after rotation |
