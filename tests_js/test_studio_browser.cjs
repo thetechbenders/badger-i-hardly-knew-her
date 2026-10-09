@@ -204,8 +204,8 @@ test("switching badge target never carries a processed portrait from the other b
   const alternate=fakeNode("option");
   alternate.value="badger2350";
   target.options.push(alternate);
-  editor.value='[portrait]\\nprocessed = "portrait-badger2040.png"';
+  editor.value='[portrait]'+String.fromCharCode(10)+'processed = "portrait-badger2040.png"';
   target.value="badger2350";
   target.listeners.change();
-  assert.match(editor.value,/processed = "sample-badger2350\\.png"/);
+  assert.ok(editor.value.includes('processed = "sample-badger2350.png"'));
 });
