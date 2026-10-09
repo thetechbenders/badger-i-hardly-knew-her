@@ -35,7 +35,12 @@ function fakeNode(tag="div") {
       if (this.tag === "select") this.options = [];
       this.append(...items);
     },
-    addEventListener(type, callback) { this.listeners[type] = callback; }
+    addEventListener(type, callback) {
+      const previous=this.listeners[type];
+      this.listeners[type]=previous
+        ? (...args)=>{ previous(...args); callback(...args); }
+        : callback;
+    }
   };
 }
 
