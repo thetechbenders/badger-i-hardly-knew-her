@@ -71,12 +71,12 @@ function browser({hash="", cached="", serverToken=VALID}={}) {
     if(url.endsWith("/compose")) data={ok:true,toml:"form = 1"};
     return {ok:true,status:200,statusText:"OK",json:async()=>data};
   };
-  const mockURL={...URL, createObjectURL(){return "blob:portrait-test";}, revokeObjectURL(){}};
+  class MockURL extends URL { static createObjectURL(){return "blob:portrait-test";} static revokeObjectURL(){} }
   const context = {document,window,history,sessionStorage:{
     getItem(k){return storage.get(k)||null;},
     setItem(k,v){storage.set(k,v);},
     removeItem(k){storage.delete(k);}
-  },fetch,URL:mockURL,URLSearchParams,console};
+  },fetch,URL:MockURL,URLSearchParams,console};
   vm.runInNewContext(javascript,context,{filename:"app.js"});
   return {
     elements,body,storage,requests,context,
