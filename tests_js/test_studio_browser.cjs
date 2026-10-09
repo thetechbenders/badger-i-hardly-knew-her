@@ -140,3 +140,15 @@ test("session recovery preserves unsaved visual changes", async()=>{
   assert.equal(b.elements.get("person-fields").children[0].children[1].value,"Edited name");
   assert.match(b.elements.get("state").textContent,/unsaved changes preserved/i);
 });
+
+test("portrait crop accepts integer coordinates and rejects malformed values", async()=>{
+  const b=browser({hash:"#token="+VALID});
+  await b.settle();
+  const values=[75,12,520,640];
+  ["crop-x","crop-y","crop-w","crop-h"].forEach((id,i)=>{
+    b.elements.get(id).value=String(values[i]);
+  });
+  assert.equal(JSON.stringify(b.context.cropValues()),JSON.stringify(values));
+  b.elements.get("crop-w").value="abc";
+  assert.throws(()=>b.context.cropValues(),/four crop values/);
+});
