@@ -127,6 +127,14 @@ class StudioTests(unittest.TestCase):
         # silently adopt a 104x176 crop.
         self.assertEqual(response.status_code, 422)
 
+    def test_crop_preview_content_security_policy_allows_local_blob_images(self):
+        """The crop source uses URL.createObjectURL(file), which requires blob: images."""
+        response = self.client.get("/")
+        policy = response.headers["content-security-policy"]
+        self.assertIn("img-src 'self' data: blob:;", policy)
+        self.assertIn("default-src 'none';", policy)
+        self.assertIn("connect-src 'self';", policy)
+
     def test_token_not_available_to_other_local_clients(self):
         home = self.client.get("/")
         self.assertNotIn(self.token, home.text)
