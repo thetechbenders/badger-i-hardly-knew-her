@@ -19,6 +19,16 @@
 <section class="toolbar panel" id="editor-toolbar"><label for="target">Badge model</label><select id="target"></select>
 <nav aria-label="Editor views"><button type="button" class="tab active" id="visual-tab">Visual editor</button><button type="button" class="tab" id="toml-tab">Advanced TOML</button></nav></section>
 <section class="panel" id="visual">
+<h2>Portrait workshop</h2>
+<p class="hint">Import a JPEG or PNG (up to 1 MiB). Only the selected 1-bit result is saved locally; the original is never retained.</p>
+<label class="field" for="portrait-file">Source photograph</label>
+<input type="file" id="portrait-file" accept="image/png,image/jpeg">
+<div class="portrait-controls">
+<button class="secondary" type="button" id="portrait-preview">Compare dithering</button>
+<button class="secondary" type="button" id="portrait-select" disabled>Use selected portrait</button>
+</div>
+<p id="portrait-status" role="status" aria-live="polite"></p>
+<div id="portrait-results" class="portrait-results"></div>
 <h2>Identity</h2><div class="fields" id="person-fields"></div>
 <h2>Contact card</h2><p class="hint">Up to six contact methods, in display order.</p>
 <div id="contacts-list"></div><button class="secondary" type="button" id="contact-add">Add contact</button>
@@ -30,5 +40,5 @@
 <p class="hint">Edit the full original form, including settings not yet available visually. Switching back parses your changes.</p>
 <label for="toml">Badge configuration</label><textarea id="toml" spellcheck="false"></textarea></section>
 <section class="panel save-panel"><button id="save" type="button">Validate &amp; save</button><span id="state" role="status" aria-live="polite">Loading…</span><div id="problems" aria-live="polite"></div></section>
-<footer>Existing badge validation remains authoritative. Portrait import, actual display previews and firmware export are coming later. No USB writes or cloud services.</footer>
+<footer>Existing badge validation remains authoritative. Firmware-accurate screen previews and firmware export are coming later. No USB writes or cloud services.</footer>
 </main></body></html>
