@@ -18,6 +18,33 @@ pip install -r tools/requirements.txt -r studio/requirements.txt
 python -m studio.app --port 8765
 ```
 
+### Port conflicts and multiple servers
+
+Studio reserves its loopback listening socket **before** printing the private
+launch URL. If another process already owns the requested port, Studio exits
+with an explicit error, and does **not** print an unusable tokenized link.
+Each process has a different token, so a link from another Studio process
+cannot authenticate to the one your browser reached.
+
+To avoid an occupied default port (8765), let the OS select a free port:
+
+```bash
+python -m studio.app --port 0
+```
+
+Open the **actual port** printed with the private launch link, not a
+bookmarked 8765 address. Under WSL, Windows applications can sometimes also
+hold a localhost port independently of the Linux-side listener. If a freshly
+launched link is still rejected, check both Windows and WSL port ownership
+before assuming the browser or badge form is broken. In WSL, for example:
+
+```bash
+ss -ltnp '( sport = :8765 )'
+```
+
+Do not kill another developer's server without checking what it is
+doing. Close obsolete instances cleanly, or launch on a different port.
+
 Open the **complete private launch URL** printed in the terminal, including
 its `#token=...` fragment. The fragment is not transmitted in the HTTP
 request. The browser removes the fragment from its address bar, verifies the token
