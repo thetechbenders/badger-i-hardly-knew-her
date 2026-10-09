@@ -20,6 +20,7 @@
 #include "apds9960.hpp"
 #include "app.hpp"
 #include "assetpack.hpp"
+#include "battery_pack.hpp"
 #include "board.hpp"
 #include "build_info.hpp"
 #include "cli.hpp"
@@ -76,6 +77,7 @@ const char *g_asset_source = "none";
 
 bool g_usb = true;
 BatteryMeter g_battery(board::kBatteryCircuit);
+BatteryPackWatch g_pack_watch;  // automatic LiPo / 2xAAA switching while awake
 uint32_t g_battery_sample_ms = 0;
 PicoI2c g_i2c;
 Apds9960 g_gesture(g_i2c);
@@ -124,17 +126,13 @@ AppConfig app_config(bool safe) {
   c.wake_selects_screen = s.prefs.wake_selects_screen;
   c.gesture_default_on = s.prefs.gesture_default_on;
   c.gesture_timeout_s = s.prefs.gesture_timeout_s;
+  c.battery_type_selectable = battery_type_selectable(safe);
   return c;
 }
 
 void configure_from_prefs() {
   const Prefs &p = g_staged.prefs;
-  BatteryThresholds t;
-  t.low_mv = p.battery_low_mv;
-  for (int i = 0; i < 4; ++i) t.bar_mv[i] = p.battery_bar_mv[i];
-  t.hyst_mv = p.battery_hyst_mv;
-  t.cal_permille = p.battery_cal_permille;
-  g_battery.configure(t);
+  g_battery.configure(battery_thresholds(p));  // the selected pack's (battery_pack.hpp)
   GestureParams gp;
   gp.sensitivity = p.gesture_sensitivity;
   gp.rotation = p.gesture_rotation;
@@ -153,11 +151,63 @@ bool display_busy() { return g_single_core ? (g_display.busy() || g_sched.displa
 // drawn, before the sleep image, and every 60 s while awake. A sample never
 // triggers a refresh by itself; the icon updates with the next planned one.
 // Skipped while the panel is refreshing (its load would depress the reading).
+BatterySample read_battery_sample() {
+  g_usb = board::usb_powered();
+  return BatterySample{board::read_battery_raw(), g_usb};
+}
+
+void wait_ms(uint32_t delay_ms) { sleep_ms(delay_ms); }
+
+// Battery type changes (Info screen or automatic, battery_pack.hpp): the
+// meter follows at once. The choice is saved on its own, never together with
+// unsaved CLI edits.
+void use_battery_type(BatteryType type) {
+  set_battery_type(&g_staged.prefs, type);
+  configure_from_prefs();
+  g_pack_watch.restart();
+}
+
+void save_battery_type_choice() {
+  diag::feed_watchdog();
+  if (!save_battery_type(*g_store, &g_committed, &g_staged, battery_type(g_staged.prefs)))
+    std::printf("battery: type change not saved (flash rc %d)\r\n", g_flash->last_error());
+  g_staged_dirty = std::memcmp(&g_staged, &g_committed, sizeof g_staged) != 0;
+}
+
+void choose_battery_type(int step) {
+  use_battery_type(step_battery_type(battery_type(g_staged.prefs), step));
+  save_battery_type_choice();
+}
+
+// Automatic switching while awake: a stable run of readings only another
+// pack can produce switches to it before the meter takes the sample.
+void follow_battery_pack(const BatterySample &sample) {
+  if (!battery_pack_auto_switch(g_staged.prefs, diag::info().safe_mode)) return;
+  const BatteryPack current = battery_pack(g_staged.prefs);
+  const BatteryPack proven = g_pack_watch.feed(g_battery, sample, current);
+  if (proven == current) return;
+  use_battery_type(battery_type_for_pack(proven, g_staged.prefs));
+  save_battery_type_choice();
+}
+
 void sample_battery(uint32_t now) {
   if (display_busy()) return;
-  g_usb = board::usb_powered();
-  g_ctx.status.battery = g_battery.update(board::read_battery_raw(), g_usb);
+  const BatterySample sample = read_battery_sample();
+  follow_battery_pack(sample);
+  g_ctx.status.battery = g_battery.update(sample.raw, sample.usb);
   g_battery_sample_ms = now;
+}
+
+// Every wake is a cold boot on the Badger 2040, so a swapped pack shows up
+// here, before the first frame. Returns true if the pack changed; flash
+// writes are only set up once core 1 runs, so main() saves it then.
+bool detect_battery_pack_at_boot(bool safe_mode) {
+  if (!battery_pack_auto_switch(g_staged.prefs, safe_mode)) return false;
+  const BatteryPack current = battery_pack(g_staged.prefs);
+  const BatteryPack found = detect_battery_pack(g_battery, current, read_battery_sample, wait_ms);
+  if (found == current) return false;
+  use_battery_type(battery_type_for_pack(found, g_staged.prefs));
+  return true;
 }
 
 // The first frame after a real battery wake is also a cold boot on Classic.
@@ -165,13 +215,7 @@ void sample_battery(uint32_t now) {
 // plausible-but-transient low reading cannot become the first displayed state.
 // The board-level sampling sequence and reference-settle delay are unchanged.
 void sample_initial_battery_for_frame() {
-  g_ctx.status.battery = sample_initial_battery(
-      g_battery,
-      [] {
-        g_usb = board::usb_powered();
-        return BatterySample{board::read_battery_raw(), g_usb};
-      },
-      [](uint32_t delay_ms) { sleep_ms(delay_ms); });
+  g_ctx.status.battery = sample_initial_battery(g_battery, read_battery_sample, wait_ms);
   g_battery_sample_ms = now_ms();
 }
 
@@ -185,21 +229,35 @@ GestureIndicator gesture_indicator() {
   return (st == SensorState::Standby || st == SensorState::Active) ? GestureIndicator::On : GestureIndicator::Fault;
 }
 
+// One line: the screen holds InfoLines::kMax rows. Where the pack can be
+// chosen it leads the line (the UP/DOWN choice must be visible on USB too),
+// so the USB note and "approx." give way to it.
+void add_battery_info(InfoLines &L) {
+  const BatteryState &b = g_battery.state();
+  char v[16], f[16];
+  fmt_mv(v, sizeof v, b.last_mv);
+  fmt_mv(f, sizeof f, b.filtered_mv);
+  if (!kBatteryPackChoice) {
+    if (b.display == PowerDisplay::Usb) L.add("Power     USB | sense %s (%s)", v, board::kUsbSenseNote);
+    else if (b.display == PowerDisplay::Invalid) L.add("Battery   INVALID reading %s", v);
+    else L.add("Battery   %s (filtered %s) | %u/4 bars%s | approx.", v, f, b.bars, b.low ? " LOW" : "");
+    return;
+  }
+  char pack[24];
+  std::snprintf(pack, sizeof pack, "%s%s", battery_type_name(battery_type(g_staged.prefs)),
+                g_staged.prefs.battery_auto ? " auto" : "");
+  if (b.display == PowerDisplay::Usb) L.add("Power     USB | %s | sense %s", pack, v);
+  else if (b.display == PowerDisplay::Invalid) L.add("Battery   %s | INVALID reading %s", pack, v);
+  else L.add("Battery   %s | %s (%s) | %u/4%s", pack, v, f, b.bars, b.low ? " LOW" : "");
+}
+
 void build_info_lines() {
   InfoLines &L = g_info_lines;
   L.count = 0;
   const diag::BootInfo &bi = diag::info();
   const diag::MemReport m = diag::memory();
   L.add("Firmware  %s %s %s | sdk %s", build::kName, build::kVersion, build::kBuildType, build::kPicoSdk);
-  {
-    const BatteryState &b = g_battery.state();
-    char v[16], f[16];
-    fmt_mv(v, sizeof v, b.last_mv);
-    fmt_mv(f, sizeof f, b.filtered_mv);
-    if (b.display == PowerDisplay::Usb) L.add("Power     USB | sense %s (%s)", v, board::kUsbSenseNote);
-    else if (b.display == PowerDisplay::Invalid) L.add("Battery   INVALID reading %s", v);
-    else L.add("Battery   %s (filtered %s) | %u/4 bars%s | approx.", v, f, b.bars, b.low ? " LOW" : "");
-  }
+  add_battery_info(L);
   L.add("Gesture   %s | sensor %s | swipes %lu", g_app.gesture_mode() ? "on" : "off",
         sensor_state_str(g_gesture.state()), (unsigned long)g_gesture.stats().recognized);
   L.add("Reset     %s | boot %lu | streak %lu", diag::reset_kind_str(bi.kind), (unsigned long)bi.boot_count,
@@ -227,6 +285,8 @@ void render_cb(Framebuffer &fb, void *) {
 
 void apply(uint32_t actions) {
   const uint32_t t = now_ms();
+  if (actions & kActBatteryTypeNext) choose_battery_type(1);
+  if (actions & kActBatteryTypePrev) choose_battery_type(-1);
   if (actions & kActGestureMode) g_gesture.set_wanted(g_app.gesture_mode());
   if (actions & (kActRedraw | kActSleep)) sample_battery(t);  // fresh value for the planned refresh
   if (actions & kActRedraw) g_sched.invalidate(actions & kActCleanRefresh);
@@ -419,9 +479,12 @@ class UsbCliHost : public CliHost {
       std::printf("battery: raw ref %u, raw sense %u counts | cal %u/1000 | samples %lu, invalid %lu, last %lu s ago\r\n",
                   raw.ref_counts, raw.bat_counts, p.battery_cal_permille, (unsigned long)b.samples,
                   (unsigned long)b.invalid, (unsigned long)((now_ms() - g_battery_sample_ms) / 1000));
+      const BatteryThresholds t = battery_thresholds(p);
+      std::printf("battery: pack %s%s | valid from %u mV\r\n", battery_type_name(battery_type(p)),
+                  battery_pack_auto_switch(p, diag::info().safe_mode) ? ", switches automatically" : "",
+                  t.min_valid_mv);
       std::printf("battery: thresholds LOW<%u, bars %u/%u/%u/%u mV, hysteresis %u mV (charge estimate approximate)\r\n",
-                  p.battery_low_mv, p.battery_bar_mv[0], p.battery_bar_mv[1], p.battery_bar_mv[2], p.battery_bar_mv[3],
-                  p.battery_hyst_mv);
+                  t.low_mv, t.bar_mv[0], t.bar_mv[1], t.bar_mv[2], t.bar_mv[3], t.hyst_mv);
     }
     if (all || !std::strcmp(t, "gesture")) {
       known = true;
@@ -598,6 +661,7 @@ int main() {
   g_ctx.recovery_reason = reason;
 
   configure_from_prefs();
+  const bool battery_pack_changed_at_boot = detect_battery_pack_at_boot(boot.safe_mode);
   sample_initial_battery_for_frame();
   g_app.boot(app_config(boot.safe_mode), wake ? board::wake_button() : -1, now_ms());
   // Probe the optional gesture sensor and force it into its powered-down
@@ -618,6 +682,7 @@ int main() {
     const uint32_t t0 = now_ms();
     while (!g_core1_ready && now_ms() - t0 < 3000) sleep_ms(1);
   }
+  if (battery_pack_changed_at_boot) save_battery_type_choice();
   g_sched.invalidate(false);
 
   uint32_t last_hb = 0, last_hb_change = now_ms(), last_sample = 0, last_info = 0;

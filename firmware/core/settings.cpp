@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "battery_target.hpp"
 #include "text.hpp"
 
 namespace badge {
@@ -75,6 +76,10 @@ const FieldDesc kFields[] = {
     NUM_FIELD("battery.bar4_mv", 0x30D, FieldType::U16, prefs.battery_bar_mv[3], 3000, 4500, "4 bars at or above"),
     NUM_FIELD("battery.hyst_mv", 0x30E, FieldType::U16, prefs.battery_hyst_mv, 0, 300, "hysteresis around thresholds"),
     NUM_FIELD("battery.cal_permille", 0x30F, FieldType::U16, prefs.battery_cal_permille, 900, 1100, "scale readings to match a multimeter (1000 = none)"),
+    NUM_FIELD("battery.pack", 0x316, FieldType::U8, prefs.battery_pack, 0, target::kTwoAaaPackSupported ? 1 : 0,
+              "0 = LiPo, 1 = 2xAAA (Badger 2040 only)"),
+    NUM_FIELD("battery.aaa_cells", 0x317, FieldType::U8, prefs.battery_aaa_cells, 0, 1, "2xAAA pack: 0 = alkaline, 1 = NiMH"),
+    NUM_FIELD("battery.auto", 0x318, FieldType::Bool, prefs.battery_auto, 0, 1, "switch LiPo / 2xAAA on unambiguous readings"),
     NUM_FIELD("gesture.default_on", 0x310, FieldType::Bool, prefs.gesture_default_on, 0, 1, "gesture mode on after boot"),
     NUM_FIELD("gesture.rotation", 0x311, FieldType::U8, prefs.gesture_rotation, 0, 3, "sensor mounting rotation x 90 deg clockwise"),
     NUM_FIELD("gesture.mirror", 0x312, FieldType::Bool, prefs.gesture_mirror, 0, 1, "swap left/right (sensor facing the other way)"),
@@ -263,6 +268,9 @@ void settings_defaults(Settings *s) {
   s->prefs.battery_bar_mv[3] = 3950;
   s->prefs.battery_hyst_mv = 40;
   s->prefs.battery_cal_permille = 1000;
+  s->prefs.battery_pack = 0;       // LiPo, as before 2xAAA support
+  s->prefs.battery_aaa_cells = 0;  // alkaline
+  s->prefs.battery_auto = 1;
   s->prefs.gesture_default_on = 0;
   s->prefs.gesture_rotation = 0;
   s->prefs.gesture_mirror = 0;

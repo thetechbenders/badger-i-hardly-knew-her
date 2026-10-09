@@ -1,6 +1,7 @@
 #include <string>
 #include <vector>
 
+#include "battery_pack.hpp"
 #include "check.hpp"
 #include "crc32.hpp"
 #include "settings_store.hpp"
@@ -76,7 +77,7 @@ size_t make_v1(const Settings &s, uint32_t seq, uint8_t *out) {
 }
 
 void fresh(Settings *s) { settings_defaults(s); }
-Settings g_a, g_b;
+Settings g_a, g_b, g_staged;
 }  // namespace
 
 TEST(settings_defaults_are_valid) {
@@ -403,4 +404,56 @@ TEST(settings_contact_types_and_project_links_validated) {
   DecodeInfo di = settings_decode(rec, n, &g_b);
   CHECK(di.status == DecodeStatus::Ok);
   CHECK_EQ(di.rejected_fields, 1);
+}
+
+// ------------------------------------------------------------ battery type
+
+// A battery type change (Info screen, automatic) is written on its own: an
+// unsaved CLI edit in the staged copy never reaches flash with it.
+TEST(settings_battery_type_saves_alone) {
+  FakeFlash flash;
+  static SettingsStore store(flash);
+  fresh(&g_a);
+  store.load(&g_a);
+  CHECK(store.commit(g_a));
+  g_staged = g_a;
+  settings_set(&g_staged, *find_field("name"), "Unsaved Edit");
+  const int writes = flash.writes;
+  CHECK(save_battery_type(store, &g_a, &g_staged, BatteryType::AaaNiMH));
+  if (!kBatteryPackChoice) {  // nothing to save: stays a LiPo, flash untouched
+    CHECK_EQ(flash.writes, writes);
+    CHECK(battery_type(g_a.prefs) == BatteryType::LiPo);
+    return;
+  }
+  CHECK(battery_type(g_a.prefs) == BatteryType::AaaNiMH);
+  CHECK(battery_type(g_staged.prefs) == BatteryType::AaaNiMH);
+  CHECK_STR(g_staged.profile.name, "Unsaved Edit");  // the edit stays staged
+  fresh(&g_b);
+  store.load(&g_b);
+  CHECK(battery_type(g_b.prefs) == BatteryType::AaaNiMH);
+  CHECK(std::strcmp(g_b.profile.name, "Unsaved Edit") != 0);
+  CHECK(std::memcmp(&g_a, &g_b, sizeof g_a) == 0);
+  // Choosing the type already saved writes nothing.
+  const int saved_writes = flash.writes;
+  CHECK(save_battery_type(store, &g_a, &g_staged, BatteryType::AaaNiMH));
+  CHECK_EQ(flash.writes, saved_writes);
+}
+
+TEST(settings_battery_type_failed_save_changes_nothing) {
+  if (!kBatteryPackChoice) return;  // nothing is ever written there (test above)
+  FakeFlash flash;
+  static SettingsStore store(flash);
+  fresh(&g_a);
+  store.load(&g_a);
+  set_battery_type(&g_a.prefs, BatteryType::AaaNiMH);
+  CHECK(store.commit(g_a));
+  g_staged = g_a;
+  flash.fail_next = true;
+  CHECK(!save_battery_type(store, &g_a, &g_staged, BatteryType::LiPo));
+  CHECK(battery_type(g_a.prefs) == BatteryType::AaaNiMH);  // committed record as before
+  CHECK(battery_type(g_staged.prefs) == BatteryType::AaaNiMH);
+  CHECK(std::memcmp(&g_a, &g_staged, sizeof g_a) == 0);
+  fresh(&g_b);
+  store.load(&g_b);
+  CHECK(std::memcmp(&g_a, &g_b, sizeof g_a) == 0);
 }
