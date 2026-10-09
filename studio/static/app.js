@@ -159,7 +159,7 @@ target.addEventListener("change",()=>{
   const names=Array.from(target.options,o=>sampleFor(o.value));
   const managed=Array.from(target.options,o=>"portrait-"+o.value+".png");
   editor.value=editor.value.replace(/sample-[a-z0-9_-]+\.png/g,
-    name=>names.includes(name)?sampleFor(target.value):managed.includes(name)?"portrait-"+target.value+".png":name);
+    name=>names.includes(name)||managed.includes(name)?sampleFor(target.value):name);
   changed();
 });
 editor.addEventListener("input",changed);
