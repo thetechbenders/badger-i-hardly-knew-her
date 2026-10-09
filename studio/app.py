@@ -50,6 +50,10 @@ class PortraitRequest(BaseModel):
     target: str
     image: str = Field(max_length=14_000_000)
     crop: list[int] | None = None
+    gamma: float = Field(default=1.0, ge=0.2, le=5.0)
+    black_pct: float = Field(default=1.0, ge=0, le=40)
+    white_pct: float = Field(default=2.0, ge=0, le=40)
+    sharpen: float = Field(default=0.6, ge=0, le=3)
 
 
 class PortraitSelection(BaseModel):
@@ -114,7 +118,7 @@ def _safe_references(text: str, target: str) -> list[str]:
             permitted = (f"sample-{target}.png", f"portrait-{target}.png") if section == "portrait" and key == "processed" else ()
             if value not in permitted:
                 errors.append(f"{section}.{key}: Studio Phase 1 only supports its managed sample portrait; "
-                              "arbitrary file references and uploads are not enabled yet")
+                              "arbitrary file references are not permitted")
     return errors
 
 
@@ -265,7 +269,8 @@ def create_app(workspace: Path | None = None) -> FastAPI:
             source_path = Path(temp) / "source.png"
             image.save(source_path)
             try:
-                gray = portrait_tool.load_gray(source_path, tuple(crop), size, 1.0, 1.0, 2.0, 0.6)
+                gray = portrait_tool.load_gray(source_path, tuple(crop), size, data.gamma,
+                                               data.black_pct, data.white_pct, data.sharpen)
                 variants = {method: image64(portrait_tool.to_image(portrait_tool.convert(gray, method)))
                             for method in portrait_tool.METHODS}
             except (ValueError, SystemExit) as error:
