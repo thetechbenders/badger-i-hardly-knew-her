@@ -27,3 +27,11 @@ button.danger{color:#92352d}
 #problems p{margin:5px 0}footer{font-size:.84rem;margin:20px 0}
 .hidden{display:none}button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #468763;outline-offset:2px}
 @media(prefers-color-scheme:dark){body{background:#171b19;color:#eaeeea}.panel{background:#232824;border-color:#48534b}.hint,header p,footer{color:#b0bbb2}.entry{border-color:#48534b}.field input,.field select,.field textarea,#toml,#target{background:#161b18;color:#e3e9e5;border-color:#536154}button.secondary,button.tab,button.tiny{background:#3c4a3d;color:#f0f4ed}}
+
+/* Keep the editor hidden until its bearer token has been verified. */
+.locked #editor-toolbar,.locked #visual,.locked #advanced,.locked .save-panel{display:none}
+#connection-form{display:flex;flex-wrap:wrap;gap:12px;align-items:center}
+#connection-form label{font-weight:600}
+#connection-url{padding:10px;border:1px solid #a0a9a0;border-radius:6px;flex:1 1 260px;min-width:0;max-width:600px;font:inherit;color:inherit;background:transparent}
+#connection-message{margin-bottom:0;overflow-wrap:anywhere}
+@media(prefers-color-scheme:dark){#connection-url{border-color:#536154}}
