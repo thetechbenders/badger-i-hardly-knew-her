@@ -284,7 +284,7 @@ $("portrait-file").addEventListener("change",()=>{
   resetPreview();
   cropIds.forEach(id=>{$(id).value="";});
   sourceSize=null;
-  $("portrait-crop-stage").classList.add("hidden");
+  $("portrait-crop-stage").hidden = true;
   if (sourceURL) URL.revokeObjectURL(sourceURL);
   const file=$("portrait-file").files[0];
   if (!file) return;
@@ -297,10 +297,11 @@ $("portrait-file").addEventListener("change",()=>{
         sourceSize[0]*sourceSize[1]>12_000_000) {
       sourceSize=null;portraitNote("Image dimensions are outside the allowed range.");return;
     }
-    $("portrait-crop-stage").classList.remove("hidden");
+    $("portrait-crop-stage").hidden = false;
     syncCrop(cropRect());
+    portraitNote("Source image ready. Drag the highlighted crop rectangle, then compare dithering.");
   };
-  img.onerror=()=>portraitNote("Could not display source photograph.");
+  img.onerror=()=>{ $("portrait-crop-stage").hidden = true; portraitNote("Could not display source photograph."); };
   img.src=sourceURL;
 });
 cropIds.forEach(id=>$(id).addEventListener("change",()=>{
