@@ -308,8 +308,19 @@ cropIds.forEach(id=>$(id).addEventListener("change",()=>{
   if (sourceSize) drawCrop();
   resetPreview();
 }));
-["tone-gamma","tone-black","tone-white","tone-sharpen"].forEach(id=>
-  $(id).addEventListener("input",resetPreview));
+const toneDefaults = {"tone-gamma":1, "tone-black":1, "tone-white":2, "tone-sharpen":0.6};
+function clampTone(id) {
+  const field = $(id);
+  const min = Number(field.min), max = Number(field.max);
+  const parsed = Number(field.value);
+  const next = field.value.trim() === "" || !Number.isFinite(parsed)
+    ? toneDefaults[id] : Math.min(max, Math.max(min, parsed));
+  field.value = String(next);
+}
+Object.keys(toneDefaults).forEach(id=>{
+  $(id).addEventListener("input",resetPreview);
+  $(id).addEventListener("change",()=>{clampTone(id);resetPreview();});
+});
 const cropBox=$("portrait-crop-box");
 cropBox.addEventListener("pointerdown",event=>{
   if (!sourceSize || event.button!==0) return;
