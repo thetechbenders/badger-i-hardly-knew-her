@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import re
 import secrets
+import socket
 import shutil
 import sys
 from pathlib import Path
@@ -235,6 +236,24 @@ def create_app(workspace: Path | None = None) -> FastAPI:
     return app
 
 
+def _bind_local_port(port: int) -> socket.socket:
+    """Reserve loopback before advertising a session token or launch URL.
+
+    Uvicorn normally binds after the startup code runs. If a stale server is
+    already listening, printing before that bind advertises a fresh token
+    for a second server that cannot start.
+    """
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    try:
+        listener.bind(("127.0.0.1", port))
+        listener.listen(128)
+    except OSError:
+        listener.close()
+        raise
+    return listener
+
+
 def main():
     import argparse
     import uvicorn
@@ -242,14 +261,27 @@ def main():
     parser = argparse.ArgumentParser(description="BHIHKH! Studio (localhost only)")
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
-    if not 1 <= args.port <= 65535:
-        parser.error("port must be 1..65535")
-    app = create_app()
-    # Fragment is never sent in HTTP requests. The browser reads it and
-    # drops it from history; no unauthenticated token bootstrap endpoint.
-    print(f"BHIHKH Studio: http://127.0.0.1:{args.port}/#token={app.state.studio_token}", flush=True)
-    print("Keep this local launch URL private: it grants access to the workspace.", flush=True)
-    uvicorn.run(app, host="127.0.0.1", port=args.port, access_log=False)
+    if not 0 <= args.port <= 65535:
+        parser.error("port must be 0..65535 (0 selects a free port)")
+    try:
+        listener = _bind_local_port(args.port)
+    except OSError as error:
+        parser.exit(2, f"Studio could not bind 127.0.0.1:{args.port}: {error}\n"
+                    "Another Studio or other server may already be listening.\n"
+                    "Stop that server, or use --port 0 for an automatically selected port.\n")
+    try:
+        # Display the actual reserved port, including for --port 0.
+        port = listener.getsockname()[1]
+        app = create_app()
+        server = uvicorn.Server(uvicorn.Config(
+            app, host="127.0.0.1", port=port, access_log=False))
+        # The port is reserved before disclosing the session credential.
+        # The URL fragment is not sent with HTTP requests.
+        print(f"BHIHKH Studio: http://127.0.0.1:{port}/#token={app.state.studio_token}", flush=True)
+        print("Keep this private launch URL secret; it grants workspace access.", flush=True)
+        server.run(sockets=[listener])
+    finally:
+        listener.close()
 
 
 if __name__ == "__main__":
