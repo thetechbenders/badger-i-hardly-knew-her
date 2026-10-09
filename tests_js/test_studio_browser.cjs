@@ -15,7 +15,7 @@ function fakeNode(tag="div") {
   const classes = new Set();
   return {
     tag, children: [], options: [], listeners: {}, value: "", textContent: "",
-    hidden: false, style: {}, naturalWidth: 1254, naturalHeight: 1254,
+    hidden: false, style: {}, min: "", max: "", naturalWidth: 1254, naturalHeight: 1254,
     checked: false, disabled: false,
     classList: {
       add(s) { classes.add(s); },
@@ -170,4 +170,28 @@ test("selected photo makes the draggable crop surface visible", async()=>{
   assert.equal(b.elements.get("crop-y").value,"0");
   assert.ok(b.elements.get("portrait-crop-box").style.width.endsWith("%"));
   assert.match(b.elements.get("portrait-status").textContent,/Source image ready/);
+});
+
+test("tonal controls clamp values to their advertised ranges", async()=>{
+  const b=browser({hash:"#token="+VALID});
+  await b.settle();
+  for(const [id,min,max,defaultValue] of [
+    ["tone-gamma",0.2,5,1],
+    ["tone-black",0,40,1],
+    ["tone-white",0,40,2],
+    ["tone-sharpen",0,3,0.6]
+  ]) {
+    const field=b.elements.get(id);
+    field.min=String(min);
+    field.max=String(max);
+    field.value=String(max+10);
+    field.listeners.change();
+    assert.equal(Number(field.value),max,id+" clamps upper range");
+    field.value=String(min-10);
+    field.listeners.change();
+    assert.equal(Number(field.value),min,id+" clamps lower range");
+    field.value="";
+    field.listeners.change();
+    assert.equal(Number(field.value),defaultValue,id+" restores default");
+  }
 });
