@@ -195,3 +195,17 @@ test("tonal controls clamp values to their advertised ranges", async()=>{
     assert.equal(Number(field.value),defaultValue,id+" restores default");
   }
 });
+
+test("switching badge target never carries a processed portrait from the other board",async()=>{
+  const b=browser({hash:"#token="+VALID});
+  await b.settle();
+  const target=b.elements.get("target");
+  const editor=b.elements.get("toml");
+  const alternate=fakeNode("option");
+  alternate.value="badger2350";
+  target.options.push(alternate);
+  editor.value='[portrait]\\nprocessed = "portrait-badger2040.png"';
+  target.value="badger2350";
+  target.listeners.change();
+  assert.match(editor.value,/processed = "sample-badger2350\\.png"/);
+});
