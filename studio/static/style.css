@@ -41,7 +41,7 @@ button.danger{color:#92352d}
 .portrait-choice { display:flex; flex-direction:column; align-items:flex-start; gap:0.35rem; cursor:pointer; }
 .portrait-choice img { width:208px; height:256px; object-fit:contain; image-rendering:pixelated; border:1px solid #777; background:#fff; }
 
-.portrait-crop-stage { position:relative; display:inline-block; max-width:100%; margin:12px 0; line-height:0; user-select:none; }
+.portrait-crop-stage { position:relative; display:inline-block; max-width:100%; margin:12px 0; line-height:0; user-select:none; overflow:hidden; isolation:isolate; }
 .portrait-crop-stage[hidden] { display:none !important; }
 #portrait-source { display:block; width:auto; height:auto; max-width:100%; max-height:480px; object-fit:contain; }
 #portrait-crop-box { position:absolute; border:2px solid #fbeb8b; box-shadow:0 0 0 9999px rgba(0,0,0,.42); outline:1px solid #222; cursor:move; touch-action:none; }
