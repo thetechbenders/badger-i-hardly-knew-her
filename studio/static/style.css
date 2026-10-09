@@ -52,3 +52,8 @@ button.danger{color:#92352d}
 .portrait-native { margin:14px 0; }
 .portrait-native img { width:104px; height:128px; image-rendering:pixelated; background:white; border:1px solid #777; }
 .portrait-native.hidden { display:none; }
+
+.screens-results { display:grid; grid-template-columns:repeat(auto-fit,minmax(280px,1fr)); gap:14px; margin:16px 0; }
+.screens-results figure { margin:0; padding:12px; border:1px solid #7776; border-radius:9px; }
+.screens-results img { display:block; max-width:100%; height:auto; image-rendering:pixelated; background:white; }
+.screens-results figcaption { margin-top:8px; font-weight:600; overflow-wrap:anywhere; }
