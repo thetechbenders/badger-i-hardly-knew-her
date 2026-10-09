@@ -259,8 +259,11 @@ function toBase64(file) {
 $("portrait-preview").addEventListener("click", async () => {
   const file = $("portrait-file").files[0];
   if (!file) { portraitNote("Choose a source image first."); return; }
-  if (file.size > 1024 * 1024 || !["image/jpeg","image/png"].includes(file.type)) {
-    portraitNote("Choose a JPEG or PNG no larger than 1 MiB."); return;
+  if (!["image/jpeg","image/png"].includes(file.type)) {
+    portraitNote("Unsupported file type ("+(file.type||"unknown")+"). Choose a JPEG or PNG."); return;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    portraitNote("Image is "+(file.size / (1024 * 1024)).toFixed(1)+" MiB; maximum is 10 MiB."); return;
   }
   $("portrait-select").disabled = true;
   portraitVariants = null;
