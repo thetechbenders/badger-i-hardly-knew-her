@@ -84,7 +84,10 @@ stay in the browser, and the old saved form is retained.
 | `PUT /api/v1/workspace` | Validate with `badge_form.load_form()`, then save atomically |
 | `PUT /api/v1/parse` | Extract visual fields from a TOML document without saving it |
 | `PUT /api/v1/compose` | Apply edited fields, keeping other TOML options and comments |
-| `PUT /api/v1/portrait/preview` | Decode a bounded PNG/JPEG and return four in-memory 1-bit comparisons |\n| `PUT /api/v1/portrait/select` | Stage a selected native-size, 1-bit PNG in the managed workspace |\n| `PUT /api/v1/screens/preview` | Validate unsaved TOML and render all screens with the existing C++ host renderer, text-fit and QR gates |\n| Firmware artifact exports | Not yet implemented |
+| `PUT /api/v1/portrait/preview` | Decode a bounded PNG/JPEG and return four in-memory 1-bit comparisons |
+| `PUT /api/v1/portrait/select` | Stage a selected native-size, 1-bit PNG in the managed workspace |
+| `PUT /api/v1/screens/preview` | Validate unsaved TOML and render all screens with the existing C++ host renderer, text-fit and QR gates |
+| Firmware artifact exports | Not yet implemented |
 
 Every API request must include `X-Studio-Token`, sourced from a verified private launch URL or reconnect form. Mutations require JSON and accept bounded payloads.
 
