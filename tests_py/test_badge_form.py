@@ -594,6 +594,9 @@ class Review(FormCase):
         (local / "alias.png").symlink_to(local / "photo.png")  # a link to an archived file is still a link
         msg = "\n".join(bf.backup_problems(self.backup_form(root, "alias.png"), root))
         self.assertIn("reached through a symbolic link", msg)
+        (local / "detour").symlink_to(local / "pics", target_is_directory=True)  # absolute link, then ".."
+        msg = "\n".join(bf.backup_problems(self.backup_form(root, "detour/../photo.png"), root))
+        self.assertIn("reached through a symbolic link", msg)
         (self.dir / "elsewhere.png").write_bytes((local / "photo.png").read_bytes())
         (local / "away.png").symlink_to(self.dir / "elsewhere.png")
         self.assertIn("outside local/", "\n".join(bf.backup_problems(self.backup_form(root, "away.png"), root)))
