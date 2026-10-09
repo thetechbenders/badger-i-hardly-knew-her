@@ -598,6 +598,21 @@ class Review(FormCase):
         (local / "away.png").symlink_to(self.dir / "elsewhere.png")
         self.assertIn("outside local/", "\n".join(bf.backup_problems(self.backup_form(root, "away.png"), root)))
 
+    def test_backup_accepts_a_checkout_reached_through_a_symlink(self):
+        # A link above local/ (macOS: /var is /private/var) is not archived,
+        # whichever spelling the form and the root arrive in; one below
+        # local/ still is reported.
+        root = self.make_local()
+        via = self.dir / "via"
+        via.symlink_to(self.dir, target_is_directory=True)
+        linked_root = via / "repo"
+        for form_root, check_root in ((linked_root, root), (root, linked_root), (linked_root, linked_root)):
+            form = self.backup_form(form_root, "pics/../photo.png")
+            self.assertEqual(bf.backup_problems(form, check_root), [], (form_root, check_root))
+        (root / "local/alias.png").symlink_to(root / "local/photo.png")
+        msg = "\n".join(bf.backup_problems(self.backup_form(linked_root, "alias.png"), root))
+        self.assertIn("reached through a symbolic link", msg)
+
     def test_restored_form_reads_only_the_restored_copy(self):
         root = self.make_local()
         (root / "local/me.vcf").write_text("BEGIN:VCARD\nVERSION:3.0\nFN:Alex Example\nEND:VCARD\n")

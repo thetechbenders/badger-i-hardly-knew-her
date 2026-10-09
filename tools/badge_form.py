@@ -956,6 +956,18 @@ def _excluded(rel: str) -> str | None:
     return None
 
 
+def _path_inside_local(path: Path, local: Path) -> str | None:
+    """`path` relative to local/ (resolved) without resolving links at or
+    below local/, or None. Measured from the topmost ancestor that resolves to
+    local/, so a link above it (macOS: /var is /private/var; a symlinked
+    checkout) does not count, whatever spelling the path arrives in."""
+    lexical = Path(os.path.abspath(path))
+    for ancestor in reversed(lexical.parents):
+        if ancestor.resolve() == local:
+            return lexical.relative_to(ancestor).as_posix()
+    return None
+
+
 def backup_problems(form: Form, root: Path = ROOT) -> list[str]:
     """Why scripts/private-backup.sh could not restore this form exactly:
     every file it reads must be archived (inside local/, outside the excluded
@@ -967,17 +979,13 @@ def backup_problems(form: Form, root: Path = ROOT) -> list[str]:
         if Path(raw).expanduser().is_absolute() or raw.startswith("~") or re.match(r"^[A-Za-z]:[\\/]", raw):
             out.append(f"{field_}: {raw!r} is an absolute path; write it relative to the form "
                        "(e.g. \"photo.jpg\") so a restored backup uses its own copy")
-    local_lex = Path(os.path.abspath(root / "local"))
     for f in [form.path] + form.inputs[1:]:
         try:
             rel = f.resolve().relative_to(local).as_posix()
         except ValueError:
             out.append(f"{f}: outside local/; copy it into local/ so the backup holds it")
             continue
-        try:
-            lex = Path(os.path.abspath(f)).relative_to(local_lex).as_posix()
-        except ValueError:
-            lex = None
+        lex = _path_inside_local(f, local)
         if lex != rel:  # a symlink on the way: the archive would hold the link, not the file
             out.append(f"{f}: reached through a symbolic link ({lex or f} -> {rel}); backups copy links, "
                        "not their targets. Refer to the real file in local/ instead")
