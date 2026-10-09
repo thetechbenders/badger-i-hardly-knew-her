@@ -108,7 +108,7 @@ files cannot yet be imported; sample assets remain managed and local.
 
 ### Portrait workshop
 
-Choose a PNG or JPEG no larger than 1 MiB, then **Compare dithering**.
+Choose a PNG or JPEG no larger than 10 MiB, then **Compare dithering**.
 Studio creates four monochrome comparisons using the existing portrait converter:
 threshold, Bayer 8×8, Floyd–Steinberg, and Atkinson. Choosing a comparison
 and clicking **Use selected portrait** stores only that processed 1-bit PNG
