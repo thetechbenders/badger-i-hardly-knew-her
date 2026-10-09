@@ -127,6 +127,11 @@ class StudioTests(unittest.TestCase):
         # silently adopt a 104x176 crop.
         self.assertEqual(response.status_code, 422)
 
+    def test_crop_dimming_is_confined_to_photo(self):
+        css = (ROOT / "studio/static/style.css").read_text(encoding="utf-8")
+        self.assertRegex(css, r"\\.portrait-crop-stage\\s*\\{[^}]*overflow:hidden;")
+        self.assertIn("isolation:isolate;", css)
+
     def test_crop_preview_content_security_policy_allows_local_blob_images(self):
         """The crop source uses URL.createObjectURL(file), which requires blob: images."""
         response = self.client.get("/")
