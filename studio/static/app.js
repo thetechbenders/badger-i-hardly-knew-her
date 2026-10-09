@@ -1,10 +1,18 @@
 "use strict";
-const fragmentToken = new URLSearchParams(window.location.hash.slice(1)).get("token");
-if (fragmentToken) {
-  sessionStorage.setItem("studio-token", fragmentToken);
-  history.replaceState(null, "", window.location.pathname);
+// Prefer the private launch fragment; cached credentials may be from a
+// previous server process. Only persist credentials after API verification.
+const fragmentToken = new URLSearchParams(window.location.hash.slice(1)).get("token") || "";
+if (fragmentToken) history.replaceState(null, "", window.location.pathname + window.location.search);
+function cachedToken() {
+  try { return sessionStorage.getItem("studio-token") || ""; } catch (_) { return ""; }
 }
-const token = fragmentToken || sessionStorage.getItem("studio-token") || "";
+function cacheToken(value) {
+  try { sessionStorage.setItem("studio-token", value); } catch (_) { /* storage disabled */ }
+}
+function clearToken() {
+  try { sessionStorage.removeItem("studio-token"); } catch (_) { /* storage disabled */ }
+}
+let token = fragmentToken || cachedToken();
 const $ = id => document.getElementById(id);
 const target = $("target");
 const editor = $("toml");
@@ -27,8 +35,13 @@ async function call(path, options={}) {
   try { data = await res.json(); } catch (_) { /* Error responses can be non-JSON */ }
   if (!res.ok && res.status !== 422) {
     const detail = data.detail;
-    throw new Error(typeof detail === "string" ? detail :
+    const error = new Error(typeof detail === "string" ? detail :
       (detail ? JSON.stringify(detail) : res.status + " " + res.statusText));
+    error.httpStatus = res.status;
+    if (res.status === 403 && detail === "Invalid session token") {
+      lockSession("Session expired or token rejected. Paste the latest private launch URL.");
+    }
+    throw error;
   }
   return {res,data};
 }
@@ -160,17 +173,70 @@ $("save").addEventListener("click",async()=>{
   } catch(e){note("Error: "+e.message);}
 });
 window.addEventListener("beforeunload",e=>{if(dirty){e.preventDefault();e.returnValue="";}});
-async function initialize() {
-  try{
-    if(!token)throw new Error("Use the private launch URL printed by Studio");
-    const [{data:t},{data:w}]=await Promise.all([call("targets"),call("workspace")]);
-    t.targets.forEach(x=>{
-      const opt=document.createElement("option");opt.value=x.id;
-      opt.textContent=x.name+" ("+x.display.join(" × ")+")";target.append(opt);
-    });
-    target.value=w.target;editor.value=w.toml;savedToml=w.toml;
-    if(!await tomlToVisual())throw new Error("Could not parse existing form");
-    note("Ready");showTab("visual");
-  }catch(e){note("Unable to load: "+e.message);}
+function lockSession(message) {
+  token = "";
+  clearToken();
+  document.body.classList.add("locked");
+  $("connection").classList.remove("hidden");
+  $("connection-message").textContent = message;
 }
-initialize();
+
+function tokenFromInput(value) {
+  const raw = value.trim();
+  let candidate = raw;
+  if (/^https?:\/\//i.test(raw)) {
+    const url = new URL(raw);
+    if (url.origin !== window.location.origin || url.pathname !== "/" || url.search) {
+      throw new Error("Use the private launch URL for this exact local address and port.");
+    }
+    candidate = new URLSearchParams(url.hash.slice(1)).get("token") || "";
+  } else if (raw.startsWith("#")) {
+    candidate = new URLSearchParams(raw.slice(1)).get("token") || "";
+  }
+  if (!/^[a-zA-Z0-9_-]{32,128}$/.test(candidate)) {
+    throw new Error("Paste the complete private link printed by the current Studio server.");
+  }
+  return candidate;
+}
+
+async function connect(candidate) {
+  token = candidate;
+  $("connection-message").textContent = "Checking connection…";
+  try {
+    const {data:t} = await call("targets");
+    if (!model || !dirty) {
+      const {data:w} = await call("workspace");
+      target.replaceChildren();
+      t.targets.forEach(x=>{
+        const opt=document.createElement("option");opt.value=x.id;
+        opt.textContent=x.name+" ("+x.display.join(" × ")+")";target.append(opt);
+      });
+      target.value=w.target;editor.value=w.toml;savedToml=w.toml;
+      if (!await tomlToVisual()) throw new Error("Could not parse the saved badge form");
+      dirty = false;
+      showTab("visual");
+    }
+    cacheToken(candidate);
+    document.body.classList.remove("locked");
+    $("connection").classList.add("hidden");
+    $("connection-url").value = "";
+    note(dirty ? "Reconnected; unsaved changes preserved" : "Ready");
+    return true;
+  } catch (e) {
+    const message = e.httpStatus === 403 && e.message === "Invalid session token"
+      ? "Token rejected. Copy the newest link from the terminal running Studio. An older link cannot unlock a restarted server."
+      : "Unable to connect: " + e.message;
+    lockSession(message);
+    return false;
+  }
+}
+
+$("connection-form").addEventListener("submit",async event=>{
+  event.preventDefault();
+  try { await connect(tokenFromInput($("connection-url").value)); }
+  catch (e) { $("connection-message").textContent = e.message; }
+  finally { $("connection-url").value = ""; }
+});
+
+if (token) connect(token);
+else lockSession("Paste the private launch URL printed by the running Studio server.");
