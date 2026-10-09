@@ -59,6 +59,32 @@ class StudioTests(unittest.TestCase):
         self.assertEqual(self.client.put("/api/v1/portrait/select",
             headers=self.auth, json={"target": "badger2040", "image": encoded(picture)}).status_code, 422)
 
+    def test_portrait_upload_limits_and_type_validation(self):
+        import base64
+        import io
+        from PIL import Image
+
+        # A 1 MiB+ valid PNG must now reach conversion instead of hitting
+        # the previous transport cap. Noise ensures it cannot compress below it.
+        import numpy as np
+        rng = np.random.default_rng(24351)
+        pixels = rng.integers(0, 256, size=(700, 700, 3), dtype=np.uint8)
+        buffer = io.BytesIO()
+        Image.fromarray(pixels, "RGB").save(buffer, format="PNG")
+        raw = buffer.getvalue()
+        self.assertGreater(len(raw), 1024 * 1024)
+        self.assertLess(len(raw), 10 * 1024 * 1024)
+        response = self.client.put("/api/v1/portrait/preview", headers=self.auth,
+            json={"target": "badger2040", "image": base64.b64encode(raw).decode("ascii")})
+        self.assertEqual(response.status_code, 200, response.text)
+
+        # Oversized raw images are rejected without image decoding.
+        giant = base64.b64encode(b"x" * (10 * 1024 * 1024 + 1)).decode("ascii")
+        response = self.client.put("/api/v1/portrait/preview", headers=self.auth,
+            json={"target": "badger2040", "image": giant})
+        self.assertEqual(response.status_code, 413, response.text)
+        self.assertIn("10 MiB", response.json()["detail"])
+
     def test_portrait_preview_reuses_original_composition_on_2350(self):
         import base64
         import io
