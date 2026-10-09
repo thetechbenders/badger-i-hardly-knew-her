@@ -221,9 +221,10 @@ TEST(render_status_area_reserved_on_every_screen) {
           if (v.screen == Screen::Recovery) {
             for (int x = sr.x; x < sr.right(); ++x)
               for (int y = sr.y; y < sr.bottom(); ++y) CHECK(g_fb.get(x, y) == Ink::Black);  // inside the header
-          } else {
+          } else if (!(v.screen == Screen::Badge && portrait && layout == 1)) {
             CHECK(region_white(g_fb, sr));
           }
+          if (v.screen == Screen::Badge) CHECK(sr.right() == W - 2);
           // Drawing the fullest status changes nothing outside its rectangle.
           c.status = status_of(PowerDisplay::Battery, 0, true, GestureIndicator::Fault);
           render(g_fb2, v, c);
@@ -369,7 +370,16 @@ TEST(render_maximum_content_all_screens_and_states) {
         CHECK(g_fb.hash() != Framebuffer().hash());
         if (v.screen == Screen::Badge) {
           const int px = layout ? W - c.portrait.width : 0;
-          CHECK(portrait_intact(g_fb, c.portrait, px, (H - c.portrait.height) / 2));
+          const Rect sr = status_rect(v, c);
+          CHECK(sr.right() == W - 2);
+          for (int y = 0; y < c.portrait.height; ++y)
+            for (int x = 0; x < c.portrait.width; ++x) {
+              const int xx = px + x, yy = (H - c.portrait.height) / 2 + y;
+              if (layout && xx >= sr.x && xx < sr.right() && yy < sr.bottom()) continue;
+              const bool ink = (c.portrait.bits[y * c.portrait.stride + (x >> 3)] &
+                                (0x80 >> (x & 7))) != 0;
+              CHECK((g_fb.get(xx, yy) == Ink::Black) == ink);
+            }
         }
       }
 }
@@ -619,11 +629,9 @@ TEST(screen_fit_sample_is_complete_and_draws_like_render) {
     v.layout = k.layout;
     render(g_fb, v, c);
     screen_fit(g_fb2, c, k.s, k.layout);
-    CHECK(region_white(g_fb2, status_rect(v, c)));  // no status area in the scratch render
-    Framebuffer a;
-    a.copy_from(g_fb);
-    a.fill_rect(status_rect(v, c), Ink::White);
-    CHECK(a.equals(g_fb2));
+    // Scratch fit rendering must match the real screen with status disabled.
+    // Layout B can contain portrait pixels beneath the status area.
+    CHECK(g_fb.equals(g_fb2));
   }
 }
 
