@@ -157,8 +157,9 @@ $("project-add").addEventListener("click",()=>{
 });
 target.addEventListener("change",()=>{
   const names=Array.from(target.options,o=>sampleFor(o.value));
+  const managed=Array.from(target.options,o=>"portrait-"+o.value+".png");
   editor.value=editor.value.replace(/sample-[a-z0-9_-]+\.png/g,
-    name=>names.includes(name)?sampleFor(target.value):name);
+    name=>names.includes(name)?sampleFor(target.value):managed.includes(name)?"portrait-"+target.value+".png":name);
   changed();
 });
 editor.addEventListener("input",changed);
@@ -238,5 +239,73 @@ $("connection-form").addEventListener("submit",async event=>{
   finally { $("connection-url").value = ""; }
 });
 
+let portraitVariants = null;
+let selectedPortrait = "atkinson";
+const portraitNote = text => { $("portrait-status").textContent = text; };
+function toBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1]);
+    reader.onerror = () => reject(new Error("Could not read image"));
+    reader.readAsDataURL(file);
+  });
+}
+$("portrait-preview").addEventListener("click", async () => {
+  const file = $("portrait-file").files[0];
+  if (!file) { portraitNote("Choose a source image first."); return; }
+  if (file.size > 1024 * 1024 || !["image/jpeg","image/png"].includes(file.type)) {
+    portraitNote("Choose a JPEG or PNG no larger than 1 MiB."); return;
+  }
+  $("portrait-select").disabled = true;
+  portraitVariants = null;
+  portraitNote("Processing portrait…");
+  try {
+    const {res,data} = await call("portrait/preview", {
+      method:"PUT",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({target:target.value,image:await toBase64(file)})
+    });
+    if (!res.ok) throw new Error((data.detail||data.problems||"Invalid image").toString());
+    portraitVariants = data.variants;
+    $("portrait-results").replaceChildren();
+    for (const [method,base64] of Object.entries(data.variants)) {
+      const label = document.createElement("label");
+      label.className = "portrait-choice";
+      const radio = document.createElement("input");
+      radio.type = "radio";radio.name = "portrait-method";radio.value = method;
+      radio.checked = method === selectedPortrait;
+      radio.addEventListener("change", () => {selectedPortrait = method;});
+      const img = document.createElement("img");
+      img.src = "data:image/png;base64," + base64;
+      img.alt = method + " monochrome conversion";
+      label.append(radio,document.createTextNode(" "+method),img);
+      $("portrait-results").append(label);
+    }
+    if (!portraitVariants[selectedPortrait]) selectedPortrait = Object.keys(portraitVariants)[0];
+    $("portrait-results").querySelector('input[value="'+selectedPortrait+'"]').checked = true;
+    $("portrait-select").disabled = false;
+    portraitNote("Select a rendering, then choose Use selected portrait.");
+  } catch(e) {portraitNote("Error: "+e.message);}
+});
+$("portrait-select").addEventListener("click",async()=>{
+  if (!portraitVariants || !portraitVariants[selectedPortrait]) return;
+  try {
+    const {res,data} = await call("portrait/select",{
+      method:"PUT",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({target:target.value,image:portraitVariants[selectedPortrait]})
+    });
+    if (!res.ok) throw new Error((data.detail||"Could not select portrait").toString());
+    const old = /processed\s*=\s*["'][^"']+["']/;
+    const replacement = 'processed = "'+data.processed+'"';
+    if (!old.test(editor.value)) throw new Error("No processed portrait entry in TOML; use Advanced TOML.");
+    editor.value = editor.value.replace(old,replacement);
+    changed();
+    portraitNote("Processed portrait selected. Use Validate & save to apply to your badge.");
+  } catch(e) {portraitNote("Error: "+e.message);}
+});
+target.addEventListener("change",()=>{
+  portraitVariants=null;$("portrait-select").disabled=true;
+  $("portrait-results").replaceChildren();
+  portraitNote("Target changed. Compare again before selecting a portrait.");
+});
 if (token) connect(token);
 else lockSession("Paste the private launch URL printed by the running Studio server.");
