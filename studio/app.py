@@ -188,7 +188,7 @@ def create_app(workspace: Path | None = None) -> FastAPI:
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Content-Security-Policy"] = ("default-src 'none'; script-src 'self'; "
-                 "style-src 'self'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; "
+                 "style-src 'self'; connect-src 'self'; img-src 'self' data: blob:; base-uri 'none'; "
                  "form-action 'none'; frame-ancestors 'none'")
         return response
 
