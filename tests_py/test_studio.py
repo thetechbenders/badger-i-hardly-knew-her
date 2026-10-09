@@ -41,6 +41,35 @@ class StudioTests(unittest.TestCase):
                headers={"X-Studio-Token": restarted.app.state.studio_token}).json()
         self.assertEqual(data["target"], "badger2040")
 
+    def test_port_reservation_refuses_stale_server_without_printing_token(self):
+        """An occupied port cannot produce a misleading new launch URL."""
+        import io
+        from contextlib import redirect_stderr, redirect_stdout
+        from unittest.mock import patch
+        from studio.app import _bind_local_port, main
+
+        with _bind_local_port(0) as first:
+            port = first.getsockname()[1]
+            output, errors = io.StringIO(), io.StringIO()
+            with patch.object(sys, "argv", ["studio.app", "--port", str(port)]):
+                with redirect_stdout(output), redirect_stderr(errors):
+                    with self.assertRaises(SystemExit) as exc:
+                        main()
+            self.assertEqual(exc.exception.code, 2)
+            self.assertNotIn("#token=", output.getvalue())
+            self.assertIn("already be listening", errors.getvalue())
+            self.assertIn("port 0", errors.getvalue())
+
+    def test_port_zero_reserves_free_loopback_socket(self):
+        """The operating system selects and holds a usable loopback port."""
+        from studio.app import _bind_local_port
+
+        with _bind_local_port(0) as listener:
+            address, port = listener.getsockname()
+            self.assertEqual(address, "127.0.0.1")
+            self.assertGreater(port, 0)
+            self.assertLessEqual(port, 65535)
+
     def test_streaming_upload_exceeds_limit_without_content_length(self):
         def chunks():
             yield b'{"target":"badger2040","toml":"'
