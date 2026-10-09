@@ -45,7 +45,7 @@ button.danger{color:#92352d}
 .portrait-crop-stage[hidden] { display:none !important; }
 #portrait-source { display:block; width:auto; height:auto; max-width:100%; max-height:480px; object-fit:contain; }
 #portrait-crop-box { position:absolute; border:2px solid #fbeb8b; box-shadow:0 0 0 9999px rgba(0,0,0,.42); outline:1px solid #222; cursor:move; touch-action:none; }
-#crop-handle { position:absolute; width:18px; height:18px; right:-9px; bottom:-9px; background:#fbeb8b; border:2px solid #222; border-radius:3px; cursor:nwse-resize; }
+#crop-handle { position:absolute; width:18px; height:18px; right:0; bottom:0; background:#fbeb8b; border:2px solid #222; border-radius:3px; cursor:nwse-resize; }
 .portrait-tone { display:flex; flex-wrap:wrap; gap:12px; margin:12px 0; }
 .portrait-tone label { display:flex; flex-direction:column; gap:4px; }
 .portrait-tone input { width:100px; max-width:100%; }
