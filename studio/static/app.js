@@ -239,6 +239,12 @@ $("connection-form").addEventListener("submit",async event=>{
   finally { $("connection-url").value = ""; }
 });
 
+function cropValues() {
+  const values = ["crop-x","crop-y","crop-w","crop-h"].map(id=>$(id).value.trim());
+  if (values.every(v=>v==="")) return null;
+  if (values.some(v=>v==="" || !/^\\d+$/.test(v))) throw new Error("Enter all four crop values as positive integers.");
+  return values.map(Number);
+}
 let portraitVariants = null;
 let selectedPortrait = "atkinson";
 const portraitNote = text => { $("portrait-status").textContent = text; };
@@ -262,10 +268,11 @@ $("portrait-preview").addEventListener("click", async () => {
   try {
     const {res,data} = await call("portrait/preview", {
       method:"PUT",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({target:target.value,image:await toBase64(file)})
+      body:JSON.stringify({target:target.value,image:await toBase64(file),crop:cropValues()})
     });
     if (!res.ok) throw new Error((data.detail||data.problems||"Invalid image").toString());
     portraitVariants = data.variants;
+    ["crop-x","crop-y","crop-w","crop-h"].forEach((id,i)=>{$(id).value=String(data.crop[i]);});
     $("portrait-results").replaceChildren();
     for (const [method,base64] of Object.entries(data.variants)) {
       const label = document.createElement("label");
