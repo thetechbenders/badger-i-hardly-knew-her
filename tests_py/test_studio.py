@@ -85,6 +85,34 @@ class StudioTests(unittest.TestCase):
         self.assertEqual(response.status_code, 413, response.text)
         self.assertIn("10 MiB", response.json()["detail"])
 
+    def test_portrait_tone_settings_are_bounded_and_effective(self):
+        import base64
+        import io
+        from PIL import Image
+        image = Image.new("RGB", (208, 256))
+        for y in range(256):
+            for x in range(208):
+                image.putpixel((x, y), ((x + y) % 256, y, x))
+        stream = io.BytesIO()
+        image.save(stream, format="PNG")
+        body = {"target": "badger2040",
+                "image": base64.b64encode(stream.getvalue()).decode("ascii")}
+        baseline = self.client.put("/api/v1/portrait/preview",
+                                   headers=self.auth, json=body)
+        self.assertEqual(baseline.status_code, 200, baseline.text)
+        adjusted = self.client.put("/api/v1/portrait/preview",
+                                   headers=self.auth,
+                                   json={**body, "gamma": 2.0, "black_pct": 3.0,
+                                         "white_pct": 4.0, "sharpen": 1.5})
+        self.assertEqual(adjusted.status_code, 200, adjusted.text)
+        self.assertNotEqual(baseline.json()["variants"]["atkinson"],
+                            adjusted.json()["variants"]["atkinson"])
+        for key, invalid in (("gamma", 0), ("gamma", 5.1), ("black_pct", -1),
+                             ("white_pct", 41), ("sharpen", 3.1)):
+            result = self.client.put("/api/v1/portrait/preview",
+                       headers=self.auth, json={**body, key: invalid})
+            self.assertEqual(result.status_code, 422, (key, result.text))
+
     def test_portrait_preview_reuses_original_composition_on_2350(self):
         import base64
         import io
