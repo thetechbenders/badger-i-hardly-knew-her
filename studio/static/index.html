@@ -3,10 +3,20 @@
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>BHIHKH! Studio</title><link rel="stylesheet" href="/style.css">
 <script defer src="/app.js"></script>
-</head><body>
+</head><body class="locked">
 <main>
 <header><div><h1>BHIHKH! Studio</h1><p>Design your own e-paper badge · local only</p></div><span class="local">On your computer</span></header>
-<section class="toolbar panel"><label for="target">Badge model</label><select id="target"></select>
+<section class="panel" id="connection">
+<h2>Connect to Studio</h2>
+<p class="hint">The private link changes each time Studio starts. Paste the complete link from the <strong>currently running</strong> terminal here. Don't share it.</p>
+<form id="connection-form" autocomplete="off">
+<label for="connection-url">Private launch URL or token</label>
+<input id="connection-url" type="password" autocomplete="off" spellcheck="false" required>
+<button type="submit">Connect</button>
+</form>
+<p id="connection-message" role="status" aria-live="polite">Checking connection…</p>
+</section>
+<section class="toolbar panel" id="editor-toolbar"><label for="target">Badge model</label><select id="target"></select>
 <nav aria-label="Editor views"><button type="button" class="tab active" id="visual-tab">Visual editor</button><button type="button" class="tab" id="toml-tab">Advanced TOML</button></nav></section>
 <section class="panel" id="visual">
 <h2>Identity</h2><div class="fields" id="person-fields"></div>
