@@ -25,6 +25,54 @@ class StudioTests(unittest.TestCase):
         self.auth = {"X-Studio-Token": self.token}
         self.form = self.client.get("/api/v1/workspace", headers=self.auth).json()
 
+    def test_portrait_workshop_rejects_bad_images_and_accepts_selection(self):
+        import base64
+        import io
+        from PIL import Image
+
+        def encoded(image):
+            buf = io.BytesIO()
+            image.save(buf, format="PNG")
+            return base64.b64encode(buf.getvalue()).decode("ascii")
+
+        picture = Image.new("RGB", (208, 256))
+        for y in range(256):
+            for x in range(208):
+                picture.putpixel((x, y), (x % 256, y, (x + y) % 256))
+        preview = self.client.put("/api/v1/portrait/preview",
+            headers=self.auth, json={"target": "badger2040", "image": encoded(picture)})
+        self.assertEqual(preview.status_code, 200, preview.text)
+        variants = preview.json()["variants"]
+        self.assertEqual(set(variants), {"threshold", "bayer8", "floyd", "atkinson"})
+        with Image.open(io.BytesIO(base64.b64decode(variants["atkinson"]))) as generated:
+            self.assertEqual(generated.mode, "1")
+            self.assertEqual(generated.size, (104, 128))
+        selected = self.client.put("/api/v1/portrait/select",
+            headers=self.auth, json={"target": "badger2040", "image": variants["atkinson"]})
+        self.assertEqual(selected.status_code, 200, selected.text)
+        self.assertTrue((Path(self.temp.name) / "workspace" / "portrait-badger2040.png").is_file())
+        self.assertEqual(self.client.put("/api/v1/portrait/preview",
+            headers=self.auth, json={"target": "badger2040", "image": "not base64"}).status_code, 422)
+        self.assertEqual(self.client.put("/api/v1/portrait/preview",
+            headers=self.auth, json={"target": "badger2040", "image": encoded(picture),
+                                     "crop": [0, 0, 1000, 1000]}).status_code, 422)
+        self.assertEqual(self.client.put("/api/v1/portrait/select",
+            headers=self.auth, json={"target": "badger2040", "image": encoded(picture)}).status_code, 422)
+
+    def test_portrait_preview_reuses_original_composition_on_2350(self):
+        import base64
+        import io
+        from PIL import Image
+        image = Image.new("RGB", (208, 256))
+        out = io.BytesIO()
+        image.save(out, format="PNG")
+        response = self.client.put("/api/v1/portrait/preview",
+            headers=self.auth, json={"target": "badger2350",
+                                      "image": base64.b64encode(out.getvalue()).decode("ascii")})
+        # A flat image may fail existing tonal-range checks, but it must never
+        # silently adopt a 104x176 crop.
+        self.assertEqual(response.status_code, 422)
+
     def test_token_not_available_to_other_local_clients(self):
         home = self.client.get("/")
         self.assertNotIn(self.token, home.text)
