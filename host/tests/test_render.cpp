@@ -221,9 +221,10 @@ TEST(render_status_area_reserved_on_every_screen) {
           if (v.screen == Screen::Recovery) {
             for (int x = sr.x; x < sr.right(); ++x)
               for (int y = sr.y; y < sr.bottom(); ++y) CHECK(g_fb.get(x, y) == Ink::Black);  // inside the header
-          } else {
+          } else if (!(v.screen == Screen::Badge && portrait && layout == 1)) {
             CHECK(region_white(g_fb, sr));
           }
+          if (v.screen == Screen::Badge) CHECK(sr.right() == W - 2);
           // Drawing the fullest status changes nothing outside its rectangle.
           c.status = status_of(PowerDisplay::Battery, 0, true, GestureIndicator::Fault);
           render(g_fb2, v, c);
@@ -628,11 +629,9 @@ TEST(screen_fit_sample_is_complete_and_draws_like_render) {
     v.layout = k.layout;
     render(g_fb, v, c);
     screen_fit(g_fb2, c, k.s, k.layout);
-    CHECK(region_white(g_fb2, status_rect(v, c)));  // no status area in the scratch render
-    Framebuffer a;
-    a.copy_from(g_fb);
-    a.fill_rect(status_rect(v, c), Ink::White);
-    CHECK(a.equals(g_fb2));
+    // Scratch fit rendering must match the real screen with status disabled.
+    // Layout B can contain portrait pixels beneath the status area.
+    CHECK(g_fb.equals(g_fb2));
   }
 }
 
