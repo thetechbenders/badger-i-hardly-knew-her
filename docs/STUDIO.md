@@ -20,8 +20,15 @@ python -m studio.app --port 8765
 
 Open the **complete private launch URL** printed in the terminal, including
 its `#token=...` fragment. The fragment is not transmitted in the HTTP
-request. The browser removes it from its address bar after loading, and
-includes the token only in same-origin API requests. Anyone who obtains
+request. The browser removes the fragment from its address bar, verifies the token
+with the running server, and retains it for the current tab only after
+successful authentication. Every Studio server restart creates a new token:
+a tab holding the previous token must reconnect. The editor now displays a
+reconnect form rather than showing an empty, broken UI. Paste the **complete
+private launch URL printed by the currently running server**, or the token
+itself, into that form. Reconnecting preserves unsaved visual/TOML edits still
+held in the same open tab. The token is never embedded in public HTML or
+logged from form submissions. Anyone who obtains
 the complete launch URL can access your workspace; do not share it.
 The root page does not disclose the token. A separate local OS account
 that can connect to loopback without the token cannot access the private
@@ -53,8 +60,7 @@ stay in the browser, and the old saved form is retained.
 | `PUT /api/v1/compose` | Apply edited fields, keeping other TOML options and comments |
 | Portrait upload, preview jobs, exports | Not yet implemented |
 
-Every API request must include `X-Studio-Token`, sourced from the locally
-served page. Mutations require JSON and accept bounded payloads.
+Every API request must include `X-Studio-Token`, sourced from a verified private launch URL or reconnect form. Mutations require JSON and accept bounded payloads.
 
 ### Tests
 
