@@ -30,10 +30,10 @@
 </div></div>
 <p class="hint" id="portrait-crop-help">Drag the crop rectangle to reposition; drag its bottom-right handle to resize. Crop stays at 13:16.</p>
 <div class="portrait-controls"><label>X <input id="crop-x" type="number" min="0" step="1" placeholder="Auto"></label><label>Y <input id="crop-y" type="number" min="0" step="1" placeholder="Auto"></label><label>Width <input id="crop-w" type="number" min="8" step="1" placeholder="Auto"></label><label>Height <input id="crop-h" type="number" min="8" step="1" placeholder="Auto"></label></div><p class="hint">Leave crop fields blank for a centered crop. After a preview, edit the crop coordinates and compare again. Keep the 13:16 aspect ratio.</p><div class="portrait-tone">
-<label>Gamma <input id="tone-gamma" type="number" min="0.2" max="5" step="0.1" value="1"></label>
-<label>Black clip % <input id="tone-black" type="number" min="0" max="40" step="0.5" value="1"></label>
-<label>White clip % <input id="tone-white" type="number" min="0" max="40" step="0.5" value="2"></label>
-<label>Sharpen <input id="tone-sharpen" type="number" min="0" max="3" step="0.1" value="0.6"></label>
+<label>Gamma <span class="tone-range">(0.2–5.0)</span> <input id="tone-gamma" type="number" min="0.2" max="5" step="0.1" value="1"></label>
+<label>Black clip % <span class="tone-range">(0–40%)</span> <input id="tone-black" type="number" min="0" max="40" step="0.5" value="1"></label>
+<label>White clip % <span class="tone-range">(0–40%)</span> <input id="tone-white" type="number" min="0" max="40" step="0.5" value="2"></label>
+<label>Sharpen <span class="tone-range">(0–3.0)</span> <input id="tone-sharpen" type="number" min="0" max="3" step="0.1" value="0.6"></label>
 </div>
 <div class="portrait-controls">
 <button class="secondary" type="button" id="portrait-preview">Compare dithering</button>
