@@ -116,9 +116,13 @@ under the private Studio workspace. Finish with **Validate & save** to persist
 the TOML reference. The original uploaded photo is never retained.
 
 The workshop starts with an automatic center crop at the 104×128
-composition on both devices. Numerical X/Y/width/height fields allow subsequent
-crop adjustments. Interactive drag handles and tonal adjustment controls
-are not included in this slice. Badge 2350 still supports its taller target
+composition on both devices. A visual crop rectangle can be dragged and resized with a bottom-right handle; numeric
+X/Y/width/height fields remain available for precision. All crop paths retain
+a 13:16 aspect ratio and the server validates the coordinates. Gamma (0.2–5),
+black and white clipping (0–40%) and sharpen (0–3) use the existing
+Python converter, not an independent browser approximation. Comparing regenerates
+all four methods; clicking a method displays a 104×128 pixel 1:1 CSS preview.
+Physical e-paper size and optical appearance are not simulated. Badge 2350 still supports its taller target
 elsewhere in the existing converter, but the Studio workflow intentionally
 preserves the original shorter portrait composition. Existing firmware-accurate
 whole-screen previews and export remain later milestones.
