@@ -52,12 +52,25 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # git describe for build metadata
+      # Cache downloaded .deb archives, not installed /usr toolchain trees.
+      # Both targets use the same cache key; whichever saves first seeds later runs.
+      # APT still checks package versions/hashes against updated Noble metadata.
+      - name: Restore ARM toolchain package archives
+        uses: actions/cache@v4
+        with:
+          path: .ci-apt-archives
+          key: apt-noble-amd64-arm-gcc-15-13.2.rel1-2-newlib-v1
       - name: Install toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends ninja-build python3-venv \
+          mkdir -p "$PWD/.ci-apt-archives/partial"
+          sudo chmod -R a+rX,u+w "$PWD/.ci-apt-archives"
+          sudo apt-get -o Dir::Cache::archives="$PWD/.ci-apt-archives" \
+            -o APT::Keep-Downloaded-Packages=true \
+            install -y --no-install-recommends ninja-build python3-venv \
             gcc-arm-none-eabi=15:13.2.rel1-2 libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
           arm-none-eabi-gcc --version | head -1
+          du -sh "$PWD/.ci-apt-archives"
       # The asset/profile generators run under CMake's Python3_EXECUTABLE, so
       # install the pinned tooling into a venv and hand CMake that exact
       # interpreter (jobs don't share the host job's environment).
