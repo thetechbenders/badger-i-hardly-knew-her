@@ -33,7 +33,8 @@ from bhihkh_targets import TARGETS  # noqa: E402
 
 STATIC = Path(__file__).resolve().parent / "static"
 MAX_JSON = 128 * 1024
-MAX_PORTRAIT_JSON = 2 * 1024 * 1024
+MAX_PORTRAIT_BYTES = 10 * 1024 * 1024
+MAX_PORTRAIT_JSON = 15 * 1024 * 1024
 
 
 class Edit(BaseModel):
@@ -47,7 +48,7 @@ class Compose(Edit):
 
 class PortraitRequest(BaseModel):
     target: str
-    image: str = Field(max_length=1_500_000)
+    image: str = Field(max_length=14_000_000)
     crop: list[int] | None = None
 
 
@@ -61,8 +62,8 @@ def decode_image(value: str) -> bytes:
         raw = base64.b64decode(value, validate=True)
     except (ValueError, binascii.Error):
         raise HTTPException(422, "Invalid base64") from None
-    if len(raw) > 1024 * 1024:
-        raise HTTPException(413, "Image exceeds 1 MiB")
+    if len(raw) > MAX_PORTRAIT_BYTES:
+        raise HTTPException(413, "Image exceeds 10 MiB")
     return raw
 
 
