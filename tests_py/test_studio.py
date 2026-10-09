@@ -25,6 +25,45 @@ class StudioTests(unittest.TestCase):
         self.auth = {"X-Studio-Token": self.token}
         self.form = self.client.get("/api/v1/workspace", headers=self.auth).json()
 
+    def test_screen_preview_reuses_canonical_pipeline_without_saving(self):
+        """Unsaved TOML is rendered without persisting a workspace change."""
+        import base64
+        from unittest.mock import patch
+        from PIL import Image
+        from studio import app as studio_module
+
+        seen = []
+
+        def fake_preview(form, output):
+            seen.append((form.target, form.doc["profile"]["name"]))
+            native = output / "previews" / "native"
+            native.mkdir(parents=True)
+            Image.new("1", (296, 128), 255).save(native / "badge.png")
+            return {"previews": output / "previews", "report": {"screens": {}}}
+
+        before = self.form["toml"]
+        edited = before.replace('name = "Alex Example"', 'name = "Preview Person"')
+        with patch.object(studio_module.badge_form, "preview", side_effect=fake_preview):
+            response = self.client.put("/api/v1/screens/preview", headers=self.auth,
+                json={"target": "badger2040", "toml": edited})
+        self.assertEqual(response.status_code, 200, response.text)
+        self.assertEqual(response.json()["screens"][0]["name"], "badge")
+        self.assertTrue(base64.b64decode(response.json()["screens"][0]["png"]).startswith(b"\\x89PNG"))
+        self.assertEqual(seen, [("badger2040", "Preview Person")])
+        saved = self.client.get("/api/v1/workspace", headers=self.auth).json()
+        self.assertEqual(saved["toml"], before)
+
+    def test_screen_preview_refuses_invalid_content_before_renderer(self):
+        from unittest.mock import patch
+        from studio import app as studio_module
+        with patch.object(studio_module.badge_form, "preview") as render:
+            result = self.client.put("/api/v1/screens/preview", headers=self.auth,
+                json={"target": "badger2040",
+                      "toml": self.form["toml"].replace('processed = "sample-badger2040.png"',
+                                                         'processed = "../../outside.png"')})
+            self.assertEqual(result.status_code, 422)
+            render.assert_not_called()
+
     def test_portrait_workshop_rejects_bad_images_and_accepts_selection(self):
         import base64
         import io
