@@ -48,7 +48,7 @@ class StudioTests(unittest.TestCase):
                 json={"target": "badger2040", "toml": edited})
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["screens"][0]["name"], "badge")
-        self.assertTrue(base64.b64decode(response.json()["screens"][0]["png"]).startswith(b"\\x89PNG"))
+        self.assertTrue(base64.b64decode(response.json()["screens"][0]["png"]).startswith(bytes((137, 80, 78, 71))))
         self.assertEqual(seen, [("badger2040", "Preview Person")])
         saved = self.client.get("/api/v1/workspace", headers=self.auth).json()
         self.assertEqual(saved["toml"], before)
@@ -168,7 +168,7 @@ class StudioTests(unittest.TestCase):
 
     def test_crop_dimming_is_confined_to_photo(self):
         css = (ROOT / "studio/static/style.css").read_text(encoding="utf-8")
-        self.assertRegex(css, r"\\.portrait-crop-stage\\s*\\{[^}]*overflow:hidden;")
+        self.assertIn("overflow:hidden; isolation:isolate;", css)
         self.assertIn("isolation:isolate;", css)
 
     def test_crop_preview_content_security_policy_allows_local_blob_images(self):
