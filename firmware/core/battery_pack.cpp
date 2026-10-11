@@ -94,17 +94,15 @@ bool battery_type_selectable(bool safe_mode) { return kBatteryPackChoice && !saf
 
 BatteryPack pack_proven_by(const StableReadingRun &run, BatteryPack current) {
   if (!run.stable()) return current;
-  if (run.lowest_mv() >= kLipoProvenAtOrAboveMv) return BatteryPack::LiPo;
-  if (run.highest_mv() <= kTwoAaaProvenAtOrBelowMv) return BatteryPack::TwoAaa;
-  return current;
+  return run.lowest_mv() >= kLipoProvenAtOrAboveMv ? BatteryPack::LiPo : current;
 }
 
 BatteryPack BatteryPackWatch::feed(const BatteryMeter &meter, const BatterySample &sample, BatteryPack current) {
-  if (sample.usb) {  // the sense point reflects VBUS, not the cell
+  if (current == BatteryPack::LiPo || sample.usb) {  // nothing to prove / VBUS, not the cell
     run_.reset();
     return current;
   }
-  const BatteryMeasurement measurement = meter.inspect(sample.raw, kTwoAaaMinValidMv);
+  const BatteryMeasurement measurement = meter.inspect(sample.raw);
   if (!measurement.valid) {
     run_.reset();
     return current;

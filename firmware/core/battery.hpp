@@ -93,9 +93,6 @@ class BatteryMeter {
   const BatteryState &update(const BatteryRaw &raw, bool usb);
   // Inspect a raw sample without changing filter/display state.
   BatteryMeasurement inspect(const BatteryRaw &raw) const;
-  // The same, judged against another pack's floor (pack detection reads a
-  // cell the configured pack would reject).
-  BatteryMeasurement inspect(const BatteryRaw &raw, uint16_t min_valid_mv) const;
   // Reject a sampled value at a higher-level acquisition boundary (for
   // example, startup never settled) without letting it seed the EMA.
   const BatteryState &mark_invalid(const BatteryRaw &raw);

@@ -115,7 +115,7 @@ showed as empty and the second as `?`.
 |---|---|---|
 | `battery.pack` | 0 = LiPo, 1 = 2xAAA | 0 |
 | `battery.aaa_cells` | 0 = alkaline, 1 = NiMH | 0 |
-| `battery.auto` | switch the pack on unambiguous readings | on |
+| `battery.auto` | switch to LiPo when readings prove one | on |
 
 Presets for the pair (resting voltage; first estimates, to be checked
 against a multimeter as below):
@@ -137,30 +137,29 @@ saved at once, and the battery line shows it, for example
 `Battery   AAA alkaline auto | 3.30 V (3.31 V) | 4/4`. Over USB:
 `set battery.pack 1`, `set battery.aaa_cells 1`, `commit`.
 
-**Automatic switching** (`battery.auto`, on by default). Only a stable run of
-three readings (within 50 mV) that no other pack can produce switches the
-pack, and the switch is saved:
+**Automatic switching** (`battery.auto`, on by default) only ever goes to the
+LiPo: a stable run of three readings (within 50 mV) all at or above 3600 mV,
+which no AAA pair reaches, switches a 2xAAA selection to LiPo, and the switch
+is saved. Every wake is a cold boot on the Badger 2040, so a LiPo fitted in
+place of the AAA holder is recognised before the first frame.
 
-- every reading at or above 3600 mV: LiPo (no AAA pair gets there);
-- every reading at or below 2900 mV: 2xAAA with the chosen chemistry (a LiPo
-  is long past LOW there).
-
-Between the two, where a fresh alkaline pair and a nearly empty LiPo
-overlap, the remembered pack is kept. Every wake is a cold boot on the
-Badger 2040, so a swapped pack is checked before the first frame. Alkaline
-and NiMH can never be told apart by voltage, so the chemistry is only ever
-chosen. In practice:
+No reading proves a 2xAAA pack: a deeply discharged LiPo reads like one, and
+calling it AAA would show healthy bars on a dying cell. So switching to
+2xAAA, and the chemistry, are always chosen on the Info screen. In practice:
 
 - AAA to LiPo: switches by itself.
-- LiPo to NiMH, or to used alkaline cells: switches by itself.
-- LiPo to **fresh alkaline** cells: inside the overlap, so choose AAA
-  alkaline on the Info screen once.
+- LiPo to any AAA pair: choose AAA alkaline or AAA NiMH once. Until then the
+  meter reads the pair as a LiPo (empty, or `?` below 2.5 V), never as
+  fuller than it is.
 
-To pin a pack, set `battery.auto 0`; otherwise a chosen pack that the
-readings clearly contradict is switched back.
+To pin a pack, set `battery.auto 0`.
 
 A switch is saved on its own: only the pack fields of the stored settings
-change, so unsaved USB edits stay unsaved. Nothing switches in safe mode.
+change, so unsaved USB edits stay unsaved. A choice on the Info screen takes
+effect only once it is saved; if the write fails, the screen keeps the stored
+type. A LiPo proven by its readings is used at once even if the write fails
+(the Info screen then shows `UNSAVED`, and the next wake detects it again).
+Nothing switches in safe mode.
 
 **Validating** works as for the LiPo (below): compare the Info screen with a
 multimeter across the holder's terminals at several charge levels.

@@ -12,13 +12,11 @@
 // 2xAAA chemistries use the presets in battery_pack.cpp. Hysteresis and
 // calibration apply to every pack.
 //
-// Automatic switching (battery.auto): only a stable run of readings that no
-// other pack can produce changes the pack. Inside the band where packs
-// overlap, the remembered pack is kept:
-//   every reading >= 3600 mV   LiPo    (above any 2xAAA pack)
-//   every reading <= 2900 mV   2xAAA   (a LiPo is long past LOW there)
-// Detection judges readings against the lowest floor of any pack, so a 2xAAA
-// pack read under LiPo rules (shown as "?") still proves itself.
+// Automatic switching (battery.auto) only ever goes to the LiPo: a stable
+// run of readings all at or above 3600 mV (above any 2xAAA pack) proves one.
+// No reading proves a 2xAAA pack: a deeply discharged LiPo reads like one,
+// and calling it AAA would show bars on a dying cell. So 2xAAA is always
+// chosen by hand; a wrong guess the other way shows less charge, not more.
 //
 // A change, automatic or by hand on the Info screen, is saved on its own:
 // save_battery_type() writes the committed record with only the pack fields
@@ -63,15 +61,14 @@ bool battery_pack_auto_switch(const Prefs &p, bool safe_mode);
 bool battery_type_selectable(bool safe_mode);
 
 constexpr uint16_t kLipoProvenAtOrAboveMv = 3600;
-constexpr uint16_t kTwoAaaProvenAtOrBelowMv = 2900;
-// The pack a stable run proves, or `current` (no stable run, or overlap).
+// LiPo if a stable run proves one, else `current`.
 BatteryPack pack_proven_by(const StableReadingRun &run, BatteryPack current);
 
 // Follows samples while awake; also drives the boot-time detection below.
 class BatteryPackWatch {
  public:
   // One sample: returns the pack proven so far, else `current`. USB or an
-  // implausible reading ends the run.
+  // invalid reading ends the run.
   BatteryPack feed(const BatteryMeter &meter, const BatterySample &sample, BatteryPack current);
   bool settled() const { return run_.stable(); }
   void restart() { run_.reset(); }
@@ -81,10 +78,12 @@ class BatteryPackWatch {
 };
 
 // Boot: sample until a stable run (InitialBatterySamplePolicy limits) and
-// return the pack it proves. USB, an unsettled analog path or the overlap
-// band keep `current`.
+// return the pack it proves. USB, an unsettled analog path or anything below
+// the LiPo bound keep `current`. With LiPo selected there is nothing to prove,
+// so nothing is sampled.
 template <typename ReadFn, typename WaitFn>
 BatteryPack detect_battery_pack(const BatteryMeter &meter, BatteryPack current, ReadFn read, WaitFn wait) {
+  if (current == BatteryPack::LiPo) return current;
   BatteryPackWatch watch;
   for (int attempt = 0; attempt < InitialBatterySamplePolicy::kMaxAttempts; ++attempt) {
     const BatterySample sample = read();

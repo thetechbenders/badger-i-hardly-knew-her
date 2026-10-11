@@ -978,6 +978,14 @@ def backup_problems(form: Form, root: Path = ROOT) -> list[str]:
     every file it reads must be archived (inside local/, outside the excluded
     directories) and referenced relative to the form, so a restored copy reads
     the archived files rather than the original ones."""
+    if (root / "local").is_symlink():  # private-backup.sh records paths with realpath: they would leave local/
+        return [f"{root / 'local'}: a symbolic link; backups record paths inside local/, so local/ must be "
+                "a real directory in the checkout"]
+    return _input_problems(form, root)
+
+
+def _input_problems(form: Form, root: Path) -> list[str]:
+    """backup_problems() for the inputs themselves, once local/ is a real directory."""
     local = (root / "local").resolve()
     out = []
     for field_, raw in form.refs:

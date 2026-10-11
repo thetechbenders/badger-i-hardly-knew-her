@@ -158,25 +158,35 @@ BatterySample read_battery_sample() {
 
 void wait_ms(uint32_t delay_ms) { sleep_ms(delay_ms); }
 
-// Battery type changes (Info screen or automatic, battery_pack.hpp): the
-// meter follows at once. The choice is saved on its own, never together with
-// unsaved CLI edits.
-void use_battery_type(BatteryType type) {
-  set_battery_type(&g_staged.prefs, type);
+// Battery type changes (battery_pack.hpp) are saved on their own, never
+// together with unsaved CLI edits. save_battery_type() changes the staged
+// copy only once the write succeeded.
+bool save_battery_type_choice(BatteryType type) {
+  diag::feed_watchdog();
+  const bool saved = save_battery_type(*g_store, &g_committed, &g_staged, type);
+  if (!saved) std::printf("battery: type change not saved (flash rc %d)\r\n", g_flash->last_error());
+  g_staged_dirty = std::memcmp(&g_staged, &g_committed, sizeof g_staged) != 0;
+  return saved;
+}
+
+void meter_follows_battery_type() {
   configure_from_prefs();
   g_pack_watch.restart();
 }
 
-void save_battery_type_choice() {
-  diag::feed_watchdog();
-  if (!save_battery_type(*g_store, &g_committed, &g_staged, battery_type(g_staged.prefs)))
-    std::printf("battery: type change not saved (flash rc %d)\r\n", g_flash->last_error());
-  g_staged_dirty = std::memcmp(&g_staged, &g_committed, sizeof g_staged) != 0;
+// Info screen: the next type takes effect only once stored, so a failed
+// write leaves the screen showing the type that is actually saved.
+void choose_battery_type(int step) {
+  if (!save_battery_type_choice(step_battery_type(battery_type(g_staged.prefs), step))) return;
+  meter_follows_battery_type();
 }
 
-void choose_battery_type(int step) {
-  use_battery_type(step_battery_type(battery_type(g_staged.prefs), step));
-  save_battery_type_choice();
+// A proven LiPo is used at once: the readings show it is fitted, and keeping
+// 2xAAA thresholds would show bars a LiPo does not have. If the write
+// fails, the Info screen shows UNSAVED and the next wake detects it again.
+void use_proven_battery_type(BatteryType type) {
+  set_battery_type(&g_staged.prefs, type);
+  meter_follows_battery_type();
 }
 
 // Automatic switching while awake: a stable run of readings only another
@@ -186,8 +196,9 @@ void follow_battery_pack(const BatterySample &sample) {
   const BatteryPack current = battery_pack(g_staged.prefs);
   const BatteryPack proven = g_pack_watch.feed(g_battery, sample, current);
   if (proven == current) return;
-  use_battery_type(battery_type_for_pack(proven, g_staged.prefs));
-  save_battery_type_choice();
+  const BatteryType proven_type = battery_type_for_pack(proven, g_staged.prefs);
+  use_proven_battery_type(proven_type);
+  save_battery_type_choice(proven_type);
 }
 
 void sample_battery(uint32_t now) {
@@ -206,7 +217,7 @@ bool detect_battery_pack_at_boot(bool safe_mode) {
   const BatteryPack current = battery_pack(g_staged.prefs);
   const BatteryPack found = detect_battery_pack(g_battery, current, read_battery_sample, wait_ms);
   if (found == current) return false;
-  use_battery_type(battery_type_for_pack(found, g_staged.prefs));
+  use_proven_battery_type(battery_type_for_pack(found, g_staged.prefs));
   return true;
 }
 
@@ -682,7 +693,7 @@ int main() {
     const uint32_t t0 = now_ms();
     while (!g_core1_ready && now_ms() - t0 < 3000) sleep_ms(1);
   }
-  if (battery_pack_changed_at_boot) save_battery_type_choice();
+  if (battery_pack_changed_at_boot) save_battery_type_choice(battery_type(g_staged.prefs));
   g_sched.invalidate(false);
 
   uint32_t last_hb = 0, last_hb_change = now_ms(), last_sample = 0, last_info = 0;

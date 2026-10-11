@@ -43,17 +43,14 @@ BatteryPack detect(SampleScript &script, BatteryPack current) {
 }
 }  // namespace
 
-// Only readings no other pack can produce move the pack; the band where a
-// fresh alkaline pair and a nearly empty LiPo overlap keeps the current one.
-TEST(battery_pack_proven_only_outside_the_overlap) {
+// Only a LiPo is ever proven, by readings no 2xAAA pack reaches; anything
+// lower keeps the current pack, so 2xAAA is always chosen by hand.
+TEST(battery_pack_only_a_lipo_is_ever_proven) {
   for (BatteryPack current : {BatteryPack::LiPo, BatteryPack::TwoAaa}) {
     CHECK(pack_proven_by(run_of(kLipoProvenAtOrAboveMv), current) == BatteryPack::LiPo);
     CHECK(pack_proven_by(run_of(4150), current) == BatteryPack::LiPo);
-    CHECK(pack_proven_by(run_of(kTwoAaaProvenAtOrBelowMv), current) == BatteryPack::TwoAaa);
-    CHECK(pack_proven_by(run_of(2400), current) == BatteryPack::TwoAaa);
-    for (uint16_t overlap : {uint16_t(kTwoAaaProvenAtOrBelowMv + 1), uint16_t(3300), uint16_t(3450),
-                             uint16_t(kLipoProvenAtOrAboveMv - 1)})
-      CHECK(pack_proven_by(run_of(overlap), current) == current);
+    for (uint16_t below : {uint16_t(kLipoProvenAtOrAboveMv - 1), uint16_t(3300), uint16_t(2900), uint16_t(2400)})
+      CHECK(pack_proven_by(run_of(below), current) == current);
     StableReadingRun unsettled;
     unsettled.add(4100);
     CHECK(pack_proven_by(unsettled, current) == current);
@@ -65,45 +62,62 @@ TEST(battery_pack_proven_only_outside_the_overlap) {
   CHECK(pack_proven_by(straddling, BatteryPack::TwoAaa) == BatteryPack::TwoAaa);
 }
 
-// A NiMH pair under LiPo rules reads below the LiPo floor ("?"), yet still
-// proves itself; USB and implausible readings end the run.
-TEST(battery_pack_watch_follows_stable_plausible_readings) {
+// A deeply discharged LiPo reads like a 2xAAA pair (valid to the LiPo meter
+// down to 2.5 V). It must stay a LiPo: as AAA it would show healthy bars.
+TEST(battery_pack_dying_lipo_is_never_taken_for_aaa) {
   const BatteryMeter meter = lipo_meter();
-  CHECK(!meter.inspect(raw_for(2450)).valid);
   BatteryPackWatch watch;
-  CHECK(watch.feed(meter, {raw_for(2450), false}, BatteryPack::LiPo) == BatteryPack::LiPo);
-  CHECK(watch.feed(meter, {raw_for(2460), false}, BatteryPack::LiPo) == BatteryPack::LiPo);
-  CHECK(watch.feed(meter, {raw_for(2450), false}, BatteryPack::LiPo) == BatteryPack::TwoAaa);
+  for (uint16_t mv : {uint16_t(2900), uint16_t(2700), uint16_t(2600)}) {
+    CHECK(meter.inspect(raw_for(mv)).valid);
+    for (int sample = 0; sample < 4; ++sample)
+      CHECK(watch.feed(meter, {raw_for(mv), false}, BatteryPack::LiPo) == BatteryPack::LiPo);
+  }
+  const uint16_t dying[] = {2650};
+  SampleScript at_boot{dying, 1};
+  CHECK(detect(at_boot, BatteryPack::LiPo) == BatteryPack::LiPo);
+}
+
+// A charged LiPo fitted while 2xAAA is selected proves itself; USB and
+// invalid readings end the run.
+TEST(battery_pack_watch_follows_stable_valid_readings) {
+  BatteryMeter meter;
+  BatteryThresholds pair;
+  pair.min_valid_mv = kTwoAaaMinValidMv;
+  meter.configure(pair);
+  BatteryPackWatch watch;
+  CHECK(watch.feed(meter, {raw_for(3900), false}, BatteryPack::TwoAaa) == BatteryPack::TwoAaa);
+  CHECK(watch.feed(meter, {raw_for(3910), false}, BatteryPack::TwoAaa) == BatteryPack::TwoAaa);
+  CHECK(watch.feed(meter, {raw_for(3900), false}, BatteryPack::TwoAaa) == BatteryPack::LiPo);
   CHECK(watch.settled());
 
   watch.restart();
-  watch.feed(meter, {raw_for(2450), false}, BatteryPack::LiPo);
-  watch.feed(meter, {raw_for(2450), false}, BatteryPack::LiPo);
-  CHECK(watch.feed(meter, {raw_for(5000), true}, BatteryPack::LiPo) == BatteryPack::LiPo);  // USB
+  watch.feed(meter, {raw_for(3900), false}, BatteryPack::TwoAaa);
+  watch.feed(meter, {raw_for(3900), false}, BatteryPack::TwoAaa);
+  CHECK(watch.feed(meter, {raw_for(5000), true}, BatteryPack::TwoAaa) == BatteryPack::TwoAaa);  // USB
   CHECK(!watch.settled());
-  watch.feed(meter, {raw_for(2450), false}, BatteryPack::LiPo);
-  watch.feed(meter, {raw_for(2450), false}, BatteryPack::LiPo);
-  CHECK(watch.feed(meter, {raw_for(1500), false}, BatteryPack::LiPo) == BatteryPack::LiPo);  // implausible
+  watch.feed(meter, {raw_for(3900), false}, BatteryPack::TwoAaa);
+  watch.feed(meter, {raw_for(3900), false}, BatteryPack::TwoAaa);
+  CHECK(watch.feed(meter, {raw_for(1500), false}, BatteryPack::TwoAaa) == BatteryPack::TwoAaa);  // invalid
   CHECK(!watch.settled());
 }
 
 TEST(battery_pack_detected_at_boot) {
-  const uint16_t nimh[] = {2480, 2470, 2475};
-  SampleScript swapped{nimh, 3};
-  CHECK(detect(swapped, BatteryPack::LiPo) == BatteryPack::TwoAaa);
-  CHECK_EQ(swapped.reads, 3);  // stops as soon as three readings agree
-  CHECK_EQ(swapped.waits, 2);
-
-  const uint16_t lipo[] = {3900};
-  SampleScript charged{lipo, 1};
+  const uint16_t lipo[] = {3900, 3890, 3895};
+  SampleScript charged{lipo, 3};
   CHECK(detect(charged, BatteryPack::TwoAaa) == BatteryPack::LiPo);
+  CHECK_EQ(charged.reads, 3);  // stops as soon as three readings agree
+  CHECK_EQ(charged.waits, 2);
+
+  const uint16_t nimh[] = {2480};
+  SampleScript swapped{nimh, 1};
+  CHECK(detect(swapped, BatteryPack::LiPo) == BatteryPack::LiPo);  // never proven: chosen by hand
+  CHECK_EQ(swapped.reads, 0);  // with LiPo selected nothing is sampled: no boot delay
 
   const uint16_t fresh_alkaline[] = {3350};
   SampleScript ambiguous{fresh_alkaline, 1};
-  CHECK(detect(ambiguous, BatteryPack::LiPo) == BatteryPack::LiPo);  // the overlap keeps the pack
-  CHECK_EQ(ambiguous.reads, 3);
+  CHECK(detect(ambiguous, BatteryPack::TwoAaa) == BatteryPack::TwoAaa);
 
-  SampleScript on_usb{lipo, 1};
+  SampleScript on_usb{lipo, 3};
   on_usb.usb = true;
   CHECK(detect(on_usb, BatteryPack::TwoAaa) == BatteryPack::TwoAaa);
   CHECK_EQ(on_usb.reads, 1);

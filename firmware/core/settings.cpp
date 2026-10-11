@@ -79,7 +79,7 @@ const FieldDesc kFields[] = {
     NUM_FIELD("battery.pack", 0x316, FieldType::U8, prefs.battery_pack, 0, target::kTwoAaaPackSupported ? 1 : 0,
               "0 = LiPo, 1 = 2xAAA (Badger 2040 only)"),
     NUM_FIELD("battery.aaa_cells", 0x317, FieldType::U8, prefs.battery_aaa_cells, 0, 1, "2xAAA pack: 0 = alkaline, 1 = NiMH"),
-    NUM_FIELD("battery.auto", 0x318, FieldType::Bool, prefs.battery_auto, 0, 1, "switch LiPo / 2xAAA on unambiguous readings"),
+    NUM_FIELD("battery.auto", 0x318, FieldType::Bool, prefs.battery_auto, 0, 1, "switch to LiPo when readings prove one (2xAAA is chosen by hand)"),
     NUM_FIELD("gesture.default_on", 0x310, FieldType::Bool, prefs.gesture_default_on, 0, 1, "gesture mode on after boot"),
     NUM_FIELD("gesture.rotation", 0x311, FieldType::U8, prefs.gesture_rotation, 0, 3, "sensor mounting rotation x 90 deg clockwise"),
     NUM_FIELD("gesture.mirror", 0x312, FieldType::Bool, prefs.gesture_mirror, 0, 1, "swap left/right (sensor facing the other way)"),

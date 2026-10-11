@@ -317,7 +317,6 @@ TEST(battery_validity_floor_follows_the_pack) {
   lipo.configure(BatteryThresholds{});
   CHECK(!lipo.inspect(raw_for(2300)).valid);
   CHECK(lipo.update(raw_for(2300), false).display == PowerDisplay::Invalid);
-  CHECK(lipo.inspect(raw_for(2300), kTwoAaaMinValidMv).valid);  // judged as another pack
 
   BatteryThresholds pair;
   pair.min_valid_mv = kTwoAaaMinValidMv;

@@ -616,6 +616,17 @@ class Review(FormCase):
         msg = "\n".join(bf.backup_problems(self.backup_form(linked_root, "alias.png"), root))
         self.assertIn("reached through a symbolic link", msg)
 
+    def test_backup_refuses_a_symlinked_local_dir(self):
+        # private-backup.sh records the form with realpath --relative-to the
+        # checkout: through a linked local/ that path would leave local/
+        # ("../elsewhere/badge.toml") and the backup would not restore it.
+        root = self.make_local()
+        elsewhere = self.dir / "elsewhere"
+        (root / "local").rename(elsewhere)
+        (root / "local").symlink_to(elsewhere, target_is_directory=True)
+        msg = "\n".join(bf.backup_problems(self.backup_form(root, "photo.png"), root))
+        self.assertIn("local/ must be a real directory", msg)
+
     def test_restored_form_reads_only_the_restored_copy(self):
         root = self.make_local()
         (root / "local/me.vcf").write_text("BEGIN:VCARD\nVERSION:3.0\nFN:Alex Example\nEND:VCARD\n")

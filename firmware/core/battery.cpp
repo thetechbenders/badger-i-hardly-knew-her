@@ -29,13 +29,11 @@ uint8_t BatteryMeter::level_for(uint16_t mv) const {
   return n;
 }
 
-BatteryMeasurement BatteryMeter::inspect(const BatteryRaw &raw) const { return inspect(raw, t_.min_valid_mv); }
-
-BatteryMeasurement BatteryMeter::inspect(const BatteryRaw &raw, uint16_t min_valid_mv) const {
+BatteryMeasurement BatteryMeter::inspect(const BatteryRaw &raw) const {
   BatteryMeasurement m;
   m.mv = to_mv(raw, t_.cal_permille, &m.vdd_mv, circuit_);
   m.valid = m.vdd_mv >= kMinVddMv && m.vdd_mv <= kMaxVddMv &&
-            m.mv >= min_valid_mv && m.mv <= kMaxValidMv;
+            m.mv >= t_.min_valid_mv && m.mv <= kMaxValidMv;
   return m;
 }
 
