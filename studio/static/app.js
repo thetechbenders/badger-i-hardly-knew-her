@@ -129,8 +129,13 @@ function showTab(tab) {
   $("toml-tab").classList.toggle("active",tab==="toml");
 }
 async function visualToToml() {
+  const requested=target.value, source=editor.value, revision=editRevision;
   const {res,data}=await call("compose",{method:"PUT",headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({target:target.value,toml:editor.value,fields:model})});
+    body:JSON.stringify({target:requested,toml:source,fields:model})});
+  if(target.value!==requested || editor.value!==source || editRevision!==revision) {
+    note("Badge settings changed while composing; retry.");
+    return false;
+  }
   if(!res.ok) {showResult(data);return false;}
   editor.value=data.toml;
   return true;
@@ -163,6 +168,7 @@ target.addEventListener("change",async()=>{
   $("save").disabled=true;
   $("screens-preview").disabled=true;
   note("Switching badge target…");
+  portraitGeneration++; // An in-flight preview must not revive after a target switch.
   try {
     const {res,data}=await call("portrait/reference",{
       method:"PUT",headers:{"Content-Type":"application/json"},
@@ -188,14 +194,24 @@ target.addEventListener("change",async()=>{
 });
 editor.addEventListener("input",changed);
 $("save").addEventListener("click",async()=>{
+  const button=$("save");
+  if(button.disabled)return;
+  button.disabled=true;
   note("Validating…");
   try {
     if(activeView==="visual" && !await visualToToml())return;
+    const submittedTarget=target.value, submittedToml=editor.value, revision=editRevision;
     const {res,data}=await call("workspace",{method:"PUT",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({target:target.value,toml:editor.value})});
-    showResult(data);
-    if(res.ok){dirty=false;savedToml=editor.value;}
+      body:JSON.stringify({target:submittedTarget,toml:submittedToml})});
+    const current=target.value===submittedTarget && editor.value===submittedToml && editRevision===revision;
+    if(res.ok) {
+      savedToml=submittedToml;
+      if(current) {dirty=false;showResult(data);}
+      else {dirty=true;note("Earlier revision saved; newer changes remain unsaved.");}
+    } else if(current) showResult(data);
+    else note("Earlier revision rejected; newer changes remain unsaved.");
   } catch(e){note("Error: "+e.message);}
+  finally {button.disabled=false;}
 });
 window.addEventListener("beforeunload",e=>{if(dirty){e.preventDefault();e.returnValue="";}});
 function lockSession(message) {
@@ -299,6 +315,8 @@ function drawCrop() {
   box.style.height = (crop[3]/h*100)+"%";
 }
 function resetPreview() {
+  portraitGeneration++; // Cancel late preview responses after any source/setting change.
+  portraitNote("Portrait settings changed. Compare again.");
   portraitVariants=null;
   $("portrait-select").disabled=true;
   $("portrait-results").replaceChildren();
@@ -328,10 +346,13 @@ $("portrait-file").addEventListener("change",()=>{
   img.onerror=()=>{ $("portrait-crop-stage").hidden = true; portraitNote("Could not display source photograph."); };
   img.src=sourceURL;
 });
-cropIds.forEach(id=>$(id).addEventListener("change",()=>{
-  if (sourceSize) drawCrop();
-  resetPreview();
-}));
+cropIds.forEach(id=>{
+  $(id).addEventListener("input",resetPreview);
+  $(id).addEventListener("change",()=>{
+    if (sourceSize) drawCrop();
+    resetPreview();
+  });
+});
 const toneDefaults = {"tone-gamma":1, "tone-black":1, "tone-white":2, "tone-sharpen":0.6};
 function clampTone(id) {
   const field = $(id);
@@ -395,6 +416,7 @@ function displayNative(){
 }
 let portraitVariants = null;
 let selectedPortrait = "atkinson";
+let portraitGeneration = 0;
 const portraitNote = text => { $("portrait-status").textContent = text; };
 function toBase64(file) {
   return new Promise((resolve, reject) => {
@@ -413,14 +435,26 @@ $("portrait-preview").addEventListener("click", async () => {
   if (file.size > 10 * 1024 * 1024) {
     portraitNote("Image is "+(file.size / (1024 * 1024)).toFixed(1)+" MiB; maximum is 10 MiB."); return;
   }
-  $("portrait-select").disabled = true;
-  portraitVariants = null;
+  resetPreview();
+  const generation=portraitGeneration, requestedTarget=target.value;
+  // Snapshot inputs before the first await. The generation invalidates prior
+  // results on input events; direct field comparisons also guard uncommitted typing.
+  const cropInput=cropIds.map(id=>$(id).value);
+  const toneInput=Object.keys(toneDefaults).map(id=>$(id).value);
+  const stillCurrent=()=>generation===portraitGeneration &&
+    target.value===requestedTarget && $("portrait-file").files[0]===file &&
+    cropIds.every((id,i)=>$(id).value===cropInput[i]) &&
+    Object.keys(toneDefaults).every((id,i)=>$(id).value===toneInput[i]);
   portraitNote("Processing portrait…");
   try {
+    const crop=cropValues(),tone=toneSettings();
+    const image=await toBase64(file);
+    if(!stillCurrent())return;
     const {res,data} = await call("portrait/preview", {
       method:"PUT",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({target:target.value,image:await toBase64(file),crop:cropValues(),...toneSettings()})
+      body:JSON.stringify({target:requestedTarget,image,crop,...tone})
     });
+    if(!stillCurrent())return;
     if (!res.ok) throw new Error((data.detail||data.problems||"Invalid image").toString());
     portraitVariants = data.variants;
     ["crop-x","crop-y","crop-w","crop-h"].forEach((id,i)=>{$(id).value=String(data.crop[i]);});
@@ -443,7 +477,7 @@ $("portrait-preview").addEventListener("click", async () => {
     $("portrait-select").disabled = false;
     displayNative();
     portraitNote("Select a rendering, then choose Use selected portrait.");
-  } catch(e) {portraitNote("Error: "+e.message);}
+  } catch(e) {if(stillCurrent())portraitNote("Error: "+e.message);}
 });
 $("portrait-select").addEventListener("click",async()=>{
   if (!portraitVariants || !portraitVariants[selectedPortrait]) return;

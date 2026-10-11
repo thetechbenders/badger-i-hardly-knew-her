@@ -40,6 +40,16 @@ function fakeNode(tag="div") {
       this.listeners[type]=previous
         ? (...args)=>{ previous(...args); callback(...args); }
         : callback;
+    },
+    querySelector(selector) {
+      const match=/^input\[value="([^"]+)"\]$/.exec(selector);
+      if (!match) return null;
+      for (const child of this.children) {
+        for (const nested of child.children||[]) {
+          if(nested.tag==="input" && nested.value===match[1]) return nested;
+        }
+      }
+      return null;
     }
   };
 }
@@ -51,7 +61,9 @@ function browser({hash="", cached="", serverToken=VALID, intercept=null}={}) {
   const storage = new Map(cached ? [["studio-token", cached]] : []);
   const requests = [];
   const location = {hash, origin:"http://127.0.0.1:8765", pathname:"/", search:""};
-  const window = {location, addEventListener() {}};
+  const window = {location, listeners:{}, addEventListener(type,callback) {
+    this.listeners[type]=callback;
+  }};
   const history = {replaceState(_a,_b,url) {location.hash=""; location.pathname=url;}};
   const form = {
     person:{name:"Alex",title:"Engineer",affiliation:"",event:"",interests:[]},
@@ -61,7 +73,8 @@ function browser({hash="", cached="", serverToken=VALID, intercept=null}={}) {
   const document = {
     body,
     getElementById(id) {return elements.get(id) || null;},
-    createElement(tag) {return fakeNode(tag);}
+    createElement(tag) {return fakeNode(tag);},
+    createTextNode(text) {return {textContent:text};}
   };
   const fetch = async (url, options) => {
     requests.push({url,token:options.headers["X-Studio-Token"],body:options.body||null});
@@ -87,11 +100,17 @@ function browser({hash="", cached="", serverToken=VALID, intercept=null}={}) {
     return {ok:true,status:200,statusText:"OK",json:async()=>data};
   };
   class MockURL extends URL { static createObjectURL(){return "blob:portrait-test";} static revokeObjectURL(){} }
+  class MockFileReader {
+    readAsDataURL(file) {
+      this.result="data:image/png;base64,"+(file.base64||"YQ==");
+      this.onload();
+    }
+  }
   const context = {document,window,history,sessionStorage:{
     getItem(k){return storage.get(k)||null;},
     setItem(k,v){storage.set(k,v);},
     removeItem(k){storage.delete(k);}
-  },fetch,URL:MockURL,URLSearchParams,console};
+  },fetch,URL:MockURL,URLSearchParams,FileReader:MockFileReader,console};
   vm.runInNewContext(javascript,context,{filename:"app.js"});
   return {
     elements,body,storage,requests,context,
@@ -338,5 +357,144 @@ test("portrait selection refuses to overwrite newer visual changes after referen
   await selecting;
   assert.equal(editor.value,'[portrait]\nprocessed = "sample-badger2040.png"');
   assert.match(b.elements.get("portrait-status").textContent,/settings changed/i);
+  assert.equal(b.elements.get("portrait-select").disabled,false);
+});
+
+
+function choosePortraitSource(b, base64="YQ==") {
+  const file={type:"image/png",size:100,base64};
+  const input=b.elements.get("portrait-file");
+  input.files=[file];
+  input.listeners.change();
+  b.elements.get("portrait-source").onload();
+  for(const [id,value] of [["tone-gamma","1"],["tone-black","1"],
+                            ["tone-white","2"],["tone-sharpen","0.6"]]) {
+    b.elements.get(id).value=value;
+  }
+  return file;
+}
+
+function assertUnsavedBeforeUnload(b, expected) {
+  let prevented=false;
+  const event={preventDefault(){prevented=true;},returnValue:null};
+  b.context.window.listeners.beforeunload(event);
+  assert.equal(prevented,expected);
+}
+
+test("late save success preserves newer TOML edits and the unload warning",async()=>{
+  const gate=deferred();
+  const b=browser({hash:"#token="+VALID,intercept(url,options){
+    if(url.endsWith("/workspace") && options.method==="PUT") return gate.promise;
+  }});
+  await b.settle();
+  b.context.showTab("toml");
+  const editor=b.elements.get("toml");
+  editor.value="earlier version";editor.listeners.input();
+  const saving=b.elements.get("save").listeners.click();
+  assert.equal(b.elements.get("save").disabled,true);
+  const put=b.requests.find(r=>r.url.endsWith("/workspace") && r.body);
+  assert.equal(JSON.parse(put.body).toml,"earlier version");
+  editor.value="newer version";editor.listeners.input();
+  gate.resolve(response({ok:true,problems:[],notes:[]}));
+  await saving;
+  assert.equal(editor.value,"newer version");
+  assert.match(b.elements.get("state").textContent,/newer changes remain unsaved/i);
+  assertUnsavedBeforeUnload(b,true);
+  assert.equal(b.elements.get("save").disabled,false);
+});
+
+test("unchanged save response clears the unsaved indicator",async()=>{
+  const gate=deferred();
+  const b=browser({hash:"#token="+VALID,intercept(url,options){
+    if(url.endsWith("/workspace") && options.method==="PUT") return gate.promise;
+  }});
+  await b.settle();
+  b.context.showTab("toml");
+  const editor=b.elements.get("toml");
+  editor.value="updated";editor.listeners.input();
+  const saving=b.elements.get("save").listeners.click();
+  gate.resolve(response({ok:true,problems:[],notes:[]}));
+  await saving;
+  assert.equal(b.elements.get("state").textContent,"Validated and saved");
+  assertUnsavedBeforeUnload(b,false);
+});
+
+test("edits during visual composition never overwrite newer changes or send a stale save",async()=>{
+  const gate=deferred();
+  const b=browser({hash:"#token="+VALID,intercept(url){
+    if(url.endsWith("/compose"))return gate.promise;
+  }});
+  await b.settle();
+  const saving=b.elements.get("save").listeners.click();
+  const name=b.elements.get("person-fields").children[0].children[1];
+  name.value="Newer visual edit";name.listeners.input();
+  gate.resolve(response({ok:true,toml:"old composition"}));
+  await saving;
+  assert.equal(b.requests.some(r=>r.url.endsWith("/workspace") && r.body),false);
+  assert.match(b.elements.get("state").textContent,/changed while composing/i);
+  assert.equal(b.elements.get("person-fields").children[0].children[1].value,"Newer visual edit");
+  assertUnsavedBeforeUnload(b,true);
+  assert.equal(b.elements.get("save").disabled,false);
+});
+
+test("late portrait preview cannot revive results after tone changes",async()=>{
+  const gate=deferred();
+  const b=browser({hash:"#token="+VALID,intercept(url){
+    if(url.endsWith("/portrait/preview"))return gate.promise;
+  }});
+  await b.settle();
+  choosePortraitSource(b);
+  const preview=b.elements.get("portrait-preview").listeners.click();
+  await b.settle();
+  assert.equal(b.requests.filter(r=>r.url.endsWith("/portrait/preview")).length,1);
+  b.elements.get("tone-gamma").value="2";
+  b.elements.get("tone-gamma").listeners.input();
+  gate.resolve(response({variants:{atkinson:"c3RhbGU="},crop:[118,0,1018,1253]}));
+  await preview;
+  assert.equal(b.elements.get("portrait-select").disabled,true);
+  assert.equal(b.elements.get("portrait-results").children.length,0);
+  assert.equal(b.elements.get("portrait-native").classList.contains("hidden"),true);
+  assert.match(b.elements.get("portrait-status").textContent,/settings changed/i);
+});
+
+test("late portrait preview cannot restore an obsolete source image",async()=>{
+  const gate=deferred();
+  const b=browser({hash:"#token="+VALID,intercept(url){
+    if(url.endsWith("/portrait/preview"))return gate.promise;
+  }});
+  await b.settle();
+  choosePortraitSource(b,"YQ==");
+  const preview=b.elements.get("portrait-preview").listeners.click();
+  await b.settle();
+  choosePortraitSource(b,"Yg==");
+  gate.resolve(response({variants:{atkinson:"c3RhbGU="},crop:[118,0,1018,1253]}));
+  await preview;
+  assert.equal(b.elements.get("portrait-results").children.length,0);
+  assert.equal(b.elements.get("portrait-select").disabled,true);
+});
+
+test("newest portrait preview wins when older HTTP response arrives last",async()=>{
+  const gates=[deferred(),deferred()];
+  let index=0;
+  const b=browser({hash:"#token="+VALID,intercept(url){
+    if(url.endsWith("/portrait/preview"))return gates[index++].promise;
+  }});
+  await b.settle();
+  choosePortraitSource(b);
+  const first=b.elements.get("portrait-preview").listeners.click();
+  await b.settle();
+  b.elements.get("tone-gamma").value="2";
+  b.elements.get("tone-gamma").listeners.input();
+  const second=b.elements.get("portrait-preview").listeners.click();
+  await b.settle();
+  assert.equal(index,2);
+  gates[1].resolve(response({variants:{atkinson:"bmV3"},crop:[118,0,1018,1253]}));
+  await second;
+  const src=b.elements.get("portrait-native-image").src;
+  assert.match(src,/bmV3$/);
+  assert.equal(b.elements.get("portrait-select").disabled,false);
+  gates[0].resolve(response({variants:{atkinson:"b2xk"},crop:[118,0,1018,1253]}));
+  await first;
+  assert.equal(b.elements.get("portrait-native-image").src,src);
   assert.equal(b.elements.get("portrait-select").disabled,false);
 });
