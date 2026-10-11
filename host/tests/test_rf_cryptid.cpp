@@ -144,3 +144,11 @@ TEST(rf_error_plate_uses_specific_message_and_safe_diagnostics_hides_entry) {
   render(second,v,ctx);
   CHECK(!first.equals(second));
 }
+
+// The AAA battery feature entered review first and owns action bits 4 and 5.
+// This regression check runs on both targets, even though RF is 2350-only.
+TEST(rf_scan_action_preserves_aaa_battery_slots) {
+  CHECK_EQ(kActRfScan, 1u << 6);
+  CHECK_EQ(kActRfScan & ((1u << 4) | (1u << 5)), 0);
+  CHECK_EQ(kActRfScan & (kActRedraw | kActCleanRefresh | kActSleep | kActGestureMode), 0);
+}

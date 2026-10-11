@@ -90,8 +90,13 @@ enum Action : uint32_t {
   kActCleanRefresh = 1u << 1, // force a full clean refresh
   kActSleep = 1u << 2,        // begin the power-off sequence
   kActGestureMode = 1u << 3,  // gesture mode changed: start/stop the sensor
-  kActRfScan = 1u << 4,      // Badger 2350: request a new passive survey
+  // Bits 4 and 5 belong to Mauker's AAA battery next/prev actions (PR #12).
+  // Keep RF Cryptid's action bit distinct when the feature branches integrate.
+  kActRfScan = 1u << 6,      // Badger 2350: request a new passive survey
 };
+
+static_assert((kActRfScan & ((1u << 4) | (1u << 5))) == 0,
+              "RF scan must not reuse battery type actions from PR #12");
 
 struct AppConfig {
   uint8_t project_count = 0;
