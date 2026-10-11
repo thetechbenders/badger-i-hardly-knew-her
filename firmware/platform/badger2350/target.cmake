@@ -23,6 +23,7 @@ set(BHIHKH_TARGET_SOURCES
 set(BHIHKH_TARGET_VENDOR_SOURCES)  # nothing from pimoroni-pico
 set(BHIHKH_TARGET_DEFINITIONS
   BHIHKH_RF_CRYPTID=1
+  CYW43_LWIP=0  # radio scan only: cyw43-driver defaults to LWIP=1
   PICO_FLASH_SIZE_BYTES=16777216  # flash_layout.hpp kFlashSize (the board header's value)
 )
 set(BHIHKH_TARGET_LIBRARIES
