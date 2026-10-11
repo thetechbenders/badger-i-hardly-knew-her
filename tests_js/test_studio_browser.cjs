@@ -44,7 +44,7 @@ function fakeNode(tag="div") {
   };
 }
 
-function browser({hash="", cached="", serverToken=VALID}={}) {
+function browser({hash="", cached="", serverToken=VALID, intercept=null}={}) {
   const elements = new Map(ids.map(id => [id, fakeNode(id === "target" ? "select" : "div")]));
   const body = fakeNode("body");
   body.classList.add("locked");
@@ -68,6 +68,10 @@ function browser({hash="", cached="", serverToken=VALID}={}) {
     if (options.headers["X-Studio-Token"] !== serverToken) {
       return {ok:false,status:403,statusText:"Forbidden",
         json:async()=>({detail:"Invalid session token"})};
+    }
+    if (intercept) {
+      const custom=intercept(url,options);
+      if (custom !== undefined) return await custom;
     }
     let data = {};
     if(url.endsWith("/targets")) data={targets:[{id:"badger2040",name:"Badger 2040",display:[296,128]}]};
@@ -231,4 +235,108 @@ test("target switching only changes portrait.processed through the server",async
   assert.equal(target.disabled,false);
   assert.ok(b.requests.some(r=>r.url.endsWith("/portrait/reference") &&
        JSON.parse(r.body).target==="badger2350"));
+});
+
+
+function response(data,status=200) {
+  return {ok:status>=200 && status<300,status,statusText:status===200?"OK":"Error",
+    json:async()=>data};
+}
+function deferred() {
+  let resolve;
+  const promise=new Promise(done=>{resolve=done;});
+  return {promise,resolve};
+}
+
+test("failed target switch preserves crop and portrait preview state",async()=>{
+  const b=browser({hash:"#token="+VALID,intercept(url){
+    if(url.endsWith("/portrait/reference")) return response(
+      {ok:false,problems:["The target's portrait could not be referenced"]},422);
+  }});
+  await b.settle();
+  const target=b.elements.get("target");
+  const option=fakeNode("option");option.value="badger2350";target.options.push(option);
+  b.elements.get("crop-x").value="15";
+  b.elements.get("crop-w").value="520";
+  b.elements.get("portrait-native").classList.remove("hidden");
+  b.elements.get("portrait-select").disabled=false;
+  b.elements.get("portrait-status").textContent="Ready to use original portrait";
+  target.value="badger2350";
+  await target.listeners.change();
+  assert.equal(target.value,"badger2040");
+  assert.equal(target.disabled,false);
+  assert.equal(b.elements.get("crop-x").value,"15");
+  assert.equal(b.elements.get("crop-w").value,"520");
+  assert.equal(b.elements.get("portrait-native").classList.contains("hidden"),false);
+  assert.equal(b.elements.get("portrait-select").disabled,false);
+  assert.equal(b.elements.get("portrait-status").textContent,"Ready to use original portrait");
+  assert.match(b.elements.get("state").textContent,/Target change failed/);
+});
+
+test("successful target switch clears stale portrait preview after response",async()=>{
+  const gate=deferred();
+  const b=browser({hash:"#token="+VALID,intercept(url){
+    if(url.endsWith("/portrait/reference")) return gate.promise;
+  }});
+  await b.settle();
+  const target=b.elements.get("target"), editor=b.elements.get("toml");
+  const option=fakeNode("option");option.value="badger2350";target.options.push(option);
+  editor.value='[portrait]\nprocessed = "portrait-badger2040.png"';
+  b.elements.get("crop-w").value="520";
+  b.elements.get("portrait-native").classList.remove("hidden");
+  target.value="badger2350";
+  const switching=target.listeners.change();
+  assert.equal(b.elements.get("crop-w").value,"520", "pending switch preserves crop");
+  assert.equal(b.elements.get("portrait-native").classList.contains("hidden"),false);
+  gate.resolve(response({ok:true,toml:'[portrait]\nprocessed = "sample-badger2350.png"'}));
+  await switching;
+  assert.equal(target.value,"badger2350");
+  assert.equal(b.elements.get("crop-w").value,"");
+  assert.equal(b.elements.get("portrait-native").classList.contains("hidden"),true);
+});
+
+test("portrait selection drops an outdated response when TOML is edited",async()=>{
+  const gate=deferred();
+  const b=browser({hash:"#token="+VALID,intercept(url){
+    if(url.endsWith("/portrait/select")) return gate.promise;
+  }});
+  await b.settle();
+  vm.runInNewContext('portraitVariants={atkinson:"dummyimage"};',b.context);
+  const editor=b.elements.get("toml");
+  editor.value='[portrait]\nprocessed = "sample-badger2040.png"';
+  const selecting=b.elements.get("portrait-select").listeners.click();
+  assert.equal(b.elements.get("portrait-select").disabled,true);
+  editor.value+='\n# newer change';
+  editor.listeners.input();
+  gate.resolve(response({ok:true,processed:"portrait-badger2040-different.png"}));
+  await selecting;
+  assert.match(editor.value,/# newer change/);
+  assert.equal(b.elements.get("portrait-select").disabled,false);
+  assert.equal(b.requests.filter(r=>r.url.endsWith("/portrait/reference")).length,0);
+  assert.match(b.elements.get("portrait-status").textContent,/settings changed/i);
+});
+
+test("portrait selection refuses to overwrite newer visual changes after reference response",async()=>{
+  const gate=deferred();
+  const b=browser({hash:"#token="+VALID,intercept(url){
+    if(url.endsWith("/portrait/select"))
+      return response({ok:true,processed:"portrait-badger2040-fake.png"});
+    if(url.endsWith("/portrait/reference")) return gate.promise;
+  }});
+  await b.settle();
+  vm.runInNewContext('portraitVariants={atkinson:"dummyimage"};',b.context);
+  const editor=b.elements.get("toml");
+  editor.value='[portrait]\nprocessed = "sample-badger2040.png"';
+  const selecting=b.elements.get("portrait-select").listeners.click();
+  await b.settle();
+  assert.equal(b.requests.filter(r=>r.url.endsWith("/portrait/reference")).length,1);
+  // The visual editor changes without changing editor.value until composition.
+  const nameInput=b.elements.get("person-fields").children[0].children[1];
+  nameInput.value="Changed while selecting";
+  nameInput.listeners.input();
+  gate.resolve(response({ok:true,toml:'[portrait]\nprocessed = "portrait-badger2040-fake.png"'}));
+  await selecting;
+  assert.equal(editor.value,'[portrait]\nprocessed = "sample-badger2040.png"');
+  assert.match(b.elements.get("portrait-status").textContent,/settings changed/i);
+  assert.equal(b.elements.get("portrait-select").disabled,false);
 });

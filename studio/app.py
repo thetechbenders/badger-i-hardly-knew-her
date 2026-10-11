@@ -305,6 +305,10 @@ def create_app(workspace: Path | None = None) -> FastAPI:
     @app.put("/api/v1/portrait/preview")
     async def preview_portrait(request: Request):
         data = await read_json(request, PortraitRequest, MAX_PORTRAIT_JSON)
+        return await asyncio.to_thread(_process_portrait, data)
+
+    def _process_portrait(data: PortraitRequest):
+        """Pillow and dithering are synchronous; keep them off the ASGI event loop."""
         size = output_size(data.target)
         raw = decode_image(data.image)
         try:
@@ -345,6 +349,10 @@ def create_app(workspace: Path | None = None) -> FastAPI:
     @app.put("/api/v1/portrait/select")
     async def select_portrait(request: Request):
         data = await read_json(request, PortraitSelection)
+        return await asyncio.to_thread(_select_portrait, data)
+
+    def _select_portrait(data: PortraitSelection):
+        """Validate and persist immutable PNGs without blocking the event loop."""
         size = output_size(data.target)
         raw = decode_image(data.image)
         try:

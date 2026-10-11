@@ -479,5 +479,29 @@ class StudioTests(unittest.TestCase):
             self.assertEqual(refused.status_code, 422, (requested, refused.text))
 
 
+    def test_portrait_routes_dispatch_processing_to_worker_threads(self):
+        """Both portrait handlers must hand synchronous Pillow work to asyncio.to_thread."""
+        import asyncio
+        from unittest.mock import patch
+        from studio import app as studio_module
+
+        original = asyncio.to_thread
+        calls = []
+
+        async def recording_to_thread(fn, *args, **kwargs):
+            calls.append(fn.__name__)
+            return await original(fn, *args, **kwargs)
+
+        with patch.object(studio_module.asyncio, "to_thread",
+                          side_effect=recording_to_thread):
+            bad_preview = self.client.put("/api/v1/portrait/preview",
+                headers=self.auth, json={"target": "badger2040", "image": "invalid base64"})
+            bad_selection = self.client.put("/api/v1/portrait/select",
+                headers=self.auth, json={"target": "badger2040", "image": "invalid base64"})
+        self.assertEqual(bad_preview.status_code, 422)
+        self.assertEqual(bad_selection.status_code, 422)
+        self.assertEqual(calls, ["_process_portrait", "_select_portrait"])
+
+
 if __name__ == "__main__":
     unittest.main()

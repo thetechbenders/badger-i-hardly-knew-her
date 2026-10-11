@@ -26,6 +26,7 @@ const projectLabels = {title:"Project name",tagline:"Tagline",description:"Descr
 const contactTypes = ["email","phone","web","github","discord","text"];
 const qrModes = ["none","link","vcard","vcard-from-contacts"];
 let activeView = "visual", model = null, dirty = false, savedToml = "";
+let editRevision = 0;
 let previousTarget = "badger2040";
 
 async function call(path, options={}) {
@@ -57,7 +58,7 @@ function showResult(data) {
     const p=document.createElement("p");p.textContent="Note: "+msg;problems.append(p);
   });
 }
-function changed() {dirty=true;note("Unsaved changes");}
+function changed() {editRevision++;dirty=true;note("Unsaved changes");}
 function input(label, value, onChange, choices=null, multiline=false, check=false) {
   const wrap=document.createElement("label");wrap.className="field";
   const name=document.createElement("span");name.textContent=label;wrap.append(name);
@@ -157,7 +158,7 @@ $("project-add").addEventListener("click",()=>{
   model.projects.push({title:"",tagline:"",description:"",status:"",banner:"",link:""});changed();render();
 });
 target.addEventListener("change",async()=>{
-  const requested=target.value, source=editor.value, fallback=previousTarget;
+  const requested=target.value, source=editor.value, fallback=previousTarget, revision=editRevision;
   target.disabled=true;
   $("save").disabled=true;
   $("screens-preview").disabled=true;
@@ -168,10 +169,14 @@ target.addEventListener("change",async()=>{
       body:JSON.stringify({target:requested,toml:source})
     });
     if(!res.ok) throw new Error((data.problems||[data.detail||"Target switch failed"]).join("; "));
-    if(editor.value!==source) throw new Error("TOML changed while switching; retry.");
+    if(editor.value!==source || editRevision!==revision || target.value!==requested)
+      throw new Error("Badge settings changed while switching; retry.");
     editor.value=data.toml;
     previousTarget=requested;
     changed();
+    resetPreview();
+    cropIds.forEach(id=>{$(id).value="";});
+    portraitNote("Target changed. Compare again before selecting a portrait.");
   }catch(e){
     target.value=fallback;
     note("Target change failed: "+e.message);
@@ -442,26 +447,29 @@ $("portrait-preview").addEventListener("click", async () => {
 });
 $("portrait-select").addEventListener("click",async()=>{
   if (!portraitVariants || !portraitVariants[selectedPortrait]) return;
+  const button=$("portrait-select");
+  const selectedTarget=target.value, source=editor.value, revision=editRevision;
+  const image=portraitVariants[selectedPortrait];
+  const stillCurrent=()=>target.value===selectedTarget && editor.value===source && editRevision===revision;
+  button.disabled=true;
   try {
     const {res,data} = await call("portrait/select",{
       method:"PUT",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({target:target.value,image:portraitVariants[selectedPortrait]})
+      body:JSON.stringify({target:selectedTarget,image})
     });
     if (!res.ok) throw new Error((data.detail||"Could not select portrait").toString());
+    if (!stillCurrent()) throw new Error("Badge settings changed while selecting; retry.");
     const update=await call("portrait/reference",{
       method:"PUT",headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({target:target.value,toml:editor.value,processed:data.processed})
+      body:JSON.stringify({target:selectedTarget,toml:source,processed:data.processed})
     });
     if(!update.res.ok) throw new Error((update.data.problems||[update.data.detail||"Cannot update portrait"]).join("; "));
+    if (!stillCurrent()) throw new Error("Badge settings changed while selecting; retry.");
     editor.value=update.data.toml;
     changed();
     portraitNote("Processed portrait selected. Use Validate & save to apply to your badge.");
   } catch(e) {portraitNote("Error: "+e.message);}
-});
-target.addEventListener("change",()=>{
-  resetPreview();
-  cropIds.forEach(id=>{$(id).value="";});
-  portraitNote("Target changed. Compare again before selecting a portrait.");
+  finally {button.disabled=!portraitVariants;}
 });
 $("screens-preview").addEventListener("click",async()=>{
   const button=$("screens-preview");
