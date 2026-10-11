@@ -27,6 +27,17 @@ git -C "$deps/pico-sdk" submodule update --init --depth 1 lib/tinyusb >/dev/null
 tu="$(git -C "$deps/pico-sdk/lib/tinyusb" rev-parse HEAD)"
 [ "$tu" = "$TINYUSB_COMMIT" ] || { echo "error: tinyusb at $tu, expected $TINYUSB_COMMIT" >&2; exit 1; }
 echo "tinyusb $tu"
+# Badger 2350 RF Cryptid uses the SDK CYW43 scan driver. Pull only its
+# wireless dependencies, at the gitlink revisions of the pinned SDK.
+# No unrelated SDK, lwIP or radio-driver upgrade.
+git -C "$deps/pico-sdk" submodule update --init --depth 1 lib/cyw43-driver lib/lwip >/dev/null
+for item in "lib/cyw43-driver:$CYW43_DRIVER_COMMIT" "lib/lwip:$LWIP_COMMIT"; do
+  path="${item%%:*}"
+  expected="${item#*:}"
+  got="$(git -C "$deps/pico-sdk/$path" rev-parse HEAD)"
+  [ "$got" = "$expected" ] || { echo "error: $path at $got, expected $expected" >&2; exit 1; }
+  echo "$path $got"
+done
 fetch pimoroni-pico "$PIMORONI_PICO_URL" "$PIMORONI_PICO_TAG" "$PIMORONI_PICO_COMMIT"
 fetch picotool "$PICOTOOL_URL" "$PICOTOOL_TAG" "$PICOTOOL_COMMIT"
 

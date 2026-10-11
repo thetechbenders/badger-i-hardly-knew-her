@@ -1,8 +1,8 @@
 # BHIHKH_TARGET=badger2350: the Badger 2350 (RP2350A, SSD1680 264x176
 # panel used black/white, 16 MiB flash, LiPo charger, PCF85063A RTC, CYW43
 # wireless). Included by cmake/bhihkh_target.cmake, which documents the
-# variables. Only what the existing product needs is used: no wireless, RTC
-# features, PSRAM or rear LEDs.
+# variables. Wireless is used only for passive RF Cryptid surveys; RTC,
+# PSRAM and rear LEDs remain unused.
 set(BHIHKH_PICO_BOARD pimoroni_badger2350)  # Pico SDK boards/pimoroni_badger2350.h (since 2.3.1)
 set(BHIHKH_PICO_PLATFORM rp2350-arm-s)
 set(BHIHKH_TARGET_DESCRIPTION "Photo badge, business card and portfolio for the Badger 2350")
