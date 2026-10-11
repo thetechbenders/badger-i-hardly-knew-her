@@ -121,7 +121,7 @@ uint32_t App::on_click(Click c) {
   const Screen cur = view_.screen;
   if (c == Click::None) return kActNone;
   if (cur == Screen::Recovery) return c == Click::Long ? go(Screen::Info) : kActNone;
-  if (cur == Screen::Cryptid) return c == Click::Single || c == Click::Long ? kActRfScan : kActNone;
+  if (cur == Screen::Cryptid) return c == Click::Single || c == Click::Long ? (kActRfScan | kActRedraw) : kActNone;
   if (cur == Screen::Info && c == Click::Long && cfg_.rf_cryptid)
     return go(Screen::Cryptid) | kActRfScan;
   switch (c) {
@@ -295,7 +295,7 @@ uint32_t App::on_screen_request(Screen s, int project) {
     }
     if (!project_has_url(view_.project)) return kActNone;
   }
-  return a | go(s) | (s == Screen::Cryptid ? kActRfScan : kActNone);
+  return a | go(s) | (s == Screen::Cryptid ? (kActRfScan | kActRedraw) : kActNone);
 }
 
 uint32_t App::on_project_step(int delta) {

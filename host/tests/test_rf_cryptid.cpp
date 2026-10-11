@@ -88,10 +88,12 @@ TEST(rf_access_requires_capability_and_not_safe_mode) {
   const uint32_t action=a.on_button({Button::C,Gesture::Long,1400});
   CHECK((action & kActRfScan)!=0);
   CHECK(a.view().screen==Screen::Cryptid);
-  CHECK_EQ(a.on_screen_request(Screen::Cryptid),kActRfScan);
+  CHECK_EQ(a.on_screen_request(Screen::Cryptid),kActRfScan | kActRedraw);
   a.on_button({Button::C,Gesture::Press,1750});
   a.on_button({Button::C,Gesture::Short,1800});
-  CHECK((a.on_poll(1800+kDoublePressMs+1)&kActRfScan)!=0);
+  const uint32_t rescan=a.on_poll(1800+kDoublePressMs+1);
+  CHECK((rescan & kActRfScan)!=0);
+  CHECK((rescan & kActRedraw)!=0);
   CHECK((a.on_button({Button::A,Gesture::Short,2200})&kActRedraw)!=0);
   CHECK(a.view().screen==Screen::Badge);
   c.safe_mode=true;
