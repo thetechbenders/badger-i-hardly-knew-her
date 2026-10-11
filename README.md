@@ -26,13 +26,24 @@ placeholder silhouette instead of a photo, fictional projects and
 portfolio are your own configuration ([Make it yours](#make-it-yours)), kept
 out of Git (see [Private content](#private-content)).
 
+### Badger 2350: RF Cryptid (experimental)
+
+The Badger 2350 can render an occult field-journal specimen generated from
+nearby passive Wi-Fi scan observations. The specimen has a repeatable
+pseudo-biological anatomy derived from coarse RF features rather than a
+network list. From diagnostics (USR short), **hold C** to survey; on the plate,
+**tap C** to survey again and **tap A** to return to the badge. Only the 2350
+uses the radio; no external network, credentials or gesture sensor is needed.
+Physical Wi-Fi behavior and e-paper aesthetics remain unvalidated.
+See [RF Cryptid design and hardware checklist](docs/RF_CRYPTID.md).
+
 ## Screens and controls
 
 | Button | Short press | Long press (≥ 1 s) |
 |---|---|---|
 | **A** | Photo badge | Clean full refresh (removes ghosting) |
 | **B** | Business card | On the card: full-screen contact QR (if configured) · on a project: that project's repository QR (if it has a link) · on a QR: back |
-| **C** | Project portfolio, at the last project viewed (if any are configured). **Double press**: project index | Project 1 (from anywhere, including a project QR) |
+| **C** | Project portfolio, at the last project viewed (if any are configured). **Double press**: project index | Project 1 (except diagnostics on the 2350, which opens RF Cryptid) |
 | **UP / DOWN** | Previous / next project; from a full-screen QR, back to the card or project | UP: **gesture mode** on/off · DOWN: power off now |
 | **USR** | Diagnostics screen | Switch layout A ↔ B for this session |
 
@@ -41,7 +52,7 @@ last-viewed one highlighted. UP/DOWN move the highlight; hold to scroll
 (it stops at the ends). Holding DOWN for 3 s powers off from the index (1 s
 is taken by scrolling). **C** opens the highlighted project at once; **A**
 cancels back to where you were, without changing the remembered project;
-long C opens project 1. Browsing is quiet: the highlight moves in memory and
+long C opens project 1 except on 2350 diagnostics. Browsing is quiet: the highlight moves in memory and
 the panel is refreshed once the buttons pause (about 0.3 s after release),
 not for every step. A highlight change still takes an e-paper refresh. A
 single short C waits about 0.35 s before acting, to tell it apart from a

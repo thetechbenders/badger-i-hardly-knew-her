@@ -13,6 +13,7 @@ choice.
 |---|---|---|---|---|
 | Raspberry Pi Pico SDK | 2.3.1 | BSD-3-Clause | `third_party/licenses/pico-sdk-BSD-3-Clause.txt` | Runtime, hardware libraries, stdio, multicore, flash, power manager (RP2350), board headers |
 | TinyUSB (via the SDK) | SDK-pinned `86ad6e5` | MIT | `third_party/licenses/tinyusb-MIT.txt` | USB CDC serial |
+| CYW43 driver (2350 only) | SDK-gitlink `055d642` | Raspberry Pi hardware-specific `LICENSE.RP` | `third_party/licenses/cyw43-driver-LICENSE.RP.txt` | Passive survey of 2.4 GHz beacon metadata; only used with RP2350 |
 | pimoroni-pico `drivers/uc8151_legacy` | v1.29.0-2 | MIT | `third_party/licenses/pimoroni-pico-MIT.txt` | Badger 2040 e-paper panel driver (unmodified, compiled from `deps/`); not in the Badger 2350 image |
 | pimoroni/badger2350 (BadgeWare) SSD1680 waveform and command sequence | v3.1.1 (`7f2fa36`) | MIT | `third_party/licenses/pimoroni-badger2350-MIT.txt` | Badger 2350 only: the LUT bytes, voltages and init/update sequence in `firmware/platform/badger2350/panel_ssd1680.cpp` follow Pimoroni's driver; the code is this project's own. BadgeWare's power-down sequence and battery formula were used as hardware reference (no code included) |
 | Nayuki QR Code generator (C) | v1.8.0 | MIT | `third_party/qrcodegen/LICENSE` | QR encoding (vendored, unmodified) |
@@ -39,6 +40,13 @@ Notes:
   and keeps its original header.
 - Distribute `docs/LICENSES.md` and `third_party/licenses/` together with
   any release UF2 to satisfy the notice requirements.
+
+The CYW43 driver also offers a separate general personal/noncommercial licence, but
+this firmware uses its **LICENSE.RP** terms. Those permit use and redistribution
+with Raspberry Pi semiconductor devices and require notice reproduction for
+binary distributions. Review the terms when distributing the Badger 2350 UF2.
+The pinned lwIP submodule is fetched so SDK CMake can define the CYW43
+polling adapter, but **no lwIP network stack is linked** into RF Cryptid.
 
 ## Build and host tools (not distributed in the firmware)
 

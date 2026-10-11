@@ -9,6 +9,7 @@
 #include "battery.hpp"
 #include "framebuffer.hpp"
 #include "qr.hpp"
+#include "rf_cryptid.hpp"
 #include "settings.hpp"
 
 namespace badge {
@@ -35,6 +36,7 @@ struct RenderContext {
   MonoBitmap portrait;           // may be invalid (missing asset)
   const InfoLines *info = nullptr;
   StatusInfo status;
+  const RfPlate *rf = nullptr;  // 2350 only: null everywhere else
   const char *recovery_reason = nullptr;
 };
 

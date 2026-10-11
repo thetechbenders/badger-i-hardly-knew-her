@@ -33,6 +33,9 @@
 #include "pico/multicore.h"
 #include "pico/stdlib.h"
 #include "renderer.hpp"
+#if defined(BHIHKH_RF_CRYPTID)
+#include "rf_wifi.hpp"
+#endif
 #include "settings_store.hpp"
 #include "text.hpp"
 
@@ -69,6 +72,9 @@ repeating_timer_t g_button_timer;
 
 App g_app;
 RenderContext g_ctx;
+#if defined(BHIHKH_RF_CRYPTID)
+RfWifiScanner g_rf;
+#endif
 InfoLines g_info_lines;
 const uint8_t *g_asset_base = nullptr;
 AssetPackInfo g_asset_info;
@@ -119,6 +125,9 @@ AppConfig app_config(bool safe) {
   c.qr_configured = qr_configured(s.profile);
   c.layout = s.prefs.layout;
   c.safe_mode = safe;
+#if defined(BHIHKH_RF_CRYPTID)
+  c.rf_cryptid = true;
+#endif
   c.sleep_timeout_s = s.prefs.sleep_timeout_s;
   c.sleep_to_badge = s.prefs.sleep_screen == uint8_t(SleepScreen::Badge);
   c.wake_selects_screen = s.prefs.wake_selects_screen;
@@ -228,6 +237,11 @@ void render_cb(Framebuffer &fb, void *) {
 void apply(uint32_t actions) {
   const uint32_t t = now_ms();
   if (actions & kActGestureMode) g_gesture.set_wanted(g_app.gesture_mode());
+#if defined(BHIHKH_RF_CRYPTID)
+  // Recovery is a radio-free environment, even if a future App regression
+  // accidentally emits a scan action.
+  if ((actions & kActRfScan) && !diag::info().safe_mode) g_rf.request(t);
+#endif
   if (actions & (kActRedraw | kActSleep)) sample_battery(t);  // fresh value for the planned refresh
   if (actions & kActRedraw) g_sched.invalidate(actions & kActCleanRefresh);
   if (actions & kActSleep) {
@@ -292,6 +306,9 @@ class UsbCliHost : public CliHost {
   }
   bool select_screen(Screen s, int project) override {
     if (s == Screen::Projects && configured_project_count(g_staged.profile) == 0) return false;
+#if !defined(BHIHKH_RF_CRYPTID)
+    if (s == Screen::Cryptid) return false;
+#endif
     if (s == Screen::Projects && project >= configured_project_count(g_staged.profile)) return false;
     if (s == Screen::QrFull && !qr_configured(g_staged.profile)) return false;
     if (s == Screen::Index && project >= configured_project_count(g_staged.profile)) return false;
@@ -593,6 +610,10 @@ int main() {
   select_assets();
   g_ctx.settings = &g_staged;
   g_ctx.info = &g_info_lines;
+#if defined(BHIHKH_RF_CRYPTID)
+  // Also hides the RF entry hint on diagnostics in safe mode.
+  g_ctx.rf = boot.safe_mode ? nullptr : &g_rf.plate();
+#endif
   static char reason[64];
   std::snprintf(reason, sizeof reason, "%s", force_safe ? "A+C held at boot" : "repeated crashes");
   g_ctx.recovery_reason = reason;
@@ -631,6 +652,9 @@ int main() {
     // sample: events just popped may be newer than `t`.
     apply(g_app.on_poll(now_ms()));
     poll_cli();
+#if defined(BHIHKH_RF_CRYPTID)
+    if (g_rf.poll(now_ms(), g_app.view().screen == Screen::Cryptid)) g_sched.invalidate();
+#endif
 
     if (g_sleep == SleepPhase::None) {
       const Swipe sw = g_gesture.poll(t);

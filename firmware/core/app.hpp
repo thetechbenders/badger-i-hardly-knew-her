@@ -55,7 +55,7 @@
 namespace badge {
 
 // Values are stable (CLI names, tests); ProjectQr and Index were appended.
-enum class Screen : uint8_t { Badge = 0, Card, Projects, QrFull, Info, Recovery, ProjectQr, Index, Count };
+enum class Screen : uint8_t { Badge = 0, Card, Projects, QrFull, Info, Recovery, ProjectQr, Index, Cryptid, Count };
 const char *screen_name(Screen s);
 bool screen_from_name(const char *name, Screen *out);
 
@@ -90,7 +90,13 @@ enum Action : uint32_t {
   kActCleanRefresh = 1u << 1, // force a full clean refresh
   kActSleep = 1u << 2,        // begin the power-off sequence
   kActGestureMode = 1u << 3,  // gesture mode changed: start/stop the sensor
+  // Bits 4 and 5 belong to Mauker's AAA battery next/prev actions (PR #12).
+  // Keep RF Cryptid's action bit distinct when the feature branches integrate.
+  kActRfScan = 1u << 6,      // Badger 2350: request a new passive survey
 };
+
+static_assert((kActRfScan & ((1u << 4) | (1u << 5))) == 0,
+              "RF scan must not reuse battery type actions from PR #12");
 
 struct AppConfig {
   uint8_t project_count = 0;
@@ -98,6 +104,7 @@ struct AppConfig {
   bool qr_configured = false;
   uint8_t layout = 0;
   bool safe_mode = false;
+  bool rf_cryptid = false;  // platform capability, never a user setting
   uint16_t sleep_timeout_s = 0;
   bool sleep_to_badge = true;
   bool wake_selects_screen = true;

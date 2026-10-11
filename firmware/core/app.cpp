@@ -5,7 +5,7 @@
 namespace badge {
 
 namespace {
-const char *const kScreenNames[] = {"badge", "card", "projects", "qr", "info", "recovery", "project-qr", "index"};
+const char *const kScreenNames[] = {"badge", "card", "projects", "qr", "info", "recovery", "project-qr", "index", "cryptid"};
 }
 
 int index_viewport_top(int top, int sel, int count, int rows) {
@@ -68,6 +68,7 @@ uint32_t App::go(Screen s) {
 Screen App::sanitized(Screen s) const {
   if (s == Screen::Recovery && !cfg_.safe_mode) return Screen::Badge;
   if (s == Screen::Index) return Screen::Badge;
+  if (s == Screen::Cryptid && (!cfg_.rf_cryptid || cfg_.safe_mode)) return Screen::Badge;
   if (s == Screen::QrFull && !cfg_.qr_configured) return Screen::Card;
   if (s == Screen::ProjectQr && !project_has_url(view_.project)) s = Screen::Projects;
   if (s == Screen::Projects && cfg_.project_count == 0) return Screen::Badge;
@@ -120,6 +121,11 @@ uint32_t App::on_click(Click c) {
   const Screen cur = view_.screen;
   if (c == Click::None) return kActNone;
   if (cur == Screen::Recovery) return c == Click::Long ? go(Screen::Info) : kActNone;
+  // Recovery diagnostics must never exit into optional radio or project screens.
+  if (cfg_.safe_mode) return kActNone;
+  if (cur == Screen::Cryptid) return c == Click::Single || c == Click::Long ? (kActRfScan | kActRedraw) : kActNone;
+  if (cur == Screen::Info && c == Click::Long && cfg_.rf_cryptid && !cfg_.safe_mode)
+    return go(Screen::Cryptid) | kActRfScan;
   switch (c) {
     case Click::Single:
       // Inside the index: confirm. Only now does the remembered project change.
@@ -264,6 +270,7 @@ uint32_t App::on_poll(uint32_t now_ms) {
 
 uint32_t App::on_screen_request(Screen s, int project) {
   if (s == Screen::Recovery && !cfg_.safe_mode) return kActNone;
+  if (s == Screen::Cryptid && (!cfg_.rf_cryptid || cfg_.safe_mode)) return kActNone;
   click_.cancel();  // a USB request changes the context: no late C action
   c_frozen_ = false;
   if (s == Screen::Index) {
@@ -290,7 +297,7 @@ uint32_t App::on_screen_request(Screen s, int project) {
     }
     if (!project_has_url(view_.project)) return kActNone;
   }
-  return a | go(s);
+  return a | go(s) | (s == Screen::Cryptid ? (kActRfScan | kActRedraw) : kActNone);
 }
 
 uint32_t App::on_project_step(int delta) {
@@ -346,6 +353,7 @@ uint32_t App::on_config_changed(const AppConfig &cfg) {
   view_.layout = uint8_t(cfg.layout ^ (layout_toggled_ ? 1 : 0));
   if (view_.project >= cfg.project_count) view_.project = 0;
   if (view_.screen == Screen::Projects && cfg.project_count == 0) view_.screen = Screen::Badge;
+  if (view_.screen == Screen::Cryptid && (!cfg.rf_cryptid || cfg.safe_mode)) view_.screen = Screen::Badge;
   if (view_.screen == Screen::QrFull && !cfg.qr_configured) view_.screen = Screen::Card;
   if (view_.screen == Screen::ProjectQr && !project_has_url(view_.project))
     view_.screen = cfg.project_count ? Screen::Projects : Screen::Badge;

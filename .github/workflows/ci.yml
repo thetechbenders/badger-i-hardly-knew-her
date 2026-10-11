@@ -78,6 +78,7 @@ jobs:
         run: scripts/fetch-deps.sh
       - name: Build firmware (public sample content)
         run: |
+          set -o pipefail
           scripts/build-firmware.sh \
             -DBHIHKH_TARGET="$BHIHKH_TARGET" \
             -DPython3_EXECUTABLE="$BADGER_PYTHON" \
