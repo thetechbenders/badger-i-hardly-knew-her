@@ -4,7 +4,7 @@
 Badger 2350 wireless/passive-scan and e-paper validation still required.
 
 RF Cryptid is a specimen plate, not a Wi-Fi browser or diagnostic scanner.
-The CYW43 radio is used for a finite **passive Wi-Fi scan**, with no SSID
+The CYW43 radio uses Pico SDK's **non-lwIP core-0 polling adapter** for a finite **passive Wi-Fi scan**, with no TCP/IP stack or SSID
 association, internet connection, credentials, AP advertising, deauthentication,
 or packet capture. The device does not store or display SSIDs or BSSIDs.
 
@@ -85,3 +85,9 @@ is claimed until measured.
 
 Potential later ideas (not implemented): a single alternate habitat sigil
 page; optional privacy-preserving coarse encounter familiarity indicator.
+
+The CYW43 driver is used under its Raspberry Pi-specific `LICENSE.RP` terms:
+redistribution must be for Raspberry Pi semiconductor hardware and must retain
+the required notices. The pinned SDK also needs its lwIP *source available*
+for CMake to expose the polling adapter, but the firmware does not link a TCP/IP
+stack. See `docs/LICENSES.md`.

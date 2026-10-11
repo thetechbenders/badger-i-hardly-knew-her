@@ -27,4 +27,4 @@ set(BHIHKH_TARGET_DEFINITIONS
 )
 set(BHIHKH_TARGET_LIBRARIES
   pico_stdlib pico_multicore pico_flash hardware_spi hardware_i2c hardware_adc hardware_flash
-  hardware_watchdog hardware_powman hardware_clocks pico_cyw43_arch_lwip_poll)
+  hardware_watchdog hardware_powman hardware_clocks pico_cyw43_arch_poll)
