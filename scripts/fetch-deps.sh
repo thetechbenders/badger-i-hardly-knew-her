@@ -31,7 +31,7 @@ echo "tinyusb $tu"
 # wireless dependencies, at the gitlink revisions of the pinned SDK.
 # No unrelated SDK, lwIP or radio-driver upgrade.
 git -C "$deps/pico-sdk" submodule update --init --depth 1 lib/cyw43-driver lib/lwip >/dev/null
-for item in "lib/cyw43-driver:$CYW43_DRIVER_COMMIT" "lib/lwip:$LWIP_COMMIT"; do
+for item in "lib/cyw43-driver:$CYW_DRIVER_COMMIT" "lib/lwip:$LWIP_COMMIT"; do
   path="${item%%:*}"
   expected="${item#*:}"
   got="$(git -C "$deps/pico-sdk/$path" rev-parse HEAD)"
