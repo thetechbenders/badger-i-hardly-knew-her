@@ -353,3 +353,33 @@ TEST(app_twelve_projects_bound) {
   CHECK_EQ(a.on_button(press(Button::Down)), kActNone);  // single entry: nothing to scroll
   CHECK_EQ(a.view().project, 0);
 }
+
+// Badger 2040: on the diagnostics screen UP/DOWN pick the battery type (the
+// platform selects and saves it); everywhere else they keep their meaning.
+TEST(app_info_screen_up_down_choose_the_battery_type) {
+  App a;
+  AppConfig c = cfg();
+  c.battery_type_selectable = true;
+  a.boot(c, -1, 0);
+  tap(a, Button::User);
+  CHECK(a.view().screen == Screen::Info);
+  uint32_t r = tap(a, Button::Down);
+  CHECK(r & kActBatteryTypeNext);
+  CHECK(!(r & kActBatteryTypePrev));
+  CHECK(r & kActRedraw);
+  r = tap(a, Button::Up);
+  CHECK(r & kActBatteryTypePrev);
+  CHECK(!(r & kActBatteryTypeNext));
+  CHECK(a.view().screen == Screen::Info);
+  CHECK(!(hold(a, Button::Up) & (kActBatteryTypeNext | kActBatteryTypePrev)));  // long: gesture mode as before
+
+  tap(a, Button::A);
+  CHECK(!(tap(a, Button::Down) & (kActBatteryTypeNext | kActBatteryTypePrev)));  // badge screen: nothing new
+
+  c.battery_type_selectable = false;  // Badger 2350, or safe mode
+  a.boot(c, -1, 0);
+  tap(a, Button::User);
+  CHECK(a.view().screen == Screen::Info);
+  CHECK_EQ(tap(a, Button::Down), kActNone);
+  CHECK_EQ(tap(a, Button::Up), kActNone);
+}
