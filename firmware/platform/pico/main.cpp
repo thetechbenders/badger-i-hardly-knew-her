@@ -238,7 +238,9 @@ void apply(uint32_t actions) {
   const uint32_t t = now_ms();
   if (actions & kActGestureMode) g_gesture.set_wanted(g_app.gesture_mode());
 #if defined(BHIHKH_RF_CRYPTID)
-  if (actions & kActRfScan) g_rf.request(t);
+  // Recovery is a radio-free environment, even if a future App regression
+  // accidentally emits a scan action.
+  if ((actions & kActRfScan) && !diag::info().safe_mode) g_rf.request(t);
 #endif
   if (actions & (kActRedraw | kActSleep)) sample_battery(t);  // fresh value for the planned refresh
   if (actions & kActRedraw) g_sched.invalidate(actions & kActCleanRefresh);
@@ -609,7 +611,8 @@ int main() {
   g_ctx.settings = &g_staged;
   g_ctx.info = &g_info_lines;
 #if defined(BHIHKH_RF_CRYPTID)
-  g_ctx.rf = &g_rf.plate();
+  // Also hides the RF entry hint on diagnostics in safe mode.
+  g_ctx.rf = boot.safe_mode ? nullptr : &g_rf.plate();
 #endif
   static char reason[64];
   std::snprintf(reason, sizeof reason, "%s", force_safe ? "A+C held at boot" : "repeated crashes");

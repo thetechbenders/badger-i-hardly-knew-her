@@ -99,4 +99,48 @@ TEST(rf_access_requires_capability_and_not_safe_mode) {
   c.safe_mode=true;
   a.boot(c,-1,0);
   CHECK_EQ(a.on_screen_request(Screen::Cryptid),kActNone);
+  CHECK(a.view().screen==Screen::Recovery);
+  // The recovery screen permits a diagnostic visit, not optional radio
+  // startup. This path previously slipped around the CLI capability guard.
+  CHECK((a.on_button({Button::User,Gesture::Short,3000}) & kActRedraw)!=0);
+  CHECK(a.view().screen==Screen::Info);
+  a.on_button({Button::C,Gesture::Press,3100});
+  const uint32_t safe_long=a.on_button({Button::C,Gesture::Long,4200});
+  CHECK_EQ(safe_long,kActNone);
+  CHECK(a.view().screen==Screen::Info);
+}
+
+TEST(rf_error_plate_uses_specific_message_and_safe_diagnostics_hides_entry) {
+  Settings settings;
+  settings_defaults(&settings);
+  RenderContext ctx;
+  ctx.settings=&settings;
+  RfPlate plate;
+  plate.state=RfPlateState::Error;
+  plate.message="Radio initialization failed";
+  ctx.rf=&plate;
+  View v;
+  v.screen=Screen::Cryptid;
+  Framebuffer first,second;
+  render(first,v,ctx);
+  render(second,v,ctx);
+  CHECK(first.equals(second));
+  plate.message="Survey timed out";
+  render(second,v,ctx);
+  CHECK(!first.equals(second));
+  plate.message=nullptr;
+  render(second,v,ctx);
+  CHECK(!first.equals(second));
+
+  // Production safe mode intentionally leaves ctx.rf null. Normal
+  // diagnostics offers an entry hint; recovery diagnostics must not.
+  InfoLines info;
+  info.add("Recovery diagnostics");
+  ctx.info=&info;
+  v.screen=Screen::Info;
+  ctx.rf=nullptr;
+  render(first,v,ctx);
+  ctx.rf=&plate;
+  render(second,v,ctx);
+  CHECK(!first.equals(second));
 }

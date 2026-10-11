@@ -111,8 +111,12 @@ void render_rf_plate(Framebuffer &fb, const RfPlate *plate) {
     draw_text(fb,fonts::sans_10,55,H/2+14,"The habitat is not yet known.");
   }else if(plate->state!=RfPlateState::Ready){
     draw_text(fb,fonts::sans_bold_14,48,H/2-10,"NO SPECIMEN OBSERVED");
-    draw_text(fb,fonts::sans_10,35,H/2+14,
-              plate->state==RfPlateState::Empty?"The spectrum remains silent.":"The survey was interrupted.");
+    const char *detail=plate->state==RfPlateState::Empty
+      ? "The spectrum remains silent."
+      : plate->message && plate->message[0] ? plate->message : "The survey was interrupted.";
+    const Font *const small[]={&fonts::sans_10};
+    const FitResult fitted=fit_text(small,1,detail,W-32);
+    draw_fitted(fb,fitted,detail,16,H/2+14,W-32,Align::Center);
   }else{
     creature(fb,plate->specimen);
     for(int i=0;i<plate->specimen.sigils;i++){

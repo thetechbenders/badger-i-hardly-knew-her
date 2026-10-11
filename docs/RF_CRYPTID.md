@@ -18,10 +18,12 @@ or **tap USR** to return to diagnostics. Existing ordinary button assignments
 are unchanged outside diagnostics and this new screen. No gesture sensor is needed.
 
 CLI: `screen cryptid` enters and surveys on 2350; rejected on 2040 and in
-safe mode. No radio is initialized on the 2040. A failed scan shows an explicit
-error plate, and an empty scan shows an empty-habitat plate rather than inventing
-a specimen. Scans have a software timeout; the firmware polls the CYW43 on
-core 0 and deinitializes it after the survey completes.
+safe mode. Safe-mode diagnostics cannot enter RF Cryptid by button either,
+and the RF entry hint is hidden there. No radio is initialized on the 2040.
+A failed scan shows the specific failure reason on the error plate, and an empty
+scan shows an empty-habitat plate rather than inventing a specimen. Scans have
+an 18-second software deadline; the firmware polls the CYW43 on core 0 and
+forcibly shuts it down on timeout even if the driver remains scan-active.
 
 ## The specimen grammar
 
@@ -66,8 +68,10 @@ build/host-badger2350/badger_preview --screens cryptid --rf-fixture --out build/
 The `--rf-fixture` argument supplies a **synthetic**, fixed survey; it is not
 a radio scan. The ordinary portable host tests exercise fingerprint
 deduplication, ordering, jitter tolerance, morphology, App entry/rescan/exit,
-and repeatable framebuffer output. The existing Badger 2040 host and firmware
-builds remain regression gates.
+and repeatable framebuffer output. The 2350 host suite additionally exercises
+the real scanner adapter against a deterministic fake CYW43 interface, including
+a driver that remains scan-active past its deadline, and verifies teardown.
+The existing Badger 2040 host and firmware builds remain regression gates.
 
 ## Physical validation outstanding
 

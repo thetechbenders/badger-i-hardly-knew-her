@@ -49,6 +49,14 @@ add_executable(badger_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/main.cpp ${TEST_SO
 target_include_directories(badger_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/tests ${CMAKE_CURRENT_SOURCE_DIR}/sim
   ${REPO_ROOT}/firmware/core ${REPO_ROOT}/firmware/cli)
 target_sources(badger_tests PRIVATE ${BADGER_CLI_SOURCES})
+if(BHIHKH_TARGET STREQUAL "badger2350")
+  # Exercise the real product-local scanner against a deterministic fake
+  # of the CYW43 poll API, without linking or initiating any physical radio.
+  target_sources(badger_tests PRIVATE
+    ${REPO_ROOT}/firmware/platform/badger2350/rf_wifi.cpp)
+  target_include_directories(badger_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/rf_stub)
+endif()
 target_compile_options(badger_tests PRIVATE -Wall -Wextra -Werror -Wno-unused-parameter ${SAN_FLAGS})
 target_link_libraries(badger_tests PRIVATE badger_core Threads::Threads)
 target_compile_definitions(badger_tests PRIVATE REPO_ROOT="${REPO_ROOT}" BHIHKH_TARGET_NAME="${BHIHKH_TARGET}")

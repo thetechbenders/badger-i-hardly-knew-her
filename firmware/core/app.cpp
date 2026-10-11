@@ -121,8 +121,10 @@ uint32_t App::on_click(Click c) {
   const Screen cur = view_.screen;
   if (c == Click::None) return kActNone;
   if (cur == Screen::Recovery) return c == Click::Long ? go(Screen::Info) : kActNone;
+  // Recovery diagnostics must never exit into optional radio or project screens.
+  if (cfg_.safe_mode) return kActNone;
   if (cur == Screen::Cryptid) return c == Click::Single || c == Click::Long ? (kActRfScan | kActRedraw) : kActNone;
-  if (cur == Screen::Info && c == Click::Long && cfg_.rf_cryptid)
+  if (cur == Screen::Info && c == Click::Long && cfg_.rf_cryptid && !cfg_.safe_mode)
     return go(Screen::Cryptid) | kActRfScan;
   switch (c) {
     case Click::Single:

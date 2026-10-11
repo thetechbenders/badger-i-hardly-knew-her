@@ -80,10 +80,12 @@ bool RfWifiScanner::poll(uint32_t now_ms, bool visible) {
     plate_.state=RfPlateState::Error;
     plate_.message="Survey timed out";
     redraw=true;
+    // The pinned driver can leave wifi_scan_state active after a nonzero
+    // terminal status. Never keep the radio energized past the deadline.
+    stop();
   }
-  // The radio is off between visits, including after an interrupted survey.
-  // If the driver is still busy on timeout, continue polling until inactive.
-  if(!scanning_ && !cyw43_wifi_scan_active(&cyw43_state)) stop();
+  // Normal completion and rejected starts still shut down after polling.
+  if(initialized_ && !scanning_ && !cyw43_wifi_scan_active(&cyw43_state)) stop();
   return redraw && visible;
 }
 } // namespace badge
