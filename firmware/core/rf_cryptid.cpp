@@ -17,24 +17,19 @@ RfFingerprint rf_fingerprint(const RfObservation *rows, size_t n) {
   // Repeated observations of one BSSID are one organism signal; strongest wins.
   for (size_t i = 0; i < n; ++i) {
     if (rows[i].channel < 1 || rows[i].channel > 14) continue;
-    bool duplicate = false;
-    for (size_t j = 0; j < i; ++j)
-      if (rows[j].channel >= 1 && rows[j].channel <= 14 && same_mac(rows[i], rows[j])) {
-        // Only the strongest copy of a repeated BSSID contributes. Tie
-        // breaking is stable, independent of arrival order.
-        if (rows[j].rssi > rows[i].rssi ||
-            (rows[j].rssi == rows[i].rssi && j < i)) { duplicate = true; break; }
+    bool selected = true;
+    for (size_t j = 0; j < n; ++j) {
+      if (i == j || rows[j].channel < 1 || rows[j].channel > 14 ||
+          !same_mac(rows[i], rows[j])) continue;
+      if (rows[j].rssi > rows[i].rssi ||
+          (rows[j].rssi == rows[i].rssi &&
+            (rows[j].channel < rows[i].channel ||
+             (rows[j].channel == rows[i].channel && j < i)))) {
+        selected = false;
+        break;
       }
-    if (duplicate) continue;
-    // Skip any earlier weaker copies of this BSSID (another pass below).
-    bool later_stronger = false;
-    for (size_t j = i + 1; j < n; ++j)
-      if (same_mac(rows[i], rows[j]) && rows[j].channel >= 1 && rows[j].channel <= 14 &&
-          (rows[j].rssi > rows[i].rssi ||
-           (rows[j].rssi == rows[i].rssi && rows[j].channel < rows[i].channel))) {
-        later_stronger = true; break;
-      }
-    if (later_stronger) continue;
+    }
+    if (!selected) continue;
     if (f.count == 255) break;
     ++f.count;
     if (rows[i].rssi >= -60) ++f.strong;

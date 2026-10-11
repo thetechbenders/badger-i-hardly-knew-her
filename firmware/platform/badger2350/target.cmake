@@ -15,14 +15,16 @@ set(BHIHKH_TARGET_SOURCES
   ${_pico}/main.cpp
   ${CMAKE_CURRENT_LIST_DIR}/board.cpp
   ${CMAKE_CURRENT_LIST_DIR}/panel_ssd1680.cpp
+  ${CMAKE_CURRENT_LIST_DIR}/rf_wifi.cpp
   ${_pico}/flash_pico.cpp
   ${_pico}/diagnostics.cpp
   ${_pico}/i2c_pico.cpp
 )
 set(BHIHKH_TARGET_VENDOR_SOURCES)  # nothing from pimoroni-pico
 set(BHIHKH_TARGET_DEFINITIONS
+  BHIHKH_RF_CRYPTID=1
   PICO_FLASH_SIZE_BYTES=16777216  # flash_layout.hpp kFlashSize (the board header's value)
 )
 set(BHIHKH_TARGET_LIBRARIES
   pico_stdlib pico_multicore pico_flash hardware_spi hardware_i2c hardware_adc hardware_flash
-  hardware_watchdog hardware_powman hardware_clocks)
+  hardware_watchdog hardware_powman hardware_clocks pico_cyw43_arch_lwip_poll)

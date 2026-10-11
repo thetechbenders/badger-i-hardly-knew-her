@@ -27,6 +27,8 @@ set(BADGER_CORE_SOURCES
   ${_BADGER_ROOT}/firmware/core/gesture.cpp
   ${_BADGER_ROOT}/firmware/core/input.cpp
   ${_BADGER_ROOT}/firmware/core/qr.cpp
+  ${_BADGER_ROOT}/firmware/core/rf_cryptid.cpp
+  ${_BADGER_ROOT}/firmware/core/rf_cryptid_draw.cpp
   ${_BADGER_ROOT}/firmware/core/renderer.cpp
   ${_BADGER_ROOT}/firmware/core/settings.cpp
   ${_BADGER_ROOT}/firmware/core/settings_store.cpp

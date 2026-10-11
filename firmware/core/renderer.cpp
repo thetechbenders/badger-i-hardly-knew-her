@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "icons.hpp"
+#include "rf_cryptid_draw.hpp"
 #include "text.hpp"
 
 namespace badge {
@@ -759,6 +760,8 @@ void render_info(Framebuffer &fb, const RenderContext &ctx, bool recovery) {
     draw_fitted(fb, r, ctx.info->line[i], 6, y, W - 12);
     y += fonts::sans_10.line_height;
   }
+  if (!recovery && ctx.rf)
+    draw_text(fb, fonts::sans_bold_10, 6, H - 13, "HOLD C: RF CRYPTID");
 }
 
 int status_right(const View &v, const RenderContext &ctx) {
@@ -806,6 +809,7 @@ void render(Framebuffer &fb, const View &v, const RenderContext &ctx) {
       break;
     case Screen::ProjectQr: render_project_qr(fb, v, ctx); break;
     case Screen::Index: render_index(fb, v, ctx); break;
+    case Screen::Cryptid: render_rf_plate(fb, ctx.rf); break;
     case Screen::Info: render_info(fb, ctx, false); break;
     case Screen::Recovery: render_info(fb, ctx, true); break;
     default: break;

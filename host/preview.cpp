@@ -59,7 +59,7 @@ int main(int argc, char **argv) {
   settings_defaults(&s);
   std::string out = ".";
   std::vector<uint8_t> pack(kBuiltinAssetPack, kBuiltinAssetPack + kBuiltinAssetPack_size);
-  bool no_portrait = false, faults = false, fit_report = false;
+  bool no_portrait = false, faults = false, fit_report = false, rf_fixture = false;
   int layout = -1;
   std::string screens = "badge,card,projects,project-qr,index,qr,info";
   std::string suffix;
@@ -98,6 +98,8 @@ int main(int argc, char **argv) {
     } else if (a == "--gesture") {
       std::string g = next();
       status.gesture = g == "on" ? GestureIndicator::On : g == "fault" ? GestureIndicator::Fault : GestureIndicator::Off;
+    } else if (a == "--rf-fixture") {
+      rf_fixture = true;
     } else if (a == "--faults") {
       faults = true;
     } else if (a == "--fit") {
@@ -116,9 +118,27 @@ int main(int argc, char **argv) {
     } else { std::fprintf(stderr, "unknown argument %s\n", a.c_str()); return 2; }
   }
 
+  if (rf_fixture && Framebuffer::kWidth != 264) {
+    std::fprintf(stderr, "--rf-fixture requires badger2350 host target\n");
+    return 2;
+  }
   RenderContext ctx;
   ctx.settings = &s;
   ctx.status = status;
+  RfPlate specimen;
+  if (rf_fixture) {
+    RfObservation rows[5] = {};
+    for (int i=0;i<5;++i) {
+      rows[i].bssid[5]=uint8_t(i+1);
+      rows[i].channel=uint8_t(1+i*2);
+      rows[i].rssi=int16_t(-52-i*7);
+      rows[i].hidden=(i==3);
+      rows[i].secured=(i!=2);
+    }
+    specimen.specimen=rf_specimen(rf_fingerprint(rows,5));
+    specimen.state=RfPlateState::Ready;
+    ctx.rf=&specimen;
+  }
   AssetPackInfo pi = asset_pack_validate(pack.data(), pack.size());
   if (pi.status == AssetStatus::Ok && !no_portrait) asset_pack_bitmap(pack.data(), kAssetIdPortrait, &ctx.portrait);
   else if (!no_portrait) std::fprintf(stderr, "asset pack: %s (rendering without portrait)\n", asset_status_str(pi.status));

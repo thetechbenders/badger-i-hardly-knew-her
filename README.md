@@ -26,6 +26,17 @@ placeholder silhouette instead of a photo, fictional projects and
 portfolio are your own configuration ([Make it yours](#make-it-yours)), kept
 out of Git (see [Private content](#private-content)).
 
+### Badger 2350: RF Cryptid (experimental)
+
+The Badger 2350 can render an occult field-journal specimen generated from
+nearby passive Wi-Fi scan observations. The specimen has a repeatable
+pseudo-biological anatomy derived from coarse RF features rather than a
+network list. From diagnostics (USR short), **hold C** to survey; on the plate,
+**tap C** to survey again and **tap A** to return to the badge. Only the 2350
+uses the radio; no external network, credentials or gesture sensor is needed.
+Physical Wi-Fi behavior and e-paper aesthetics remain unvalidated.
+See [RF Cryptid design and hardware checklist](docs/RF_CRYPTID.md).
+
 ## Screens and controls
 
 | Button | Short press | Long press (≥ 1 s) |
