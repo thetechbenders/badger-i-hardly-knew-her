@@ -64,7 +64,7 @@ function browser({hash="", cached="", serverToken=VALID}={}) {
     createElement(tag) {return fakeNode(tag);}
   };
   const fetch = async (url, options) => {
-    requests.push({url,token:options.headers["X-Studio-Token"]});
+    requests.push({url,token:options.headers["X-Studio-Token"],body:options.body||null});
     if (options.headers["X-Studio-Token"] !== serverToken) {
       return {ok:false,status:403,statusText:"Forbidden",
         json:async()=>({detail:"Invalid session token"})};
@@ -74,6 +74,12 @@ function browser({hash="", cached="", serverToken=VALID}={}) {
     if(url.endsWith("/workspace")) data={target:"badger2040",toml:"form = 1"};
     if(url.endsWith("/parse")) data={ok:true,fields:JSON.parse(JSON.stringify(form))};
     if(url.endsWith("/compose")) data={ok:true,toml:"form = 1"};
+    if(url.endsWith("/portrait/reference")) {
+      const request=JSON.parse(options.body);
+      data={ok:true,toml:request.toml.replace(
+        'processed = "portrait-badger2040.png"',
+        'processed = "'+(request.processed||"sample-"+request.target+".png")+'"')};
+    }
     return {ok:true,status:200,statusText:"OK",json:async()=>data};
   };
   class MockURL extends URL { static createObjectURL(){return "blob:portrait-test";} static revokeObjectURL(){} }
@@ -201,7 +207,7 @@ test("tonal controls clamp values to their advertised ranges", async()=>{
   }
 });
 
-test("switching badge target never carries a processed portrait from the other board",async()=>{
+test("target switching only changes portrait.processed through the server",async()=>{
   const b=browser({hash:"#token="+VALID});
   await b.settle();
   const target=b.elements.get("target");
@@ -209,8 +215,20 @@ test("switching badge target never carries a processed portrait from the other b
   const alternate=fakeNode("option");
   alternate.value="badger2350";
   target.options.push(alternate);
-  editor.value='[portrait]'+String.fromCharCode(10)+'processed = "portrait-badger2040.png"';
+  editor.value=[
+    '[person]',
+    'name = "portrait-badger2040.png"',
+    '# sample-badger2040.png must remain exactly as written',
+    '[portrait]',
+    'processed = "portrait-badger2040.png"'
+  ].join("\n");
   target.value="badger2350";
   target.listeners.change();
+  await b.settle();
   assert.ok(editor.value.includes('processed = "sample-badger2350.png"'));
+  assert.ok(editor.value.includes('name = "portrait-badger2040.png"'));
+  assert.ok(editor.value.includes('# sample-badger2040.png must remain exactly as written'));
+  assert.equal(target.disabled,false);
+  assert.ok(b.requests.some(r=>r.url.endsWith("/portrait/reference") &&
+       JSON.parse(r.body).target==="badger2350"));
 });

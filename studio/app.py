@@ -10,6 +10,8 @@ import asyncio
 import base64
 import binascii
 import io
+import hashlib
+import os
 import tempfile
 import threading
 import re
@@ -64,6 +66,10 @@ class PortraitSelection(BaseModel):
     image: str = Field(max_length=200_000)
 
 
+class PortraitReference(Edit):
+    processed: str | None = None  # omit to switch targets using that target's sample
+
+
 def decode_image(value: str) -> bytes:
     try:
         raw = base64.b64decode(value, validate=True)
@@ -97,13 +103,31 @@ def _origin_ok(origin: str | None, host: str) -> bool:
     return origin is None or origin == f"http://{host}"
 
 
-def _safe_references(text: str, target: str) -> list[str]:
-    """Reject file references outside this managed, private Studio workspace.
+def _portrait_target(name: object) -> str | None:
+    """Recognize only Studio-managed portrait names, including pre-V1 names."""
+    if not isinstance(name, str):
+        return None
+    for target in TARGETS:
+        if name in (f"sample-{target}.png", f"portrait-{target}.png"):
+            return target
+        if re.fullmatch(rf"portrait-{re.escape(target)}-[0-9a-f]{{64}}\.png", name):
+            return target
+    return None
 
-    Parsing first prevents a malicious TOML string from bypassing the check
-    through duplicate keys or alternative table spelling. The existing form
-    validator handles the complete *content* schema after this sandbox check.
-    """
+
+def _portrait_file_problem(name: str, work: Path) -> str | None:
+    """Check selected assets exist and content-addressed ones match their name."""
+    path = work / name  # name was strictly vetted by _portrait_target
+    if path.is_symlink() or not path.is_file():
+        return "managed portrait is missing or unsafe"
+    match = re.fullmatch(r"portrait-[a-z0-9]+-([0-9a-f]{64})\.png", name)
+    if match and hashlib.sha256(path.read_bytes()).hexdigest() != match.group(1):
+        return "managed portrait differs from its content hash"
+    return None
+
+
+def _safe_references(text: str, target: str, work: Path) -> list[str]:
+    """Reject references outside the managed workspace, including missing assets."""
     try:
         parsed = badge_form.parse_form(Path("badge.toml"), text)
     except badge_form.FormError as error:
@@ -113,14 +137,17 @@ def _safe_references(text: str, target: str) -> list[str]:
                           ("qr", ("vcard_file",))):
         table = parsed.get(section, {})
         if not isinstance(table, dict):
-            continue  # load_form emits the canonical schema error
+            continue
         for key in keys:
             value = table.get(key)
             if value is None or value == "":
                 continue
-            permitted = (f"sample-{target}.png", f"portrait-{target}.png") if section == "portrait" and key == "processed" else ()
-            if value not in permitted:
-                errors.append(f"{section}.{key}: Studio Phase 1 only supports its managed sample portrait; "
+            if section == "portrait" and key == "processed" and _portrait_target(value) == target:
+                problem = _portrait_file_problem(value, work)
+                if problem:
+                    errors.append(f"portrait.processed: {problem}")
+            else:
+                errors.append(f"{section}.{key}: Studio only supports managed portraits; "
                               "arbitrary file references are not permitted")
     return errors
 
@@ -159,13 +186,12 @@ def create_app(workspace: Path | None = None) -> FastAPI:
     saved = badge_form.parse_form(form_path)
     portrait = saved.get("portrait", {})
     selected = portrait.get("processed") if isinstance(portrait, dict) else None
-    active = {"target": next((name for name in TARGETS
-               if selected in (f"sample-{name}.png", f"portrait-{name}.png")), "badger2040")}
+    active = {"target": _portrait_target(selected) or "badger2040"}
 
     def validate(text: str, target: str) -> dict:
         if target not in TARGETS:
             return {"ok": False, "problems": ["target: unsupported hardware"], "notes": []}
-        problems = _safe_references(text, target)
+        problems = _safe_references(text, target, work)
         if problems:
             return {"ok": False, "problems": problems, "notes": []}
         try:
@@ -328,14 +354,44 @@ def create_app(workspace: Path | None = None) -> FastAPI:
                     raise HTTPException(422, "Expected native-size 1-bit PNG")
         except (OSError, UnidentifiedImageError, Image.DecompressionBombError):
             raise HTTPException(422, "Invalid processed image") from None
-        name = f"portrait-{data.target}.png"
+        # Never overwrite a selected portrait. A saved TOML referring to an
+        # older asset must not change until its own validated save succeeds.
+        name = f"portrait-{data.target}-{hashlib.sha256(raw).hexdigest()}.png"
         path = work / name
-        stage = work / (name + ".tmp")
-        if path.is_symlink() or stage.is_symlink():
-            raise HTTPException(409, "Unsafe portrait path")
-        stage.write_bytes(raw)
-        stage.replace(path)
+        if not path.exists() and not path.is_symlink():
+            with tempfile.NamedTemporaryFile(dir=work, prefix=".portrait-", suffix=".tmp",
+                                             delete=False) as staged:
+                temporary = Path(staged.name)
+                staged.write(raw)
+            try:
+                try:
+                    os.link(temporary, path)  # atomic create-only; no replacement
+                except FileExistsError:
+                    pass  # another selection created the same content already
+            finally:
+                temporary.unlink(missing_ok=True)
+        if _portrait_file_problem(name, work):
+            raise HTTPException(409, "Managed portrait asset conflicts with selected content")
         return {"ok": True, "processed": name}
+
+    @app.put("/api/v1/portrait/reference")
+    async def set_portrait_reference(request: Request):
+        """Edit only portrait.processed; never replace filenames in comments or other fields."""
+        data = await read_json(request, PortraitReference)
+        output_size(data.target)
+        chosen = data.processed if data.processed is not None else f"sample-{data.target}.png"
+        if _portrait_target(chosen) != data.target:
+            raise HTTPException(422, "Portrait reference is not managed for this target")
+        problem = _portrait_file_problem(chosen, work)
+        if problem:
+            raise HTTPException(422, problem)
+        try:
+            output = form_editor.set_processed_portrait(data.toml, chosen)
+        except (ValueError, TypeError) as error:
+            return JSONResponse({"ok": False, "problems": [str(error)]}, status_code=422)
+        if len(output) > 100_000:
+            raise HTTPException(413, "Edited form too large")
+        return {"ok": True, "toml": output}
 
     @app.put("/api/v1/parse")
     async def parse_view(request: Request):

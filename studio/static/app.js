@@ -26,6 +26,7 @@ const projectLabels = {title:"Project name",tagline:"Tagline",description:"Descr
 const contactTypes = ["email","phone","web","github","discord","text"];
 const qrModes = ["none","link","vcard","vcard-from-contacts"];
 let activeView = "visual", model = null, dirty = false, savedToml = "";
+let previousTarget = "badger2040";
 
 async function call(path, options={}) {
   const res = await fetch("/api/v1/" + path, {
@@ -155,12 +156,30 @@ $("project-add").addEventListener("click",()=>{
   if(model.projects.length>=12)return;
   model.projects.push({title:"",tagline:"",description:"",status:"",banner:"",link:""});changed();render();
 });
-target.addEventListener("change",()=>{
-  const names=Array.from(target.options,o=>sampleFor(o.value));
-  const managed=Array.from(target.options,o=>"portrait-"+o.value+".png");
-  editor.value=editor.value.replace(/(?:sample|portrait)-[a-z0-9_-]+\.png/g,
-    name=>names.includes(name)||managed.includes(name)?sampleFor(target.value):name);
-  changed();
+target.addEventListener("change",async()=>{
+  const requested=target.value, source=editor.value, fallback=previousTarget;
+  target.disabled=true;
+  $("save").disabled=true;
+  $("screens-preview").disabled=true;
+  note("Switching badge target…");
+  try {
+    const {res,data}=await call("portrait/reference",{
+      method:"PUT",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({target:requested,toml:source})
+    });
+    if(!res.ok) throw new Error((data.problems||[data.detail||"Target switch failed"]).join("; "));
+    if(editor.value!==source) throw new Error("TOML changed while switching; retry.");
+    editor.value=data.toml;
+    previousTarget=requested;
+    changed();
+  }catch(e){
+    target.value=fallback;
+    note("Target change failed: "+e.message);
+  }finally{
+    target.disabled=false;
+    $("save").disabled=false;
+    $("screens-preview").disabled=false;
+  }
 });
 editor.addEventListener("input",changed);
 $("save").addEventListener("click",async()=>{
@@ -212,7 +231,7 @@ async function connect(candidate) {
         const opt=document.createElement("option");opt.value=x.id;
         opt.textContent=x.name+" ("+x.display.join(" × ")+")";target.append(opt);
       });
-      target.value=w.target;editor.value=w.toml;savedToml=w.toml;
+      target.value=w.target;previousTarget=w.target;editor.value=w.toml;savedToml=w.toml;
       if (!await tomlToVisual()) throw new Error("Could not parse the saved badge form");
       dirty = false;
       showTab("visual");
@@ -429,10 +448,12 @@ $("portrait-select").addEventListener("click",async()=>{
       body:JSON.stringify({target:target.value,image:portraitVariants[selectedPortrait]})
     });
     if (!res.ok) throw new Error((data.detail||"Could not select portrait").toString());
-    const old = /processed\s*=\s*["'][^"']+["']/;
-    const replacement = 'processed = "'+data.processed+'"';
-    if (!old.test(editor.value)) throw new Error("No processed portrait entry in TOML; use Advanced TOML.");
-    editor.value = editor.value.replace(old,replacement);
+    const update=await call("portrait/reference",{
+      method:"PUT",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({target:target.value,toml:editor.value,processed:data.processed})
+    });
+    if(!update.res.ok) throw new Error((update.data.problems||[update.data.detail||"Cannot update portrait"]).join("; "));
+    editor.value=update.data.toml;
     changed();
     portraitNote("Processed portrait selected. Use Validate & save to apply to your badge.");
   } catch(e) {portraitNote("Error: "+e.message);}

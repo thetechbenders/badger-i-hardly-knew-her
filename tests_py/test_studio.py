@@ -89,7 +89,9 @@ class StudioTests(unittest.TestCase):
         selected = self.client.put("/api/v1/portrait/select",
             headers=self.auth, json={"target": "badger2040", "image": variants["atkinson"]})
         self.assertEqual(selected.status_code, 200, selected.text)
-        self.assertTrue((Path(self.temp.name) / "workspace" / "portrait-badger2040.png").is_file())
+        name = selected.json()["processed"]
+        self.assertRegex(name, r"^portrait-badger2040-[0-9a-f]{64}\.png$")
+        self.assertTrue((Path(self.temp.name) / "workspace" / name).is_file())
         self.assertEqual(self.client.put("/api/v1/portrait/preview",
             headers=self.auth, json={"target": "badger2040", "image": "not base64"}).status_code, 422)
         self.assertEqual(self.client.put("/api/v1/portrait/preview",
@@ -371,6 +373,110 @@ class StudioTests(unittest.TestCase):
         self.assertEqual(r.status_code,403)
         r=self.client.put("/api/v1/workspace",headers=self.auth,json={"target":"badger2040","toml":"A"*140000})
         self.assertEqual(r.status_code,413)
+
+
+    def test_immutable_portrait_selection_does_not_change_saved_badge(self):
+        import base64
+        import hashlib
+        import io
+        import re
+        from PIL import Image
+
+        work = Path(self.temp.name) / "workspace"
+
+        def sample(mark):
+            image = Image.new("1", (104, 128), 1)
+            for y in range(25, 55):
+                for x in range(mark, mark + 20):
+                    image.putpixel((x, y), 0)
+            stream = io.BytesIO()
+            image.save(stream, format="PNG")
+            return stream.getvalue()
+
+        a, b = sample(3), sample(45)
+        def choose(raw):
+            return self.client.put("/api/v1/portrait/select", headers=self.auth,
+                json={"target": "badger2040", "image": base64.b64encode(raw).decode()})
+
+        first = choose(a)
+        self.assertEqual(first.status_code, 200, first.text)
+        filename_a = first.json()["processed"]
+        self.assertEqual(filename_a, "portrait-badger2040-" + hashlib.sha256(a).hexdigest() + ".png")
+        self.assertEqual((work / filename_a).read_bytes(), a)
+        document = self.form["toml"].replace("sample-badger2040.png", filename_a)
+        save = self.client.put("/api/v1/workspace", headers=self.auth,
+                               json={"target": "badger2040", "toml": document})
+        self.assertEqual(save.status_code, 200, save.text)
+
+        second = choose(b)
+        self.assertEqual(second.status_code, 200, second.text)
+        filename_b = second.json()["processed"]
+        self.assertNotEqual(filename_a, filename_b)
+        self.assertEqual((work / filename_a).read_bytes(), a)
+        self.assertEqual((work / filename_b).read_bytes(), b)
+        self.assertEqual(choose(b).json()["processed"], filename_b)
+        self.assertEqual(self.client.get("/api/v1/workspace", headers=self.auth).json()["toml"], document)
+
+        restarted = TestClient(create_app(work), base_url="http://127.0.0.1:8765")
+        credential = {"X-Studio-Token": restarted.app.state.studio_token}
+        restored = restarted.get("/api/v1/workspace", headers=credential).json()
+        self.assertEqual(restored["toml"], document)
+        self.assertEqual(restored["target"], "badger2040")
+        self.assertEqual((work / filename_a).read_bytes(), a)
+        # Managed hashes cannot point to missing files or mutated bytes.
+        (work / filename_a).write_bytes(b)
+        rejected = self.client.put("/api/v1/workspace", headers=self.auth,
+                  json={"target": "badger2040", "toml": document})
+        self.assertEqual(rejected.status_code, 422)
+        self.assertIn("content hash", rejected.text)
+
+    def test_hashed_portrait_restores_badger2350_target(self):
+        import base64
+        import io
+        from PIL import Image
+        work = Path(self.temp.name) / "workspace"
+        image = Image.new("1", (104, 128), 1)
+        image.putpixel((10, 10), 0)
+        stream = io.BytesIO()
+        image.save(stream, format="PNG")
+        selected = self.client.put("/api/v1/portrait/select", headers=self.auth,
+                  json={"target": "badger2350", "image": base64.b64encode(stream.getvalue()).decode()})
+        self.assertEqual(selected.status_code, 200, selected.text)
+        filename = selected.json()["processed"]
+        self.assertRegex(filename, r"^portrait-badger2350-[0-9a-f]{64}\.png$")
+        document = self.form["toml"].replace("sample-badger2040.png", filename)
+        saved = self.client.put("/api/v1/workspace", headers=self.auth,
+                json={"target": "badger2350", "toml": document})
+        self.assertEqual(saved.status_code, 200, saved.text)
+        restarted = TestClient(create_app(work), base_url="http://127.0.0.1:8765")
+        restored = restarted.get("/api/v1/workspace",
+                   headers={"X-Studio-Token": restarted.app.state.studio_token}).json()
+        self.assertEqual(restored["target"], "badger2350")
+        self.assertEqual(restored["toml"], document)
+
+    def test_portrait_reference_edits_only_one_toml_field(self):
+        import tomllib
+        original = self.form["toml"].replace(
+            'name = "Alex Example"', 'name = "sample-badger2040.png"')
+        original += '\n# remembered portrait-badger2040.png and sample-badger2040.png\n'
+        response = self.client.put("/api/v1/portrait/reference", headers=self.auth,
+                   json={"target": "badger2350", "toml": original})
+        self.assertEqual(response.status_code, 200, response.text)
+        changed = response.json()["toml"]
+        self.assertIn('name = "sample-badger2040.png"', changed)
+        self.assertIn("# remembered portrait-badger2040.png and sample-badger2040.png", changed)
+        first = tomllib.loads(original)
+        second = tomllib.loads(changed)
+        self.assertEqual(second["portrait"]["processed"], "sample-badger2350.png")
+        first["portrait"]["processed"] = "sample-badger2350.png"
+        self.assertEqual(first, second)
+        self.assertEqual(self.client.get("/api/v1/workspace", headers=self.auth).json()["toml"],
+                         self.form["toml"])
+        for requested in ("../../outside.png", "portrait-badger2350-" + "f" * 64 + ".png",
+                          "sample-badger2040.png"):
+            refused = self.client.put("/api/v1/portrait/reference", headers=self.auth,
+                     json={"target": "badger2350", "toml": original, "processed": requested})
+            self.assertEqual(refused.status_code, 422, (requested, refused.text))
 
 
 if __name__ == "__main__":

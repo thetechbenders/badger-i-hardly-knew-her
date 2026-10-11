@@ -85,7 +85,8 @@ stay in the browser, and the old saved form is retained.
 | `PUT /api/v1/parse` | Extract visual fields from a TOML document without saving it |
 | `PUT /api/v1/compose` | Apply edited fields, keeping other TOML options and comments |
 | `PUT /api/v1/portrait/preview` | Decode a bounded PNG/JPEG and return four in-memory 1-bit comparisons |
-| `PUT /api/v1/portrait/select` | Stage a selected native-size, 1-bit PNG in the managed workspace |
+| `PUT /api/v1/portrait/select` | Create or reuse an immutable content-addressed native-size, 1-bit PNG (no saved TOML mutation) |
+| `PUT /api/v1/portrait/reference` | Update only `[portrait].processed` in unsaved TOML, preserving comments and all other fields |
 | `PUT /api/v1/screens/preview` | Validate unsaved TOML and render all screens with the existing C++ host renderer, text-fit and QR gates |
 | Firmware artifact exports | Not yet implemented |
 
@@ -115,8 +116,14 @@ Choose a PNG or JPEG no larger than 10 MiB, then **Compare dithering**.
 Studio creates four monochrome comparisons using the existing portrait converter:
 threshold, Bayer 8×8, Floyd–Steinberg, and Atkinson. Choosing a comparison
 and clicking **Use selected portrait** stores only that processed 1-bit PNG
-under the private Studio workspace. Finish with **Validate & save** to persist
-the TOML reference. The original uploaded photo is never retained.
+under a content-addressed filename such as `portrait-badger2040-<sha256>.png`
+in the private Studio workspace. Existing selected portraits are never overwritten:
+choosing a different rendering without saving leaves the saved badge unchanged.
+Finish with **Validate & save** to persist the new TOML reference. The original
+uploaded photo is never retained. Existing pre-V1 `portrait-<target>.png` files
+remain readable; unused managed portraits may remain in the local workspace
+until manually cleaned up. Target switching edits only `[portrait].processed`,
+not filename-like text in other TOML fields or comments.
 
 The workshop starts with an automatic center crop at the 104×128
 composition on both devices. A visual crop rectangle can be dragged and resized with a bottom-right handle; numeric

@@ -108,3 +108,18 @@ def apply(toml_text: str, changes: dict) -> str:
             fresh.append(tab)
         document[sec] = fresh
     return tomlkit.dumps(document)
+
+
+def set_processed_portrait(toml_text: str, filename: str) -> str:
+    """Change exactly [portrait].processed, preserving unrelated TOML and comments.
+
+    Caller validates the target and managed filename. Do not add a file field
+    where a photo-based portrait is in use; the owner must resolve that in TOML.
+    """
+    source = tomllib.loads(toml_text)
+    portrait = source.get("portrait")
+    if not isinstance(portrait, dict) or not isinstance(portrait.get("processed"), str):
+        raise EditorError("portrait.processed: expected an existing processed portrait field")
+    document = tomlkit.parse(toml_text)
+    document["portrait"]["processed"] = filename
+    return tomlkit.dumps(document)
