@@ -157,6 +157,10 @@ the photo.
 
 ## Documentation
 
+Start with the [versioned, task-oriented wiki](wiki/Home.md) for installation, personalization,
+Studio, battery options, USB, troubleshooting, architecture and validation.
+The detailed engineering specifications and test records remain in `docs/`.
+
 - [docs/PERSONALIZE.md](docs/PERSONALIZE.md): the fill-in form, one-command build, previews, Windows/WSL
 - [docs/BUILD.md](docs/BUILD.md): Linux and Windows/WSL builds, pinned versions, CI
 - [docs/INSTALL.md](docs/INSTALL.md): backup, flashing, BadgerOS impact, configuration, battery, recovery
