@@ -60,6 +60,9 @@ struct Prefs {
   uint16_t battery_bar_mv[4];  // 1..4 bars at or above these voltages
   uint16_t battery_hyst_mv;    // hysteresis around every threshold
   uint16_t battery_cal_permille;  // multimeter calibration factor (1000 = none)
+  uint8_t battery_pack;        // BatteryPack: 0 = LiPo, 1 = 2xAAA (battery_pack.hpp)
+  uint8_t battery_aaa_cells;   // AaaChemistry of a 2xAAA pack: 0 = alkaline, 1 = NiMH
+  uint8_t battery_auto;        // bool: switch the pack on unambiguous readings
   uint8_t gesture_default_on;  // gesture mode state after boot
   uint8_t gesture_rotation;    // sensor mounting rotation, 90 degree steps clockwise
   uint8_t gesture_mirror;      // swap left/right after rotation

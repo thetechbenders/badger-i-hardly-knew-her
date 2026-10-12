@@ -226,6 +226,8 @@ uint32_t App::on_button(const ButtonEvent &e) {
       case Button::User: return a | go(Screen::Info);
       case Button::Up:
       case Button::Down:
+        if (view_.screen == Screen::Info && cfg_.battery_type_selectable)
+          return a | kActRedraw | (e.button == Button::Up ? kActBatteryTypePrev : kActBatteryTypeNext);
         if (view_.screen == Screen::Projects) return a | on_project_step(e.button == Button::Up ? -1 : 1);
         if (view_.screen == Screen::QrFull) return a | go(Screen::Card);
         if (view_.screen == Screen::ProjectQr) return a | go(Screen::Projects);  // same project

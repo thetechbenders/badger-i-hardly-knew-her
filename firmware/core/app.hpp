@@ -25,6 +25,10 @@
 //   USR short diagnostics screen       USR long  toggle layout candidate for
 //                                                this session (not saved)
 //
+// Diagnostics (Info) screen, Badger 2040 outside safe mode
+//   UP/DOWN short  previous/next battery type: LiPo -> AAA alkaline -> AAA
+//                  NiMH (wraps); saved at once (battery_pack.hpp)
+//
 // Project index (modal list of project names; session-only state)
 //   UP/DOWN   move the highlight (wraps); holding repeats (stops at the ends)
 //   DOWN held kHoldPowerOffMs (3 s): power off (1 s is taken by scrolling);
@@ -90,6 +94,8 @@ enum Action : uint32_t {
   kActCleanRefresh = 1u << 1, // force a full clean refresh
   kActSleep = 1u << 2,        // begin the power-off sequence
   kActGestureMode = 1u << 3,  // gesture mode changed: start/stop the sensor
+  kActBatteryTypeNext = 1u << 4,  // Info screen: select and save the next battery type
+  kActBatteryTypePrev = 1u << 5,  // ... the previous one
 };
 
 struct AppConfig {
@@ -103,6 +109,7 @@ struct AppConfig {
   bool wake_selects_screen = true;
   bool gesture_default_on = false;
   uint16_t gesture_timeout_s = 0;
+  bool battery_type_selectable = false;  // Info screen UP/DOWN pick the battery type
 };
 
 class App {
