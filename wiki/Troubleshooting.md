@@ -5,7 +5,7 @@ Start by identifying the **hardware model**, the exact firmware version (`versio
 | Symptom | First checks |
 |---|---|
 | Badger stays blank after flashing | Confirm 2040 vs 2350 UF2, BOOTSEL volume, build verification, power and reset. See [installation](Installation-and-Recovery.md). |
-| USB CLI not found | Check USB data cable and platform-specific serial port. USB CDC is different from BOOTSEL mass storage; run `version` and `status` when connected. |
+| USB CLI not found | Check the data cable and actual USB serial device. `badgerctl.py` currently auto-detects only `2E8A:000A`; a PR #13 Badger 2350 test enumerated as `2E8A:0009`, requiring an explicit `--port` path. Windows may also assign an already-used COM number. USB CDC is distinct from BOOTSEL storage; run `version` and `status` once connected. |
 | USB command appears accepted but disappears after reboot | `set` is staged; `commit` is required. Check `diag settings` for A/B record status. |
 | Safe mode or repeated watchdog resets | Inspect `diag reset`, `diag display`; hold A+C at reset to force safe mode; use `defaults` + `commit` deliberately if stored settings are suspect. |
 | Portrait missing or wrong image | Check whether you built a portrait into firmware or flashed a separate, overriding asset pack. Run `diag assets`; check TOML and target portrait dimensions. |

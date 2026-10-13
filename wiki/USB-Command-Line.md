@@ -1,6 +1,6 @@
 # USB serial command line
 
-Both targets expose Pico SDK **USB CDC** serial. The documented VID:PID is `2E8A:000A`; port names vary by OS (for example Linux `/dev/ttyACM*`, Windows `COMx`, macOS `/dev/cu.usbmodem*`). Baud rate is ignored by USB CDC; **1200 baud intentionally enters BOOTSEL**.
+Both targets expose Pico SDK **USB CDC** serial. Existing documentation and `tools/badgerctl.py` auto-discovery identify `2E8A:000A`; however, a physical Badger 2350 running PR #13 firmware was observed enumerating as **`2E8A:0009`**. `badgerctl.py` currently searches only for `000A`. If auto-discovery misses your badge, identify its actual USB device and pass `--port` explicitly. Port names vary by OS (for example Linux `/dev/ttyACM*`, Windows `COMx`, macOS `/dev/cu.usbmodem*`). Baud rate is ignored by USB CDC; **1200 baud intentionally enters BOOTSEL**.
 
 Use an interactive serial terminal or the helper:
 
