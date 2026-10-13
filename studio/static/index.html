@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BHIHKH! Studio</title><link rel="stylesheet" href="/style.css">
+<script defer src="/app.js"></script>
+</head><body class="locked">
+<main>
+<header><div><h1>BHIHKH! Studio</h1><p>Design your own e-paper badge · local only</p></div><span class="local">On your computer</span></header>
+<section class="panel" id="connection">
+<h2>Connect to Studio</h2>
+<p class="hint">The private link changes each time Studio starts. Paste the complete link from the <strong>currently running</strong> terminal here. Don't share it.</p>
+<form id="connection-form" autocomplete="off">
+<label for="connection-url">Private launch URL or token</label>
+<input id="connection-url" type="password" autocomplete="off" spellcheck="false" required>
+<button type="submit">Connect</button>
+</form>
+<p id="connection-message" role="status" aria-live="polite">Checking connection…</p>
+</section>
+<section class="toolbar panel" id="editor-toolbar"><label for="target">Badge model</label><select id="target"></select>
+<nav aria-label="Editor views"><button type="button" class="tab active" id="visual-tab">Visual editor</button><button type="button" class="tab" id="toml-tab">Advanced TOML</button></nav></section>
+<section class="panel" id="visual">
+<h2>Portrait workshop</h2>
+<p class="hint">Import a JPEG or PNG (up to 10 MiB). Only the selected 1-bit result is saved locally; the original is never retained.</p>
+<label class="field" for="portrait-file">Source photograph</label>
+<input type="file" id="portrait-file" accept="image/png,image/jpeg">
+<div class="portrait-crop-stage" id="portrait-crop-stage" hidden>
+<img id="portrait-source" alt="Source photograph for cropping" draggable="false">
+<div id="portrait-crop-box" role="group" aria-label="Draggable portrait crop, fixed 13:16 aspect">
+<span class="crop-handle" id="crop-handle" aria-hidden="true"></span>
+</div></div>
+<p class="hint" id="portrait-crop-help">Drag the crop rectangle to reposition; drag its bottom-right handle to resize. Crop stays at 13:16.</p>
+<div class="portrait-controls"><label>X <input id="crop-x" type="number" min="0" step="1" placeholder="Auto"></label><label>Y <input id="crop-y" type="number" min="0" step="1" placeholder="Auto"></label><label>Width <input id="crop-w" type="number" min="8" step="1" placeholder="Auto"></label><label>Height <input id="crop-h" type="number" min="8" step="1" placeholder="Auto"></label></div><p class="hint">Leave crop fields blank for a centered crop. After a preview, edit the crop coordinates and compare again. Keep the 13:16 aspect ratio.</p><div class="portrait-tone">
+<label>Gamma <span class="tone-range">(0.2–5.0)</span> <input id="tone-gamma" type="number" min="0.2" max="5" step="0.1" value="1"></label>
+<label>Black clip % <span class="tone-range">(0–40%)</span> <input id="tone-black" type="number" min="0" max="40" step="0.5" value="1"></label>
+<label>White clip % <span class="tone-range">(0–40%)</span> <input id="tone-white" type="number" min="0" max="40" step="0.5" value="2"></label>
+<label>Sharpen <span class="tone-range">(0–3.0)</span> <input id="tone-sharpen" type="number" min="0" max="3" step="0.1" value="0.6"></label>
+</div>
+<div class="portrait-controls">
+<button class="secondary" type="button" id="portrait-preview">Compare dithering</button>
+<button class="secondary" type="button" id="portrait-select" disabled>Use selected portrait</button>
+</div>
+<p id="portrait-status" role="status" aria-live="polite"></p>
+<div id="portrait-results" class="portrait-results"></div><div id="portrait-native" class="portrait-native hidden"><p>Actual 104 × 128 pixels (CSS 1:1, not physical e-paper size)</p><img id="portrait-native-image" alt="Selected portrait at native pixel dimensions"></div>
+<h2>Badge screen previews</h2>
+<p class="hint">Render the current edits using the actual C++ host renderer. Text-fit and QR decoding must pass. No firmware build, save or USB writes.</p>
+<button type="button" class="secondary" id="screens-preview">Render badge screens</button>
+<p id="screens-status" role="status" aria-live="polite"></p>
+<p id="screens-notes" class="hint" aria-live="polite"></p>
+<div id="screens-results" class="screens-results"></div>
+<h2>Identity</h2><div class="fields" id="person-fields"></div>
+<h2>Contact card</h2><p class="hint">Up to six contact methods, in display order.</p>
+<div id="contacts-list"></div><button class="secondary" type="button" id="contact-add">Add contact</button>
+<h2>QR code</h2><div class="fields" id="qr-fields"></div>
+<h2>Projects</h2><p class="hint">Up to twelve projects. Their order matches the badge's portfolio index.</p>
+<div id="projects-list"></div><button class="secondary" type="button" id="project-add">Add project</button>
+</section>
+<section class="panel hidden" id="advanced"><h2>Advanced TOML</h2>
+<p class="hint">Edit the full original form, including settings not yet available visually. Switching back parses your changes.</p>
+<label for="toml">Badge configuration</label><textarea id="toml" spellcheck="false"></textarea></section>
+<section class="panel save-panel"><button id="save" type="button">Validate &amp; save</button><span id="state" role="status" aria-live="polite">Loading…</span><div id="problems" aria-live="polite"></div></section>
+<footer>Existing badge validation remains authoritative. Firmware-accurate screen previews are available; firmware export is coming later. No USB writes or cloud services.</footer>
+</main></body></html>

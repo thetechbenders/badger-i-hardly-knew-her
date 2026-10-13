@@ -764,7 +764,7 @@ void render_info(Framebuffer &fb, const RenderContext &ctx, bool recovery) {
 int status_right(const View &v, const RenderContext &ctx) {
   switch (v.screen) {
     case Screen::Badge:
-      if (ctx.portrait.valid() && v.layout == uint8_t(Layout::PortraitRight)) return W - ctx.portrait.width - 4;
+      // Both badge layouts keep status at the physical display's top-right.
       return W - 2;
     case Screen::Card: {
       const CardGeometry g = card_geometry_impl(ctx, false);
@@ -813,6 +813,14 @@ void render(Framebuffer &fb, const View &v, const RenderContext &ctx) {
   fb.reset_clip();
   const Rect sr = status_rect(v, ctx);
   fb.set_clip(sr);  // the status area can never spill into content
+  // In portrait-right layout the status occupies the photo corner. Give
+  // active indicators a white backing so hair/background can't obscure them.
+  if (v.screen == Screen::Badge && ctx.portrait.valid() &&
+      v.layout == uint8_t(Layout::PortraitRight) &&
+      (ctx.status.battery.display != PowerDisplay::Unknown ||
+       ctx.status.gesture != GestureIndicator::Off)) {
+    fb.fill_rect(sr, Ink::White);
+  }
   draw_status(fb, ctx.status, sr.right(), 0, v.screen == Screen::Recovery ? Ink::White : Ink::Black);
   fb.reset_clip();
 }
