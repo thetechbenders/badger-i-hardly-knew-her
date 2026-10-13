@@ -498,3 +498,47 @@ test("newest portrait preview wins when older HTTP response arrives last",async(
   assert.equal(b.elements.get("portrait-native-image").src,src);
   assert.equal(b.elements.get("portrait-select").disabled,false);
 });
+
+test("portrait selection drops stale image before reference when tone changes",async()=>{
+  const gate=deferred();
+  const b=browser({hash:"#token="+VALID,intercept(url){
+    if(url.endsWith("/portrait/select")) return gate.promise;
+  }});
+  await b.settle();
+  vm.runInNewContext('portraitVariants={atkinson:"original"};',b.context);
+  const editor=b.elements.get("toml");
+  editor.value='[portrait]\\nprocessed = "sample-badger2040.png"';
+  const selecting=b.elements.get("portrait-select").listeners.click();
+  assert.equal(b.requests.filter(r=>r.url.endsWith("/portrait/select")).length,1);
+  b.elements.get("tone-gamma").value="2";
+  b.elements.get("tone-gamma").listeners.input();
+  gate.resolve(response({ok:true,processed:"portrait-badger2040-stale.png"}));
+  await selecting;
+  assert.equal(b.requests.filter(r=>r.url.endsWith("/portrait/reference")).length,0);
+  assert.match(editor.value,/sample-badger2040.png/);
+  assert.match(b.elements.get("portrait-status").textContent,/settings changed/i);
+  assert.equal(b.elements.get("portrait-select").disabled,true);
+});
+
+test("portrait selection ignores late reference after source changes",async()=>{
+  const gate=deferred();
+  const b=browser({hash:"#token="+VALID,intercept(url){
+    if(url.endsWith("/portrait/select"))
+      return response({ok:true,processed:"portrait-badger2040-stale.png"});
+    if(url.endsWith("/portrait/reference")) return gate.promise;
+  }});
+  await b.settle();
+  vm.runInNewContext('portraitVariants={atkinson:"original"};',b.context);
+  const editor=b.elements.get("toml");
+  editor.value='[portrait]\\nprocessed = "sample-badger2040.png"';
+  const selecting=b.elements.get("portrait-select").listeners.click();
+  await b.settle();
+  assert.equal(b.requests.filter(r=>r.url.endsWith("/portrait/reference")).length,1);
+  b.elements.get("portrait-file").files=[{type:"image/png",size:64,base64:"bmV3"}];
+  b.elements.get("portrait-file").listeners.change();
+  gate.resolve(response({ok:true,toml:'[portrait]\\nprocessed = "portrait-badger2040-stale.png"'}));
+  await selecting;
+  assert.match(editor.value,/sample-badger2040.png/);
+  assert.match(b.elements.get("portrait-status").textContent,/settings changed/i);
+  assert.equal(b.elements.get("portrait-select").disabled,true);
+});
