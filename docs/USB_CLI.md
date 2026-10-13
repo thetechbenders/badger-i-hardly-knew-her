@@ -1,8 +1,19 @@
 # USB serial command line
 
-The badge enumerates as a USB CDC serial port (Pico SDK stdio, VID:PID
-`2E8A:000A`). Any baud rate works. Setting **1200 baud** reboots into
-BOOTSEL (Pico SDK convention).
+The badge enumerates as a USB CDC serial port (Pico SDK stdio). With the
+pinned SDK's default descriptors the **RP2040 uses VID:PID `2E8A:000A`** and
+the **RP2350 uses `2E8A:0009`** (also physically recorded in
+[test-records/2026-10-08-badger2350-parity-b3125aa-dc20680.md](test-records/2026-10-08-badger2350-parity-b3125aa-dc20680.md), step A2, before RF Cryptid PR #13).
+`tools/badgerctl.py` currently auto-detects only `000A`; use the top-level
+`--port` option **before** the subcommand on a Badger 2350:
+
+```bash
+python3 -m serial.tools.list_ports -v  # identify the actual port (requires pyserial)
+python3 tools/badgerctl.py --port /dev/ttyACM0 cmd "version"  # or --port COM5 on Windows
+```
+
+Port names must be discovered on your machine. USB CDC baud is normally
+ignored, but **1200 baud** reboots into BOOTSEL (Pico SDK convention).
 
 ## Protocol
 
