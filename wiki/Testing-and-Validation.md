@@ -45,4 +45,6 @@ Do not copy an earlier record's ticks into a new test. Record private QR/contact
 
 ## Current evidence, correctly scoped
 
+The [October 1 Badger 2040 USB-only record](../docs/test-records/2026-10-01-usb-023b3c6.md) covers owner-reported observations on `023b3c6`, with no battery or APDS fitted. It does **not** establish battery/power-off/gesture behavior or physical acceptance of PR #12's AAA settings.
+
 The [October 8 Badger 2350 record](../docs/test-records/2026-10-08-badger2350-parity-b3125aa-dc20680.md) reports a **core parity pass for its defined scope**, mostly on `b3125aa` with targeted `dc20680` retests. Optional gesture and power measurements were deferred. The Badger 2040 AAA preset curves are estimates until charge/discharge data validates them. Neither result guarantees the latest stacked PR firmware on physical hardware.

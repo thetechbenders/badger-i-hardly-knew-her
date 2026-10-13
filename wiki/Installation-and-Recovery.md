@@ -33,6 +33,8 @@ python3 tools/badgerctl.py cmd "selftest"
 python3 tools/badgerctl.py backup local/settings-backup.txt
 ```
 
+For Badger 2350, the current helper does not auto-detect its USB CDC ID: use `python3 tools/badgerctl.py --port /dev/ttyACM0 cmd "version"` with your actual port instead. See the [USB command guide](USB-Command-Line.md) for Windows and other operating systems.
+
 USB `set` changes are staged and visible before persistence. Run `commit` explicitly to save, or use `revert` to abandon them. A `push` of a validated form or profile stages and commits it.
 
 ## Recovery map

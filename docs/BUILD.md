@@ -28,10 +28,12 @@ flash) and `pimoroni_badger2350` (RP2350A, 16 MiB flash).
 ## Linux (Ubuntu 24.04) or WSL2
 
 ```bash
-sudo apt install cmake ninja-build python3 python3-pip git \
+sudo apt install cmake ninja-build python3 python3-pip python3-venv git \
     gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
     build-essential libzbar0
-python3 -m pip install --user -r tools/requirements.txt   # or use a venv
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -r tools/requirements.txt  # venv avoids PEP 668 restrictions
 
 scripts/fetch-deps.sh        # ~150 MB into deps/ (git-ignored); also builds picotool
 scripts/run-host-tests.sh    # host tests + previews in build/previews/ (Badger 2350: build/previews/badger2350/)
@@ -146,8 +148,11 @@ An unknown name stops the configure step with an error, and so does a
 `PICO_BOARD`/`PICO_PLATFORM` that contradicts the target or a build
 directory configured for the other board; nothing falls back to the other
 badge. Verify a build with `scripts/verify_artifacts.py <dir> --target <name>`.
-The Badger 2350 build is CI-tested but not yet validated on hardware (see
-[BADGER2350_SMOKE_TEST.md](BADGER2350_SMOKE_TEST.md)). See
+The Badger 2350 build is CI-tested, with **owner-reported physical core-parity
+validation limited to the older heads and steps in the
+[2026-10-08 record](test-records/2026-10-08-badger2350-parity-b3125aa-dc20680.md)**.
+Newer builds and deferred characteristics require their own checks; see
+[BADGER2350_SMOKE_TEST.md](BADGER2350_SMOKE_TEST.md). See
 [ARCHITECTURE.md](ARCHITECTURE.md#hardware-targets).
 
 ## Content selection at build time

@@ -39,7 +39,7 @@ Install platform prerequisites first; see [builds and artifacts](Builds-and-Arti
 
 ## 5. Flash, configure, confirm
 
-Flash only the UF2 for your exact board in BOOTSEL mode, then use USB serial to run `version`, `status`, `selftest` and diagnostics. Save USB settings with `commit`; first record the build's identity. For new or changed firmware, work through the matching [hardware checklist](Testing-and-Validation.md).
+Flash only the UF2 for your exact board in BOOTSEL mode, then use USB serial to run `version`, `status`, `selftest` and diagnostics. Badger 2350 requires an explicit `--port` with the current [`badgerctl.py` helper](USB-Command-Line.md); its USB ID is not auto-detected. Save USB settings with `commit`; first record the build's identity. For new or changed firmware, work through the matching [hardware checklist](Testing-and-Validation.md).
 
 ## 6. If it fails
 

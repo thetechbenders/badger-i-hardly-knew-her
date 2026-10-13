@@ -7,13 +7,15 @@ The project uses native C/C++, **Raspberry Pi Pico SDK 2.3.1**, `pimoroni-pico` 
 Linux/WSL (Ubuntu package names from the repository's build guide):
 
 ```bash
-sudo apt install cmake ninja-build python3 python3-pip git \
+sudo apt install cmake ninja-build python3 python3-pip python3-venv git \
     gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
     build-essential libzbar0
-python3 -m pip install --user -r tools/requirements.txt
+python3 -m venv .venv
+source .venv/bin/activate
+python3 -m pip install -r tools/requirements.txt
 ```
 
-A virtual environment is an alternative to `pip --user`. macOS requires a suitable Arm GNU toolchain and Homebrew prerequisites; see [BUILD.md](../docs/BUILD.md) for toolchain PATH, zbar, libusb and documented platform warnings.
+A virtual environment is the recommended default on modern Ubuntu/WSL, whose externally managed system Python may reject `pip install --user`. macOS requires a suitable Arm GNU toolchain and Homebrew prerequisites; see [BUILD.md](../docs/BUILD.md) for toolchain PATH, zbar, libusb and documented platform warnings.
 
 ## Run the gates
 

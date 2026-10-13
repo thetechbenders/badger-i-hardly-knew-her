@@ -13,8 +13,7 @@ The same firmware also builds natively for the **Pimoroni Badger 2350**
 (RP2350A, 264 × 176 e-paper; working name BadgHer™ NEO, name not final), with
 its own panel backend and layouts: `-DBHIHKH_TARGET=badger2350`
 ([docs/BUILD.md](docs/BUILD.md#hardware-target), [docs/INSTALL.md](docs/INSTALL.md#badger-2350)). That target is CI-built and
-host-tested, but **not yet validated on a physical badge**
-([checklist](docs/BADGER2350_SMOKE_TEST.md)).
+host-tested. **Owner-reported core parity was physically demonstrated on older identified firmware**, with deferred tests and no guarantee for the current head ([dated record](docs/test-records/2026-10-08-badger2350-parity-b3125aa-dc20680.md), [checklist](docs/BADGER2350_SMOKE_TEST.md)).
 
 | Photo badge (layout A, default) | Business card |
 |---|---|
@@ -98,9 +97,7 @@ and the badge's settings writes eventually overwrite BadgerOS files.**
 
 On a **Badger 2350**, hold **BOOT** on the back, tap **RESET**, release BOOT,
 and copy `build/fw-badger2350/badger2350_badge.uf2` onto the `RP2350` drive
-(Pimoroni's procedure). This target is not yet validated on a physical badge:
-read [docs/INSTALL.md](docs/INSTALL.md#badger-2350) first, back up the stock
-flash, and see [docs/BADGER2350_SMOKE_TEST.md](docs/BADGER2350_SMOKE_TEST.md).
+(Pimoroni's procedure). An [owner-reported core-parity record](docs/test-records/2026-10-08-badger2350-parity-b3125aa-dc20680.md) covers specific older firmware only. Read [docs/INSTALL.md](docs/INSTALL.md#badger-2350), back up stock flash, and rerun the [hardware checklist](docs/BADGER2350_SMOKE_TEST.md) for a new build.
 
 Configure over USB (see [docs/USB_CLI.md](docs/USB_CLI.md)):
 
@@ -142,7 +139,7 @@ Git ignores `local/`. Put these there:
   (`tools/portrait.py`, see [docs/DESIGN.md](docs/DESIGN.md)).
 - `local/profile.json`: a profile written as JSON (the previous workflow,
   still supported). Copy `config/sample-profile.json` as a starting point.
-- `local/backups/`: `scripts/private-backup.sh create [local/badge.toml]`
+- `local/backups/` (**Badger 2040 only**): `scripts/private-backup.sh create [local/badge.toml]`
   writes a private archive here. It holds the inputs, the personalised firmware built from a
   clean commit, a `git bundle` of the source, checksums and RESTORE.md.
   `scripts/private-backup.sh verify <archive>` restores it into a temporary

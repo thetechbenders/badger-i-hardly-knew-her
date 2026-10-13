@@ -5,7 +5,7 @@ Start by identifying the **hardware model**, the exact firmware version (`versio
 | Symptom | First checks |
 |---|---|
 | Badger stays blank after flashing | Confirm 2040 vs 2350 UF2, BOOTSEL volume, build verification, power and reset. See [installation](Installation-and-Recovery.md). |
-| USB CLI not found | Check the data cable and actual USB serial device. `badgerctl.py` currently auto-detects only `2E8A:000A`; a PR #13 Badger 2350 test enumerated as `2E8A:0009`, requiring an explicit `--port` path. Windows may also assign an already-used COM number. USB CDC is distinct from BOOTSEL storage; run `version` and `status` once connected. |
+| USB CLI not found | Check the data cable and identify the device with `python3 -m serial.tools.list_ports -v` (pyserial). The pinned SDK uses `2E8A:000A` for 2040, `2E8A:0009` for 2350; `badgerctl.py` auto-detects only the former. On 2350, pass `--port` before `cmd` as [shown here](USB-Command-Line.md). In one owner-reported Windows session, COM22 conflicted with an existing Qualcomm device; use the actual port/device path rather than assuming COM22. USB CDC differs from BOOTSEL storage. |
 | USB command appears accepted but disappears after reboot | `set` is staged; `commit` is required. Check `diag settings` for A/B record status. |
 | Safe mode or repeated watchdog resets | Inspect `diag reset`, `diag display`; hold A+C at reset to force safe mode; use `defaults` + `commit` deliberately if stored settings are suspect. |
 | Portrait missing or wrong image | Check whether you built a portrait into firmware or flashed a separate, overriding asset pack. Run `diag assets`; check TOML and target portrait dimensions. |
@@ -20,6 +20,8 @@ Start by identifying the **hardware model**, the exact firmware version (`versio
 | Badger 2350 tests differ from README status | Refer to dated physical test records; older prose can predate a later owner-run test. Do not extend that evidence to your new build. |
 
 ## Controlled diagnosis
+
+On the 2350, select the port explicitly as shown in the [USB CLI examples](USB-Command-Line.md); the auto-detected commands below currently apply to the 2040.
 
 ```bash
 python3 tools/badgerctl.py cmd "version"

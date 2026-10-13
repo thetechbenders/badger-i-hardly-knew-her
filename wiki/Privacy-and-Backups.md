@@ -13,9 +13,11 @@ The repository ignores `local/`. Appropriate locations:
 
 Do **not** commit any of the above, put them in a PR/wiki/release asset, upload complete Studio launch URLs, or include unredacted contacts in screenshots. A Studio bearer token authorizes local workspace API access; a fresh one is printed by each server instance. Loopback, Host/Origin checks and the token reduce exposure, but are **not** an operating-system malware defense.
 
-## A reliable restore path
+## A reproducible restore path (Badger 2040 only)
 
-The repo includes a private backup workflow:
+**Important:** `scripts/private-backup.sh` is currently **Badger 2040-only**. It hardcodes the `badger_badge.uf2` artifact and uses the default 2040 build/verification target. **Do not use its archive as a Badger 2350 firmware backup or restore procedure.** On a 2350, retain private inputs and a board-specific flash/firmware backup using the [installation instructions](Installation-and-Recovery.md); no equivalent automated personalized archive verification is implemented yet.
+
+For a Badger 2040, the repo includes this private backup workflow:
 
 ```bash
 scripts/private-backup.sh create local/badge.toml

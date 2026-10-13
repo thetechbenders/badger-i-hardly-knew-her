@@ -1,8 +1,15 @@
 # USB serial command line
 
-Both targets expose Pico SDK **USB CDC** serial. Existing documentation and `tools/badgerctl.py` auto-discovery identify `2E8A:000A`; however, a physical Badger 2350 running PR #13 firmware was observed enumerating as **`2E8A:0009`**. `badgerctl.py` currently searches only for `000A`. If auto-discovery misses your badge, identify its actual USB device and pass `--port` explicitly. Port names vary by OS (for example Linux `/dev/ttyACM*`, Windows `COMx`, macOS `/dev/cu.usbmodem*`). Baud rate is ignored by USB CDC; **1200 baud intentionally enters BOOTSEL**.
+Both targets expose Pico SDK **USB CDC** serial. With the pinned SDK's default descriptors, **Badger 2040 (RP2040) uses `2E8A:000A`** and **Badger 2350 (RP2350) uses `2E8A:0009`**. The [October 8 Badger 2350 physical record](../docs/test-records/2026-10-08-badger2350-parity-b3125aa-dc20680.md) confirms `0009` independently of RF Cryptid PR #13; that later build also enumerated as `0009`. `tools/badgerctl.py` currently auto-detects **only `000A`**, so on the 2350 identify the device and pass the **top-level `--port` option before the subcommand**. Port names vary by OS (Linux `/dev/ttyACM*`, Windows `COMx`, macOS `/dev/cu.usbmodem*`). USB CDC ignores the usual serial baud setting, but **1200 baud intentionally enters BOOTSEL**.
 
-Use an interactive serial terminal or the helper:
+Use an interactive serial terminal or the helper. For **Badger 2350**, use the actual port in this form (Windows example: `--port COM5`; these are examples, not guaranteed assignments):
+
+```bash
+python3 -m serial.tools.list_ports -v  # identify the actual port (pyserial)
+python3 tools/badgerctl.py --port /dev/ttyACM0 cmd "version"
+```
+
+On Badger 2040, the helper can auto-detect its SDK default USB ID:
 
 ```bash
 python3 tools/badgerctl.py cmd "version"

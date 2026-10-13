@@ -24,7 +24,7 @@ This wiki is the **task-oriented starting point**. The detailed engineering cont
 ## Product boundaries
 
 - **No automatic sharing.** Personal information stays in local inputs; public example data uses a fictional person and example domains.
-- **No automatic wireless integration.** The Badger 2350's wireless silicon, RTC, PSRAM and rear lights are not part of this firmware's current feature set.
+- **No automatic wireless integration on the documented `main` firmware.** The Badger 2350's wireless silicon, RTC, PSRAM and rear lights are not product features on this baseline. Unmerged RF Cryptid PR #13 experiments with Wi-Fi; update this statement if that functionality reaches `main`.
 - **Studio is a designer, not a flasher.** Studio's browser can validate/edit TOML, compare portraits and render screens; exporting firmware and flashing a device are separate workflows.
 - **Flash is not a scratchpad.** USB `set` stages changes; `commit` persists them. Navigation does not continuously write flash.
 - **Hardware matters.** Both boards have different UF2 targets, panel controllers and power circuits. Select the correct target explicitly.

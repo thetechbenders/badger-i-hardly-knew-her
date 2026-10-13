@@ -4,7 +4,7 @@
 
 GitHub's built-in **Wiki** is stored in a separate Git repository (`<repository>.wiki.git`), not as files on the application's main branch. Direct wiki edits cannot participate in ordinary review, stacking and CI against feature code. Therefore the versioned source is in **`wiki/`** in this repository.
 
-The documentation PR should be reviewed and merged in dependency order **battery → Studio → wiki**. Until it is merged, the wiki content is a **draft**, not a statement that the code has been released.
+Review documentation alongside the implementation it describes. If a change depends on a feature branch, merge its prerequisites first and then recheck the documentation diff against the intended release branch. Merging versioned source documentation does **not** itself publish a GitHub Wiki or constitute a firmware release.
 
 ## Link policy and maintenance
 
@@ -17,7 +17,7 @@ Before publishing to GitHub Wiki:
 3. Confirm the repository actually has a GitHub Wiki enabled and that the maintainer has permission to push the separate Wiki Git repo. This PR **does not** create or configure those permissions.
 4. Review rendered Markdown for anchors, tables, code fences and images. Check links after publication.
 5. Check every stated feature against the merged code and update hardware evidence links before announcing release.
-6. Preserve `Home.md` as the landing page and `_Sidebar.md` as navigation for a GitHub Wiki mirror.
+6. Preserve `Home.md` as the landing page and `_Sidebar.md` as navigation for a GitHub Wiki mirror. `wiki/README.md` is deliberately a repository-source guide, not a sidebar destination.
 
 No automatic sync/push is added here: automatic publication from an unmerged feature branch could publish unreleased claims and would need dedicated credentials and review gates. If automation is added, run it only after an explicit maintainers' approval and check the mirror against the canonical source.
 

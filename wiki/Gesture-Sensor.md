@@ -10,7 +10,7 @@ Long UP toggles gesture mode for the current session; `gesture.default_on` can c
 - Swipe **up** to the contact card, and again to the full-screen contact QR.
 - Swipe **down** to the photo badge.
 
-Physical buttons remain available. The project index is modal and ignores swipes until dismissed. `gesture on|off` and `diag gesture` expose status and diagnostics over USB.
+Physical buttons remain available. The project index is modal and ignores swipes until dismissed. **Gesture mode automatically turns off after `gesture.timeout_s` of inactivity (default 300 seconds; 0 disables the timeout).** `gesture on|off` and `diag gesture` expose status and diagnostics over USB.
 
 ## Power and input constraints
 

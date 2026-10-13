@@ -5,14 +5,14 @@ This firmware has photo badge, contact card, full-screen contact QR, project pag
 | Button | Short press | Long press (at least 1 s) |
 |---|---|---|
 | **A** | Photo badge | Clean full e-paper refresh |
-| **B** | Contact card | From card: full-screen contact QR if configured; from project: that project's link QR; from QR: return |
+| **B** | Contact card | On a project: open its link QR if present; on a project QR: return to that project; otherwise: open contact QR if configured (including from badge/card), or show the card. **On a contact QR, long B does not return**; use short UP/DOWN. |
 | **C** | Last project (if configured); double press: project index | Project 1 from anywhere |
 | **UP / DOWN** | Previous/next project, or return from a QR | UP toggles optional gesture mode; DOWN powers off now |
 | **USR** (2040) / **HOME** (2350) | Diagnostics and information | Toggle layout A/B for the session |
 
 The project index appears with **double C**. UP/DOWN move the highlight with repeat; C opens highlighted project; A cancels and returns without changing the remembered project. The single-C action waits roughly **0.35 s** for a possible double-press. Quiet browsing batches the refresh after activity settles, rather than flashing for every repeat step. On the project index, holding DOWN for **3 s** powers off, since shorter holding scrolls.
 
-On the **Badger 2040 Info screen**, UP/DOWN short presses additionally choose LiPo, AAA alkaline or AAA NiMH, from the battery PR stack. The Badger 2350 does not offer this switch.
+On the **Badger 2040 Info screen**, UP/DOWN short presses additionally choose LiPo, AAA alkaline or AAA NiMH, from the merged 2×AAA battery support. The Badger 2350 does not offer this switch.
 
 ## Layouts, cards and projects
 

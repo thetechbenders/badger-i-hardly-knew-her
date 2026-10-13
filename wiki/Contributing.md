@@ -20,7 +20,7 @@ Don't “fix” lint metrics by adding boilerplate comments while omitting tests
 
 A stacked PR targets another feature branch. Verify the child contains the parent commits and that its PR diff shows only the **child's** changes. Merge dependency PRs in order, then retarget the next PR to `main` and recheck its effective diff, CI and mergeability.
 
-This wiki is itself a staged documentation PR dependent on Studio, which depends on the battery PR. It must not claim the documentation was released or the firmware was hardware-tested simply because its draft checks pass. The [publishing procedure](Publishing-the-Wiki.md) intentionally requires review.
+Versioned wiki content must be reviewed against the **merged implementation**, not assumed to be released or physically validated merely because its documentation checks pass. The [publishing procedure](Publishing-the-Wiki.md) requires a separate maintainer decision before publishing the GitHub Wiki mirror.
 
 ## Before a firmware release
 
