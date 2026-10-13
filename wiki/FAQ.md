@@ -10,7 +10,7 @@ Yes, with **separate target builds**. The Badger 2040 defaults to RP2040 / 296×
 
 ### If I refresh Studio, why doesn't the Portrait Workshop show my original photo?
 
-The uploaded source photo isn't retained. Studio saves managed **processed** portrait files and the TOML reference only when you choose the portrait and validate/save. The workshop isn't a persistent photo editor. Check the saved `[portrait].processed` field rather than expecting an upload to reappear.
+The uploaded source photo isn't retained. **Use selected portrait** writes a managed processed portrait to the workspace and updates the in-memory TOML; **Validate & save** persists the TOML reference. The workshop isn't a persistent photo editor. Check the saved `[portrait].processed` field rather than expecting an upload to reappear.
 
 ### Why does changing from Badger 2040 to 2350 reset the portrait?
 

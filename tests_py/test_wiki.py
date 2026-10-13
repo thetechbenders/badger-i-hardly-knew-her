@@ -11,7 +11,7 @@ WIKI = ROOT / "wiki"
 LINK = re.compile(r"!?\[[^\]\n]+\]\(([^)\n]+)\)")
 REFERENCE = re.compile(r"^\s*\[[^\]]+\]:\s*(\S+)", re.MULTILINE)
 HTML_HREF = re.compile(r"""href=["']([^"']+)["']""")
-FENCE = re.compile(r"^[ \t]*\x60{3}[^\n]*\n(.*?)^[ \t]*\x60{3}[ \t]*$", re.MULTILINE | re.DOTALL)
+OPEN_FENCE = re.compile(r"^ {0,3}(?P<marks>`{3,}|~{3,})(?P<info>.*)$")
 SCRIPT = re.compile(r"(?<![\w/])((?:scripts|tools)/[\w./-]+)")
 CLI = re.compile(r"(?:^|\s)(?:python3\s+)?tools/badgerctl\.py\b")
 
@@ -34,12 +34,37 @@ def heading_anchors(text: str) -> set[str]:
     return anchors
 
 
-def validate_page(page: Path, content: str) -> None:
-    fences = re.findall(r"^[ \t]*\x60{3}", content, re.MULTILINE)
-    if len(fences) % 2:
+def split_fences(page: Path, content: str) -> tuple[str, list[str]]:
+    """Separate prose from CommonMark-style backtick and tilde code fences."""
+    prose: list[str] = []
+    blocks: list[str] = []
+    body: list[str] = []
+    marker = ""
+    length = 0
+    for line in content.splitlines(keepends=True):
+        stripped = line.rstrip("\r\n")
+        if not marker:
+            opened = OPEN_FENCE.fullmatch(stripped)
+            if opened and (opened.group("marks")[0] == "~" or
+                           "`" not in opened.group("info")):
+                marker = opened.group("marks")[0]
+                length = len(opened.group("marks"))
+                body = []
+            else:
+                prose.append(line)
+        elif re.fullmatch(r" {0,3}" + re.escape(marker) +
+                          "{" + str(length) + r",}[ \t]*", stripped):
+            blocks.append("".join(body))
+            marker = ""
+        else:
+            body.append(line)
+    if marker:
         raise AssertionError(f"{page.name}: unclosed Markdown fence")
-    code_blocks = list(FENCE.finditer(content))
-    prose = FENCE.sub("", content)
+    return "".join(prose), blocks
+
+
+def validate_page(page: Path, content: str) -> None:
+    prose, code_blocks = split_fences(page, content)
     for href in (LINK.findall(prose) + REFERENCE.findall(prose) +
                  HTML_HREF.findall(prose)):
         href = unquote(href.strip().strip("<>").split(' "', 1)[0])
@@ -52,11 +77,11 @@ def validate_page(page: Path, content: str) -> None:
         if not target.exists():
             raise AssertionError(f"{page.name}: missing link target: {href}")
         if sep and fragment and target.suffix.lower() == ".md":
-            target_prose = FENCE.sub("", target.read_text(encoding="utf-8"))
+            target_prose, _ = split_fences(target, target.read_text(encoding="utf-8"))
             if fragment not in heading_anchors(target_prose):
                 raise AssertionError(f"{page.name}: missing anchor: {href}")
     for block in code_blocks:
-        for line in block.group(1).splitlines():
+        for line in block.splitlines():
             for match in SCRIPT.finditer(line):
                 candidate = match.group(1).rstrip(".,:;)]}")
                 if not (ROOT / candidate).is_file():
@@ -93,6 +118,17 @@ class WikiTests(unittest.TestCase):
         with self.assertRaisesRegex(AssertionError, "--port must precede"):
             validate_page(page, source.replace(example,
                  'tools/badgerctl.py cmd "version" --port /dev/ttyACM0', 1))
+
+    def test_long_and_tilde_fences_skip_links_but_check_commands(self):
+        page = WIKI / "USB-Command-Line.md"
+        source = page.read_text(encoding="utf-8")
+        valid = ("\n~~~~markdown\n[example](missing.example)\n~~~~\n"
+                 "\n`````text\n[also an example](missing.example)\n``````\n")
+        validate_page(page, source + valid)
+        with self.assertRaisesRegex(AssertionError, "unclosed Markdown fence"):
+            validate_page(page, source + "\n`````text\nexample\n````\n")
+        with self.assertRaisesRegex(AssertionError, "missing command path"):
+            validate_page(page, source + "\n~~~bash\npython3 tools/not-a-script.py\n~~~\n")
 
     def test_usb_identifiers_and_port_example(self):
         usb = (WIKI / "USB-Command-Line.md").read_text(encoding="utf-8")

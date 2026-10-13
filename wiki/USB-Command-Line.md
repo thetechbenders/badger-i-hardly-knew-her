@@ -45,10 +45,10 @@ OK
 | `help`, `version`, `status` | Identify running firmware and current state |
 | `fields`, `get [key]`, `set <key> <value>`, `clear <key>` | Inspect/stage configuration |
 | `commit`, `revert`, `defaults`, `export` | Persistence and configuration recovery |
-| `screen badge|card|projects|index|qr|info` | Force a screen over USB |
-| `project next|prev|<n>` | Navigate portfolio or highlighted index entry |
+| `screen badge\|card\|projects\|index\|qr\|info` | Force a screen over USB |
+| `project next\|prev\|<n>` | Navigate portfolio or highlighted index entry |
 | `refresh [clean]` | Redraw display; optionally force clean full refresh |
-| `diag [all|reset|mem|flash|settings|assets|display|refresh|qr|battery|gesture]` | Collect evidence and measurements |
+| `diag [all\|reset\|mem\|flash\|settings\|assets\|display\|refresh\|qr\|battery\|gesture]` | Collect evidence and measurements |
 | `selftest`, `reboot`, `reboot bootsel` | Check and recover |
 
 The full command table includes additional qualified screen forms and specific error behavior; use [USB_CLI.md](../docs/USB_CLI.md#commands), not this abbreviated cheat sheet, when scripting.
