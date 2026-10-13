@@ -28,6 +28,6 @@ The portable application logic is shared; the target-specific platform layer han
 
 The [Badger 2040 October 1 USB-only record](../docs/test-records/2026-10-01-usb-023b3c6.md) is owner-reported on personalized firmware `023b3c6` and USB power only. Battery, power-off, APDS gestures, and the later PR #12 battery-pack changes were **not physically recorded** by that test.
 
-The [Badger 2350 checklist](../docs/BADGER2350_SMOKE_TEST.md) states **core parity passed for the recorded scope**, and links to the owner-reported [2026-10-08 record](../docs/test-records/2026-10-08-badger2350-parity-b3125aa-dc20680.md). Most checks used `b3125aa`, with only A2/B5/E2 rerun on `dc20680`. Optional APDS and sleep-current characterization remained outside that scope. Some older narrative docs still say physical validation is pending; read the dated record and checklist together rather than asserting that every current build was tested.
+The [Badger 2350 checklist](../docs/BADGER2350_SMOKE_TEST.md) states **core parity passed for the recorded scope**, and links to the owner-reported [2026-10-08 record](../docs/test-records/2026-10-08-badger2350-parity-b3125aa-dc20680.md). Most checks used `b3125aa`, with only A2/B5/E2 rerun on `dc20680`. Optional APDS and sleep-current characterization remained outside that scope. These results do not validate every later build; read the dated record and checklist together.
 
 Reference: [architecture and pin/circuit facts](../docs/ARCHITECTURE.md), [battery measurement](../docs/BATTERY.md), [reusable checklists](Testing-and-Validation.md).

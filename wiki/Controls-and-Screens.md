@@ -5,7 +5,7 @@ This firmware has photo badge, contact card, full-screen contact QR, project pag
 | Button | Short press | Long press (at least 1 s) |
 |---|---|---|
 | **A** | Photo badge | Clean full e-paper refresh |
-| **B** | Contact card | On a project: open its link QR if present; on a project QR: return to that project; otherwise: open contact QR if configured (including from badge/card), or show the card. **On a contact QR, long B does not return**; use short UP/DOWN. |
+| **B** | Contact card | On a project: open its link QR if present, otherwise no action; on a project QR: return to that project; on other screens: open contact QR if configured, or show the card. **On a contact QR, long B does not return**; use short UP/DOWN. |
 | **C** | Last project (if configured); double press: project index | Project 1 from anywhere |
 | **UP / DOWN** | Previous/next project, or return from a QR | UP toggles optional gesture mode; DOWN powers off now |
 | **USR** (2040) / **HOME** (2350) | Diagnostics and information | Toggle layout A/B for the session |

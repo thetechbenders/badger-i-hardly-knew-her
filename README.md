@@ -30,7 +30,7 @@ out of Git (see [Private content](#private-content)).
 | Button | Short press | Long press (≥ 1 s) |
 |---|---|---|
 | **A** | Photo badge | Clean full refresh (removes ghosting) |
-| **B** | Business card | On the card: full-screen contact QR (if configured) · on a project: that project's repository QR (if it has a link) · on a QR: back |
+| **B** | Business card | On a project: its QR if linked (otherwise no action) · on a project QR: back to its project · elsewhere: contact QR if configured, or card. Long B on a contact QR does **not** return; short UP/DOWN does. |
 | **C** | Project portfolio, at the last project viewed (if any are configured). **Double press**: project index | Project 1 (from anywhere, including a project QR) |
 | **UP / DOWN** | Previous / next project; from a full-screen QR, back to the card or project | UP: **gesture mode** on/off · DOWN: power off now |
 | **USR** | Diagnostics screen | Switch layout A ↔ B for this session |
@@ -99,7 +99,7 @@ On a **Badger 2350**, hold **BOOT** on the back, tap **RESET**, release BOOT,
 and copy `build/fw-badger2350/badger2350_badge.uf2` onto the `RP2350` drive
 (Pimoroni's procedure). An [owner-reported core-parity record](docs/test-records/2026-10-08-badger2350-parity-b3125aa-dc20680.md) covers specific older firmware only. Read [docs/INSTALL.md](docs/INSTALL.md#badger-2350), back up stock flash, and rerun the [hardware checklist](docs/BADGER2350_SMOKE_TEST.md) for a new build.
 
-Configure over USB (see [docs/USB_CLI.md](docs/USB_CLI.md)):
+Configure over USB (see [docs/USB_CLI.md](docs/USB_CLI.md)). The auto-detect examples below apply to the **Badger 2040**. For **Badger 2350**, identify the actual USB CDC port (RP2350 VID:PID `2E8A:0009`) and supply `--port` **before** every `cmd` or `push`, for example `python3 tools/badgerctl.py --port COM5 cmd "version"` on Windows (replace COM5 with the actual port):
 
 ```bash
 python3 tools/badgerctl.py push local/profile.json      # validated, then committed to flash
