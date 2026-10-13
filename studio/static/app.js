@@ -483,8 +483,10 @@ $("portrait-select").addEventListener("click",async()=>{
   if (!portraitVariants || !portraitVariants[selectedPortrait]) return;
   const button=$("portrait-select");
   const selectedTarget=target.value, source=editor.value, revision=editRevision;
+  const selectionGeneration=portraitGeneration;
   const image=portraitVariants[selectedPortrait];
-  const stillCurrent=()=>target.value===selectedTarget && editor.value===source && editRevision===revision;
+  const stillCurrent=()=>portraitGeneration===selectionGeneration &&
+    target.value===selectedTarget && editor.value===source && editRevision===revision;
   button.disabled=true;
   try {
     const {res,data} = await call("portrait/select",{
