@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "admission.hpp"
 #include "apds9960.hpp"
 #include "app.hpp"
 #include "assetpack.hpp"
@@ -85,6 +86,9 @@ SensorState g_last_sensor_state = SensorState::Unprobed;
 
 enum class SleepPhase : uint8_t { None, ShowSleepView, PowerOff };
 SleepPhase g_sleep = SleepPhase::None;
+bool g_reboot_pending = false, g_reboot_bootsel = false;
+bool g_conceal_wait = false;
+uint32_t g_conceal_after = 0;
 
 uint32_t now_ms() { return to_ms_since_boot(get_absolute_time()); }
 
@@ -118,6 +122,8 @@ AppConfig app_config(bool safe) {
   c.project_count = uint8_t(configured_project_count(s.profile));
   for (int i = 0; i < c.project_count && i < 16; ++i)
     if (project_url(s.profile, i)) c.project_url_mask |= uint16_t(1u << i);
+  c.admission_configured = kPrivateAdmission != nullptr;
+  if (kPrivateAdmission) c.admission_timeout_s = kPrivateAdmission->timeout_s;
   c.qr_configured = qr_configured(s.profile);
   c.layout = s.prefs.layout;
   c.safe_mode = safe;
@@ -289,6 +295,10 @@ void build_info_lines() {
 
 void render_cb(Framebuffer &fb, void *) {
   const View v = g_sleep == SleepPhase::None ? g_app.view() : g_app.sleep_view();
+  if (v.screen == Screen::Admission) {
+    render_admission(fb, kPrivateAdmission);
+    return;
+  }
   if (v.screen == Screen::Info || v.screen == Screen::Recovery) build_info_lines();
   g_ctx.status.gesture = gesture_indicator();
   render(fb, v, g_ctx);
@@ -296,6 +306,13 @@ void render_cb(Framebuffer &fb, void *) {
 
 void apply(uint32_t actions) {
   const uint32_t t = now_ms();
+  if (g_app.concealing_admission() && !g_conceal_wait) {
+    g_conceal_wait = true;
+    g_conceal_after = g_sched.submitted();
+    // Discard the press/long/repeat events already queued behind dismissal.
+    ButtonEvent discarded;
+    while (g_buttons.pop(&discarded)) {}
+  }
   if (actions & kActBatteryTypeNext) choose_battery_type(1);
   if (actions & kActBatteryTypePrev) choose_battery_type(-1);
   if (actions & kActGestureMode) g_gesture.set_wanted(g_app.gesture_mode());
@@ -544,7 +561,7 @@ class UsbCliHost : public CliHost {
   void request_sleep() override {
     if (g_sleep == SleepPhase::None) {
       std::printf("sleeping after the current refresh\r\n");
-      apply(kActSleep);
+      apply(g_app.request_sleep());
     }
   }
   bool set_gesture(bool on) override {
@@ -552,13 +569,14 @@ class UsbCliHost : public CliHost {
     return g_gesture.state() != SensorState::Absent && g_gesture.state() != SensorState::Fault;
   }
   void request_reboot(bool bootsel) override {
-    stdio_flush();
-    sleep_ms(50);
-    diag::reboot(diag::ResetKind::SoftReboot, bootsel);
+    g_reboot_pending = true;
+    g_reboot_bootsel = bootsel;
+    apply(g_app.conceal_admission());
   }
   // Real failures through the real handlers: nothing here records a reason
   // itself, so `diag reset` after the reboot shows what the handlers caught.
   bool crash_test(CrashTest k) override {
+    if (g_app.admission_private()) return false;
     const bool on_core1 = k == CrashTest::HangCore1 || k == CrashTest::FaultCore1;
     if (on_core1 && g_single_core) return false;
     std::printf("crashtest: failing on purpose; expect a watchdog reboot within ~%s s\r\n", on_core1 ? "8" : "5");
@@ -623,6 +641,16 @@ void poll_cli() {
 }
 
 void poll_sleep() {
+  if (g_conceal_wait) {
+    if (!g_sched.clean_completed_after(g_conceal_after) || !g_display.panel_ok() || display_busy()) return;
+    g_app.admission_concealed();
+    g_conceal_wait = false;
+  }
+  if (g_reboot_pending) {
+    if (!g_sched.settled() || display_busy()) return;
+    stdio_flush();
+    diag::reboot(diag::ResetKind::SoftReboot, g_reboot_bootsel);
+  }
   if (g_sleep == SleepPhase::None) return;
   if (g_sleep == SleepPhase::ShowSleepView) {
     // Wait for the sleep view to be rendered and the panel to finish: the
@@ -702,7 +730,14 @@ int main() {
     const uint32_t t = now_ms();
 
     ButtonEvent ev;
-    while (g_buttons.pop(&ev)) apply(g_app.on_button(ev));
+    while (g_buttons.pop(&ev)) {
+      static uint32_t blocked_buttons = 0;
+      const uint32_t bit = 1u << int(ev.button);
+      if (ev.gesture == Gesture::Press && !g_app.admission_private()) blocked_buttons &= ~bit;
+      if (blocked_buttons & bit) continue;
+      if (g_app.admission_private()) blocked_buttons |= bit;
+      apply(g_app.on_button(ev));
+    }
     // Deferred single C and the quiet-browsing index redraw. A fresh clock
     // sample: events just popped may be newer than `t`.
     apply(g_app.on_poll(now_ms()));

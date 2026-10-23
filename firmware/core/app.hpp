@@ -58,8 +58,8 @@
 
 namespace badge {
 
-// Values are stable (CLI names, tests); ProjectQr and Index were appended.
-enum class Screen : uint8_t { Badge = 0, Card, Projects, QrFull, Info, Recovery, ProjectQr, Index, Count };
+// Public values are stable. Admission is internal, outside public Count.
+enum class Screen : uint8_t { Badge = 0, Card, Projects, QrFull, Info, Recovery, ProjectQr, Index, Count, Admission = Count };
 const char *screen_name(Screen s);
 bool screen_from_name(const char *name, Screen *out);
 
@@ -102,6 +102,8 @@ struct AppConfig {
   uint8_t project_count = 0;
   uint16_t project_url_mask = 0;  // bit n: n-th configured project has an https URL
   bool qr_configured = false;
+  bool admission_configured = false;
+  uint16_t admission_timeout_s = 15;
   uint8_t layout = 0;
   bool safe_mode = false;
   uint16_t sleep_timeout_s = 0;
@@ -131,6 +133,12 @@ class App {
   // Periodic check; `on_battery` gates auto power-off.
   uint32_t on_tick(uint32_t now_ms, bool on_battery, bool display_settled);
 
+  // Concealment stays modal until the platform confirms a clean replacement.
+  uint32_t conceal_admission();
+  bool admission_private() const { return view_.screen == Screen::Admission || concealing_; }
+  bool concealing_admission() const { return concealing_; }
+  void admission_concealed() { concealing_ = false; }
+  uint32_t request_sleep() { return conceal_admission() | power_off(); }
   const View &view() const { return view_; }
   // Index: the highlighted entry in RAM (may be ahead of view().index_sel
   // until the quiet-browsing redraw).
@@ -158,6 +166,8 @@ class App {
   Screen sanitized(Screen s) const;
   bool project_has_url(int n) const { return n >= 0 && n < 16 && (cfg_.project_url_mask >> n) & 1u; }
   uint32_t on_tick_power(uint32_t now_ms, bool on_battery, bool display_settled);
+  bool admission_armed_ = false, concealing_ = false;
+  uint32_t admission_armed_ms_ = 0, admission_open_ms_ = 0;
   AppConfig cfg_;
   View view_;
   bool layout_toggled_ = false;

@@ -149,6 +149,17 @@ jobs:
             cmp "${{ matrix.build }}/$f" "$repro/build/repro-other-name/$f"
             echo "identical: $f"
           done
+      - name: Compile optional admission (fictional input, no upload)
+        if: matrix.target == 'badger2350'
+        run: |
+          mkdir -p build/private
+          "$BADGER_PYTHON" -c "import sys; sys.path.insert(0, 'tests_py'); from test_admission import fixture; from pathlib import Path; Path('build/private/fictional.toml').write_text(fixture())"
+          BUILD_DIR="$PWD/build/private/ci-admission" scripts/build-firmware.sh \
+            -DPython3_EXECUTABLE="$BADGER_PYTHON" \
+            -DBHIHKH_TARGET=badger2350 \
+            -DBADGER_ADMISSION_FILE=build/private/fictional.toml \
+            -DBADGER_PROFILE="$PWD/config/sample-profile.json" \
+            -DBADGER_PORTRAIT="$PWD/assets/sample/portrait_placeholder_badger2350.png"
       - uses: actions/upload-artifact@v4
         with:
           name: firmware-sample-${{ matrix.target }}

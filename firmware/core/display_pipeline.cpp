@@ -221,6 +221,7 @@ int RenderScheduler::poll(RenderFn fn, void *ctx, uint8_t speed, uint8_t max_par
         }
       }
     }
+    if (e.kind == DisplayEventKind::Done && e.mode == RefreshMode::Clean) successful_clean_seq_ = e.seq;
     switch (e.kind) {
       case DisplayEventKind::BufferReleased:
         if (e.buffer < nbuf_) owned_[e.buffer] = true;

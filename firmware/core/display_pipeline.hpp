@@ -173,6 +173,10 @@ class RenderScheduler {
   int poll(RenderFn fn, void *ctx, uint8_t speed, uint8_t max_partials, uint32_t now_ms = 0);
   // True when the newest view has been rendered and fully shown.
   bool settled() const { return !dirty_ && done_seq_ == submitted_seq_ && free_count() == nbuf_; }
+  // Unlike settled(), this excludes fault-completed and timed-out frames.
+  bool clean_completed_after(uint32_t seq) const {
+    return settled() && int32_t(successful_clean_seq_ - seq) > 0;
+  }
   bool display_active() const { return done_seq_ != submitted_seq_; }
   int free_count() const;
   uint32_t coalesced() const { return coalesced_; }
@@ -206,6 +210,7 @@ class RenderScheduler {
   bool dirty_ = false, clean_ = false;
   bool have_last_ = false;
   uint32_t last_hash_ = 0;
+  uint32_t successful_clean_seq_ = 0;
   uint32_t submitted_seq_ = 0, accepted_seq_ = 0, done_seq_ = 0;
   uint32_t coalesced_ = 0, suppressed_ = 0, timeouts_ = 0;
 };

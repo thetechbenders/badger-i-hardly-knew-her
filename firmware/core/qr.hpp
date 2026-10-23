@@ -13,7 +13,7 @@ namespace badge {
 
 constexpr int kQrQuietModules = 4;
 constexpr int kQrMinScale = 2;       // 2 px = 0.45 mm on the 2.9" panel
-constexpr int kQrMaxVersion = 10;    // 57 modules; bounded buffers
+constexpr int kQrMaxVersion = 15;    // 77 modules; bounded buffers
 
 enum class QrStatus : uint8_t { Ok, Empty, TooLong };
 
@@ -30,7 +30,7 @@ struct QrSymbol {
 
 // Encode `payload` to fit a square of at most `max_px` pixels (quiet zone
 // included), choosing the largest integer scale that fits.
-QrStatus qr_encode(const char *payload, int max_px, QrSymbol *out);
+QrStatus qr_encode(const char *payload, int max_px, QrSymbol *out, bool maximize_scale = false);
 // Draw the symbol with its quiet zone; (x, y) is the top-left of the quiet zone.
 void qr_draw(Framebuffer &fb, const QrSymbol &q, int x, int y);
 

@@ -405,3 +405,29 @@ TEST(pipeline_panel_without_partial_refresh_gets_full_refreshes) {
   r.settle();
   CHECK_EQ(r.display.stats().clean, 1u);
 }
+
+TEST(admission_concealment_requires_successful_clean_completion) {
+  Rig r;
+  r.sched.invalidate(); r.settle();
+  const uint32_t before = r.sched.submitted();
+  r.sched.invalidate(true);
+  r.step(10);
+  CHECK(!r.sched.clean_completed_after(before));
+  r.settle();
+  CHECK(r.sched.clean_completed_after(before));
+  CHECK(!r.panel.busy());
+  CHECK_EQ(r.panel.violations, 0);
+  CHECK_EQ(r.count('P'), 0);
+  for (int failure = 0; failure < 3; ++failure) {
+    Rig bad;
+    bad.sched.invalidate(); bad.settle();
+    const uint32_t base = bad.sched.submitted();
+    bad.panel.dead = failure == 0;
+    bad.panel.start_fails = failure == 1;
+    bad.panel.stuck = failure == 2;
+    bad.sched.invalidate(true);
+    bad.step(16000);
+    CHECK(!bad.sched.clean_completed_after(base));
+    // A fault may settle the queue; that must never authorize power-off.
+  }
+}
