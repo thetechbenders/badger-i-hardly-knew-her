@@ -87,8 +87,7 @@ SensorState g_last_sensor_state = SensorState::Unprobed;
 enum class SleepPhase : uint8_t { None, ShowSleepView, PowerOff };
 SleepPhase g_sleep = SleepPhase::None;
 bool g_reboot_pending = false, g_reboot_bootsel = false;
-bool g_conceal_wait = false;
-uint32_t g_conceal_after = 0;
+AdmissionConcealment g_conceal;
 
 uint32_t now_ms() { return to_ms_since_boot(get_absolute_time()); }
 
@@ -306,9 +305,8 @@ void render_cb(Framebuffer &fb, void *) {
 
 void apply(uint32_t actions) {
   const uint32_t t = now_ms();
-  if (g_app.concealing_admission() && !g_conceal_wait) {
-    g_conceal_wait = true;
-    g_conceal_after = g_sched.submitted();
+  if (g_app.concealing_admission() && !g_conceal.pending()) {
+    g_conceal.begin(g_sched.submitted());
     // Discard the press/long/repeat events already queued behind dismissal.
     ButtonEvent discarded;
     while (g_buttons.pop(&discarded)) {}
@@ -641,10 +639,9 @@ void poll_cli() {
 }
 
 void poll_sleep() {
-  if (g_conceal_wait) {
-    if (!g_sched.clean_completed_after(g_conceal_after) || !g_display.panel_ok() || display_busy()) return;
+  if (g_conceal.pending()) {
+    if (!g_conceal.complete(g_sched, g_display.panel_ok(), display_busy())) return;
     g_app.admission_concealed();
-    g_conceal_wait = false;
   }
   if (g_reboot_pending) {
     if (!g_sched.settled() || display_busy()) return;

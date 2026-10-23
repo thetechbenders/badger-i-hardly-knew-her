@@ -15,7 +15,7 @@ holder = "Example"
 timeout_s = 15
 ```
 
-Payloads support 1–520 ASCII bytes, including CR and LF, without NUL or other controls. Labels support printable ASCII, at most 32 characters and 82 pixels in the compiled sans_11 font. Timeout is 1–15 seconds. Unsupported input is rejected without echoing values; never shorten or rewrite a real credential to make it fit. QR encoding uses Nayuki, integer scaling of at least two pixels per module and the complete four-module quiet zone. The renderer fails visibly if fitting fails.
+Payloads support 1â€“520 ASCII bytes, including CR and LF, without NUL or other controls. Labels support printable ASCII, at most 32 characters and 82 pixels in the compiled sans_11 font. Timeout is 1â€“15 seconds. Unsupported input is rejected without echoing values; never shorten or rewrite a real credential to make it fit. QR encoding uses Nayuki, integer scaling of at least two pixels per module and the complete four-module quiet zone. The renderer fails visibly if fitting fails.
 
 Build from the repository root (bash/WSL):
 
