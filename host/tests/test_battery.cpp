@@ -332,3 +332,52 @@ TEST(battery_validity_floor_follows_the_pack) {
   clamped.configure(too_low);
   CHECK(!clamped.inspect(raw_for(1750)).valid);
 }
+
+TEST(battery_2350_usb_rejects_invalid_startup_then_recovers) {
+  BatteryMeter m({1100, 2}, true);
+  m.configure(BatteryThresholds{});
+  const BatteryState &initial = sample_initial_battery(
+      m, []() { return BatterySample{{1358, 457}, true}; },
+      [](uint32_t) {});
+  CHECK(initial.display == PowerDisplay::Usb);
+  CHECK(!initial.numeric_valid);
+  CHECK_EQ(initial.last_mv, 0);
+  CHECK_EQ(initial.invalid, 1u);
+  const BatteryState &valid = m.update({1358, 2538}, true);
+  CHECK(valid.display == PowerDisplay::Usb);
+  CHECK(valid.numeric_valid);
+  CHECK(valid.last_mv >= 4100 && valid.last_mv <= 4130);
+  CHECK_EQ(valid.invalid, 1u);
+  m.update({0, 0}, true);
+  CHECK(!m.state().numeric_valid);
+  CHECK_EQ(m.state().last_mv, 0);
+  CHECK(m.state().display == PowerDisplay::Usb);
+  CHECK_EQ(m.state().invalid, 2u);
+}
+
+TEST(battery_2040_usb_preserves_legacy_noncell_measurement) {
+  BatteryMeter m(kBadger2040Battery, false);
+  m.configure(BatteryThresholds{});
+  const BatteryState &s = sample_initial_battery(
+      m, []() { return BatterySample{{0, 0}, true}; },
+      [](uint32_t) {});
+  CHECK(s.display == PowerDisplay::Usb);
+  CHECK(s.numeric_valid);  // source-specific legacy behavior left unchanged
+  CHECK_EQ(s.samples, 1u);
+}
+
+TEST(battery_2350_battery_only_still_requires_stable_valid_samples) {
+  BatteryMeter m({1100, 2}, true);
+  m.configure(BatteryThresholds{});
+  int n = 0;
+  const BatteryState &s = sample_initial_battery(
+      m, [&]() {
+        ++n;
+        return BatterySample{n == 1 ? BatteryRaw{1358, 457} : BatteryRaw{1358, 2440}, false};
+      },
+      [](uint32_t) {});
+  CHECK(s.display == PowerDisplay::Battery);
+  CHECK(s.numeric_valid);
+  CHECK_EQ(s.samples, 1u);
+  CHECK_EQ(n, 4);
+}

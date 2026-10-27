@@ -67,6 +67,7 @@ struct BatteryState {
   uint16_t last_mv = 0;   // last single (unfiltered) reading, calibrated
   uint16_t filtered_mv = 0;
   uint16_t vdd_mv = 0;    // derived ADC supply voltage
+  bool numeric_valid = false;  // last_mv is publishable, independent of USB source classification
   uint32_t samples = 0, invalid = 0;
 };
 
@@ -87,7 +88,8 @@ class BatteryMeter {
   static constexpr uint16_t kMaxValidMv = 4600;  // above a LiPo's 4.2 V + margin
   static constexpr uint16_t kMinVddMv = 1800, kMaxVddMv = 3700;
 
-  explicit BatteryMeter(BatteryCircuit c = kBadger2040Battery) : circuit_(c) {}
+  explicit BatteryMeter(BatteryCircuit c = kBadger2040Battery, bool validate_usb = false)
+      : circuit_(c), validate_usb_(validate_usb) {}
   void configure(const BatteryThresholds &t);
   // Feed one measurement. `usb` = VBUS detected (reading then reflects USB).
   const BatteryState &update(const BatteryRaw &raw, bool usb);
@@ -105,6 +107,7 @@ class BatteryMeter {
  private:
   uint8_t level_for(uint16_t mv) const;
   BatteryCircuit circuit_;
+  bool validate_usb_ = false;  // only 2350's charger-connected sense uses numeric validation on USB
   BatteryThresholds t_;
   BatteryState st_;
   bool seeded_ = false;

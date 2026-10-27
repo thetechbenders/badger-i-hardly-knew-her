@@ -76,7 +76,7 @@ AssetPackInfo g_asset_info;
 const char *g_asset_source = "none";
 
 bool g_usb = true;
-BatteryMeter g_battery(board::kBatteryCircuit);
+BatteryMeter g_battery(board::kBatteryCircuit, board::kValidateUsbBatteryVoltage);
 BatteryPackWatch g_pack_watch;  // automatic LiPo / 2xAAA switching while awake
 uint32_t g_battery_sample_ms = 0;
 PicoI2c g_i2c;
@@ -392,9 +392,15 @@ class UsbCliHost : public CliHost {
     if (v.screen == Screen::Index)
       std::printf("index highlight %d (drawn %u)%s\r\n", g_app.index_selection() + 1, v.index_sel + 1,
                   g_app.index_redraw_pending() ? " | redraw pending" : "");
-    std::printf("power %s | battery %u mV (filtered %u) | idle %lu s | settings %s\r\n", g_usb ? "usb" : "battery",
-                g_battery.state().last_mv, g_battery.state().filtered_mv,
-                (unsigned long)(g_app.idle_ms(now_ms()) / 1000), g_staged_dirty ? "UNSAVED changes" : "saved");
+    const BatteryState &battery = g_battery.state();
+    if (battery.numeric_valid)
+      std::printf("power %s | battery %u mV (filtered %u) | idle %lu s | settings %s\r\n",
+                  g_usb ? "usb" : "battery", battery.last_mv, battery.filtered_mv,
+                  (unsigned long)(g_app.idle_ms(now_ms()) / 1000), g_staged_dirty ? "UNSAVED changes" : "saved");
+    else
+      std::printf("power %s | battery unavailable (filtered unavailable) | idle %lu s | settings %s\r\n",
+                  g_usb ? "usb" : "battery",
+                  (unsigned long)(g_app.idle_ms(now_ms()) / 1000), g_staged_dirty ? "UNSAVED changes" : "saved");
     std::printf("gesture %s | sensor %s\r\n", g_app.gesture_mode() ? "on" : "off", sensor_state_str(g_gesture.state()));
     std::printf("display %s | %s\r\n", display_busy() ? "busy" : "idle", g_single_core ? "single-core" : "dual-core");
   }
@@ -487,6 +493,8 @@ class UsbCliHost : public CliHost {
       std::printf("battery: %s | reading %u mV, filtered %u mV, derived ADC supply %u mV | %u/4 bars%s\r\n", disp,
                   b.last_mv, b.filtered_mv, b.vdd_mv, b.bars, b.low ? " LOW" : "");
       const BatteryRaw raw = board::read_battery_raw();
+      if (!b.numeric_valid)
+        std::printf("battery: numeric measurement unavailable (last reading rejected)\r\n");
       std::printf("battery: raw ref %u, raw sense %u counts | cal %u/1000 | samples %lu, invalid %lu, last %lu s ago\r\n",
                   raw.ref_counts, raw.bat_counts, p.battery_cal_permille, (unsigned long)b.samples,
                   (unsigned long)b.invalid, (unsigned long)((now_ms() - g_battery_sample_ms) / 1000));
