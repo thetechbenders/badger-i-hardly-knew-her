@@ -55,6 +55,7 @@ const BatteryState &BatteryMeter::mark_invalid(const BatteryRaw &raw) {
   const BatteryMeasurement m = inspect(raw);
   st_.last_mv = m.mv;
   st_.vdd_mv = m.vdd_mv;
+  st_.numeric_valid = false;
   ++st_.invalid;
   st_.display = PowerDisplay::Invalid;
   seeded_ = false;
@@ -65,9 +66,18 @@ const BatteryState &BatteryMeter::update(const BatteryRaw &raw, bool usb) {
   ++st_.samples;
   const BatteryMeasurement measurement = inspect(raw);
   const uint16_t mv = measurement.mv;
-  st_.last_mv = mv;
   st_.vdd_mv = measurement.vdd_mv;
   if (usb) {
+    if (validate_usb_ && !measurement.valid) {
+      // Keep USB detection immediate, but don't publish an implausible cell
+      // voltage as telemetry. Recovery is the next valid sample.
+      st_.numeric_valid = false;
+      st_.last_mv = 0;
+      ++st_.invalid;
+    } else {
+      st_.numeric_valid = true;
+      st_.last_mv = mv;
+    }
     // On USB the sense point is fed from VBUS, so it says nothing about the
     // cell; restart filtering when USB goes away.
     st_.display = PowerDisplay::Usb;
@@ -75,11 +85,15 @@ const BatteryState &BatteryMeter::update(const BatteryRaw &raw, bool usb) {
     return st_;
   }
   if (!measurement.valid) {
+    st_.numeric_valid = false;
+    st_.last_mv = mv;
     ++st_.invalid;
     st_.display = PowerDisplay::Invalid;
     seeded_ = false;
     return st_;
   }
+  st_.numeric_valid = true;
+  st_.last_mv = mv;
   if (!seeded_) {
     ema_x16_ = uint32_t(mv) * 16;
     seeded_ = true;

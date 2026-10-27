@@ -21,6 +21,7 @@
 #include "app.hpp"
 #include "assetpack.hpp"
 #include "battery_pack.hpp"
+#include "battery_info.hpp"
 #include "board.hpp"
 #include "build_info.hpp"
 #include "cli.hpp"
@@ -76,7 +77,7 @@ AssetPackInfo g_asset_info;
 const char *g_asset_source = "none";
 
 bool g_usb = true;
-BatteryMeter g_battery(board::kBatteryCircuit);
+BatteryMeter g_battery(board::kBatteryCircuit, board::kValidateUsbBatteryVoltage);
 BatteryPackWatch g_pack_watch;  // automatic LiPo / 2xAAA switching while awake
 uint32_t g_battery_sample_ms = 0;
 PicoI2c g_i2c;
@@ -249,16 +250,20 @@ void add_battery_info(InfoLines &L) {
   fmt_mv(v, sizeof v, b.last_mv);
   fmt_mv(f, sizeof f, b.filtered_mv);
   if (!kBatteryPackChoice) {
-    if (b.display == PowerDisplay::Usb) L.add("Power     USB | sense %s (%s)", v, board::kUsbSenseNote);
-    else if (b.display == PowerDisplay::Invalid) L.add("Battery   INVALID reading %s", v);
+    if (b.display == PowerDisplay::Usb) {
+      char line[128];
+      format_usb_battery_info(line, sizeof line, b, v, board::kUsbSenseNote);
+      L.add("%s", line);
+    } else if (b.display == PowerDisplay::Invalid)
+      L.add(b.numeric_valid ? "Battery   INVALID reading %s" : "Battery   INVALID | sense unavailable", v);
     else L.add("Battery   %s (filtered %s) | %u/4 bars%s | approx.", v, f, b.bars, b.low ? " LOW" : "");
     return;
   }
   char pack[24];
   std::snprintf(pack, sizeof pack, "%s%s", battery_type_name(battery_type(g_staged.prefs)),
                 g_staged.prefs.battery_auto ? " auto" : "");
-  if (b.display == PowerDisplay::Usb) L.add("Power     USB | %s | sense %s", pack, v);
-  else if (b.display == PowerDisplay::Invalid) L.add("Battery   %s | INVALID reading %s", pack, v);
+  if (b.display == PowerDisplay::Usb) L.add(b.numeric_valid ? "Power     USB | %s | sense %s" : "Power     USB | %s | sense unavailable", pack, v);
+  else if (b.display == PowerDisplay::Invalid) L.add(b.numeric_valid ? "Battery   %s | INVALID reading %s" : "Battery   %s | INVALID | sense unavailable", pack, v);
   else L.add("Battery   %s | %s (%s) | %u/4%s", pack, v, f, b.bars, b.low ? " LOW" : "");
 }
 
@@ -392,9 +397,15 @@ class UsbCliHost : public CliHost {
     if (v.screen == Screen::Index)
       std::printf("index highlight %d (drawn %u)%s\r\n", g_app.index_selection() + 1, v.index_sel + 1,
                   g_app.index_redraw_pending() ? " | redraw pending" : "");
-    std::printf("power %s | battery %u mV (filtered %u) | idle %lu s | settings %s\r\n", g_usb ? "usb" : "battery",
-                g_battery.state().last_mv, g_battery.state().filtered_mv,
-                (unsigned long)(g_app.idle_ms(now_ms()) / 1000), g_staged_dirty ? "UNSAVED changes" : "saved");
+    const BatteryState &battery = g_battery.state();
+    if (battery.numeric_valid)
+      std::printf("power %s | battery %u mV (filtered %u) | idle %lu s | settings %s\r\n",
+                  g_usb ? "usb" : "battery", battery.last_mv, battery.filtered_mv,
+                  (unsigned long)(g_app.idle_ms(now_ms()) / 1000), g_staged_dirty ? "UNSAVED changes" : "saved");
+    else
+      std::printf("power %s | battery unavailable (filtered unavailable) | idle %lu s | settings %s\r\n",
+                  g_usb ? "usb" : "battery",
+                  (unsigned long)(g_app.idle_ms(now_ms()) / 1000), g_staged_dirty ? "UNSAVED changes" : "saved");
     std::printf("gesture %s | sensor %s\r\n", g_app.gesture_mode() ? "on" : "off", sensor_state_str(g_gesture.state()));
     std::printf("display %s | %s\r\n", display_busy() ? "busy" : "idle", g_single_core ? "single-core" : "dual-core");
   }
@@ -487,6 +498,8 @@ class UsbCliHost : public CliHost {
       std::printf("battery: %s | reading %u mV, filtered %u mV, derived ADC supply %u mV | %u/4 bars%s\r\n", disp,
                   b.last_mv, b.filtered_mv, b.vdd_mv, b.bars, b.low ? " LOW" : "");
       const BatteryRaw raw = board::read_battery_raw();
+      if (!b.numeric_valid)
+        std::printf("battery: numeric measurement unavailable (last reading rejected)\r\n");
       std::printf("battery: raw ref %u, raw sense %u counts | cal %u/1000 | samples %lu, invalid %lu, last %lu s ago\r\n",
                   raw.ref_counts, raw.bat_counts, p.battery_cal_permille, (unsigned long)b.samples,
                   (unsigned long)b.invalid, (unsigned long)((now_ms() - g_battery_sample_ms) / 1000));

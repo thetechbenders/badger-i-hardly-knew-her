@@ -47,6 +47,7 @@ constexpr unsigned kI2cSdaPin = BADGER2350_RTC_I2C_SDA_PIN, kI2cSclPin = BADGER2
 // 1.1 V reference (SENSE_1V1, GPIO28), battery sense through a 1/2 divider
 // (VBAT_SENSE, GPIO26): BadgeWare's 2 * 1.1 V * vbat / ref.
 constexpr BatteryCircuit kBatteryCircuit{1100, 2};
+constexpr bool kValidateUsbBatteryVoltage = true;  // charger-connected cell voltage must be plausible
 // While VBUS is present the cell is on the charger: its voltage reads high
 // and says little about the charge left.
 constexpr const char *kUsbSenseNote = "cell on the charger, reads high";
