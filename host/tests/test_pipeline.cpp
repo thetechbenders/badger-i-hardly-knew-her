@@ -2,6 +2,8 @@
 #include <initializer_list>
 #include <thread>
 
+#include "admission.hpp"
+#include "app.hpp"
 #include "check.hpp"
 #include "display_pipeline.hpp"
 #include "sim_panel.hpp"
@@ -404,4 +406,64 @@ TEST(pipeline_panel_without_partial_refresh_gets_full_refreshes) {
   r.sched.invalidate(true);
   r.settle();
   CHECK_EQ(r.display.stats().clean, 1u);
+}
+
+TEST(admission_concealment_requires_successful_clean_completion) {
+  Rig r;
+  r.sched.invalidate(); r.settle();
+  const uint32_t before = r.sched.submitted();
+  r.sched.invalidate(true);
+  r.step(10);
+  CHECK(!r.sched.clean_completed_after(before));
+  r.settle();
+  CHECK(r.sched.clean_completed_after(before));
+  CHECK(!r.panel.busy());
+  CHECK_EQ(r.panel.violations, 0);
+  CHECK_EQ(r.count('P'), 0);
+  for (int failure = 0; failure < 3; ++failure) {
+    Rig bad;
+    bad.sched.invalidate(); bad.settle();
+    const uint32_t base = bad.sched.submitted();
+    bad.panel.dead = failure == 0;
+    bad.panel.start_fails = failure == 1;
+    bad.panel.stuck = failure == 2;
+    bad.sched.invalidate(true);
+    bad.step(16000);
+    CHECK(!bad.sched.clean_completed_after(base));
+    // A fault may settle the queue; that must never authorize power-off.
+  }
+}
+
+TEST(admission_sleep_and_reboot_share_fail_closed_barrier) {
+  if (Framebuffer::kHeight != 176) return;
+  for (bool reboot : {false, true}) {
+    for (bool failure : {false, true}) {
+      Rig r;
+      App app;
+      AppConfig cfg;
+      cfg.admission_configured = true;
+      app.boot(cfg, -1, 0);
+      app.on_screen_request(Screen::Info);
+      app.on_button({Button::A, Gesture::Long, 100});
+      app.on_button({Button::B, Gesture::Long, 1200});
+      CHECK(app.admission_private());
+      r.sched.invalidate(true); r.settle();
+      const uint32_t action = reboot ? app.conceal_admission() : app.request_sleep();
+      AdmissionConcealment barrier;
+      barrier.begin(r.sched.submitted());
+      r.scene.value = 10;
+      r.panel.start_fails = failure;
+      r.sched.invalidate(action & kActCleanRefresh);
+      CHECK(!barrier.complete(r.sched, r.display.panel_ok(), r.panel.busy()));
+      r.step(10);
+      CHECK(!barrier.complete(r.sched, r.display.panel_ok(), r.panel.busy()));
+      r.settle();
+      // This is the exact barrier checked before either platform operation.
+      const bool may_power_transition = barrier.complete(r.sched, r.display.panel_ok(), r.panel.busy());
+      CHECK_EQ(may_power_transition, !failure);
+      if (may_power_transition) app.admission_concealed();
+      CHECK_EQ(app.admission_private(), failure);
+      CHECK_EQ(barrier.pending(), failure);
+    }
+  }
 }

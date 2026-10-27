@@ -173,3 +173,5 @@ The detailed engineering specifications and test records remain in `docs/`.
 - [docs/test-records/](docs/test-records/README.md): dated hardware test results, each with its firmware commit, provenance and limits
 - [docs/REVIEW.md](docs/REVIEW.md): code-review findings, fixes and remaining limitations
 - [docs/LICENSES.md](docs/LICENSES.md): dependency, font and asset licence inventory
+
+Optional Badger 2350-only private ticket display: [build, controls and persistent e-paper limitations](docs/private-admission.md). Disabled by default; credential-bearing firmware must remain private.

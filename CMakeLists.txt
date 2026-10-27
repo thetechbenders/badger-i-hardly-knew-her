@@ -63,6 +63,7 @@ endif()
 
 include(cmake/badger_content.cmake)
 badger_generate_content(${CMAKE_CURRENT_BINARY_DIR}/generated)
+badger_generate_admission(${CMAKE_CURRENT_BINARY_DIR}/generated)
 get_filename_component(BADGER_PROFILE_NAME ${BADGER_PROFILE} NAME)
 configure_file(firmware/platform/build_info.cpp.in ${CMAKE_CURRENT_BINARY_DIR}/generated/build_info.cpp @ONLY)
 
@@ -71,6 +72,7 @@ get_filename_component(BADGER_PIMORONI_REAL "${PIMORONI_PICO_PATH}" REALPATH)
 
 set(FW ${BHIHKH_TARGET_ARTIFACT_PREFIX})
 add_executable(${FW}
+  ${BADGER_ADMISSION_SOURCE}
   ${BADGER_CORE_SOURCES}
   ${BADGER_CLI_SOURCES}
   ${BADGER_GENERATED_SOURCES}

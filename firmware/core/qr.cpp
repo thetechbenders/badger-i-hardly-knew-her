@@ -23,7 +23,7 @@ int max_version_for(int max_px) {
 
 bool QrSymbol::module(int x, int y) const { return qrcodegen_getModule(data, x, y); }
 
-QrStatus qr_encode(const char *payload, int max_px, QrSymbol *out) {
+QrStatus qr_encode(const char *payload, int max_px, QrSymbol *out, bool maximize_scale) {
   out->status = QrStatus::Empty;
   if (!payload || !payload[0]) return out->status;
   const int vmax = max_version_for(max_px);
@@ -41,6 +41,22 @@ QrStatus qr_encode(const char *payload, int max_px, QrSymbol *out) {
       // Minimum level requested; boostEcl may have raised it further.
       out->ecc = ecl == qrcodegen_Ecc_MEDIUM ? 'M' : 'L';
       out->status = QrStatus::Ok;
+      if (maximize_scale && ecl == qrcodegen_Ecc_MEDIUM) {
+        // Preserve M when L cannot improve the integer module scale.
+        QrSymbol low;
+        if (qrcodegen_encodeText(payload, g_temp, low.data, qrcodegen_Ecc_LOW, 1, vmax,
+                                qrcodegen_Mask_AUTO, true)) {
+          low.modules = qrcodegen_getSize(low.data);
+          low.scale = max_px / (low.modules + 2 * kQrQuietModules);
+          if (low.scale > out->scale) {
+            low.version = (low.modules - 17) / 4;
+            low.px = low.scale * (low.modules + 2 * kQrQuietModules);
+            low.ecc = 'L';
+            low.status = QrStatus::Ok;
+            *out = low;
+          }
+        }
+      }
       return out->status;
     }
   }

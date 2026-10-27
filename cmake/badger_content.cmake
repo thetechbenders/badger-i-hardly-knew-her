@@ -17,6 +17,7 @@ get_filename_component(_BADGER_ROOT ${CMAKE_CURRENT_LIST_DIR}/.. ABSOLUTE)
 
 set(BADGER_CORE_SOURCES
   ${_BADGER_ROOT}/firmware/core/apds9960.cpp
+  ${_BADGER_ROOT}/firmware/core/admission.cpp
   ${_BADGER_ROOT}/firmware/core/app.cpp
   ${_BADGER_ROOT}/firmware/core/assetpack.cpp
   ${_BADGER_ROOT}/firmware/core/battery.cpp
@@ -114,4 +115,29 @@ function(badger_generate_content OUT_DIR)
             ${_BADGER_ROOT}/scripts/bhihkh_targets.py
     COMMENT "Building built-in asset pack")
   set(BADGER_GENERATED_SOURCES ${OUT_DIR}/profile_defaults.cpp ${OUT_DIR}/builtin_assets.cpp PARENT_SCOPE)
+endfunction()
+
+# Admission is explicitly opted in only by firmware, never by host previews.
+function(badger_generate_admission OUT_DIR)
+  if(NOT BADGER_ADMISSION_FILE)
+    set(BADGER_ADMISSION_SOURCE ${_BADGER_ROOT}/firmware/core/admission_disabled.cpp PARENT_SCOPE)
+    return()
+  endif()
+  if(NOT BHIHKH_TARGET STREQUAL "badger2350")
+    message(FATAL_ERROR "Admission requires Badger 2350")
+  endif()
+  get_filename_component(_private_root "${_BADGER_ROOT}/build/private" ABSOLUTE)
+  get_filename_component(_build "${CMAKE_BINARY_DIR}" REALPATH)
+  string(FIND "${_build}/" "${_private_root}/" _inside)
+  if(NOT _inside EQUAL 0)
+    message(FATAL_ERROR "Admission firmware must be built inside build/private/")
+  endif()
+  get_filename_component(_input "${BADGER_ADMISSION_FILE}" ABSOLUTE BASE_DIR "${_BADGER_ROOT}")
+  set(_source "${OUT_DIR}/admission_private.cpp")
+  add_custom_command(OUTPUT "${_source}"
+    COMMAND ${Python3_EXECUTABLE} ${_BADGER_ROOT}/tools/admissiongen.py
+      "${_input}" --out "${_source}"
+    DEPENDS "${_input}" ${_BADGER_ROOT}/tools/admissiongen.py ${_BADGER_ROOT}/firmware/generated/fonts.cpp
+    COMMENT "Generating private admission content" VERBATIM)
+  set(BADGER_ADMISSION_SOURCE "${_source}" PARENT_SCOPE)
 endfunction()

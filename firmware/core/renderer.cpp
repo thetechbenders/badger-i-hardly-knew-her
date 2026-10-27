@@ -805,6 +805,7 @@ void render(Framebuffer &fb, const View &v, const RenderContext &ctx) {
       else render_card(fb, ctx);
       break;
     case Screen::ProjectQr: render_project_qr(fb, v, ctx); break;
+    case Screen::Admission: break;  // private firmware renders through its dedicated context
     case Screen::Index: render_index(fb, v, ctx); break;
     case Screen::Info: render_info(fb, ctx, false); break;
     case Screen::Recovery: render_info(fb, ctx, true); break;

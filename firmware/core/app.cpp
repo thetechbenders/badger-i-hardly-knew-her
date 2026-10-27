@@ -1,6 +1,7 @@
 #include "app.hpp"
 
 #include <cstring>
+#include "framebuffer.hpp"
 
 namespace badge {
 
@@ -23,7 +24,7 @@ const char *screen_name(Screen s) {
 }
 
 bool screen_from_name(const char *name, Screen *out) {
-  for (uint8_t i = 0; i < uint8_t(Screen::Count); ++i) {
+  for (uint8_t i = 0; i < uint8_t(Screen::Admission); ++i) {
     if (std::strcmp(name, kScreenNames[i]) == 0) {
       *out = Screen(i);
       return true;
@@ -34,8 +35,11 @@ bool screen_from_name(const char *name, Screen *out) {
 
 void App::boot(const AppConfig &cfg, int wake_button, uint32_t now_ms) {
   cfg_ = cfg;
+  cfg_.admission_configured &= Framebuffer::kWidth == 264 && Framebuffer::kHeight == 176;
+  admission_armed_ = false;
   view_ = View{};
   view_.layout = cfg.layout;
+  concealing_ = false;
   layout_toggled_ = false;
   sleep_pending_ = false;
   gesture_on_ = cfg.gesture_default_on && !cfg.safe_mode;
@@ -58,6 +62,7 @@ void App::boot(const AppConfig &cfg, int wake_button, uint32_t now_ms) {
 }
 
 uint32_t App::go(Screen s) {
+  admission_armed_ = false;
   if (view_.screen == s) return kActNone;
   if (view_.screen == Screen::Index) index_dirty_ = false;  // leaving: nothing left to draw
   view_.screen = s;
@@ -189,7 +194,42 @@ uint32_t App::poll_click(uint32_t now_ms) {
   return on_click(click_.poll(now_ms));
 }
 
+uint32_t App::conceal_admission() {
+  admission_armed_ = false;
+  if (view_.screen != Screen::Admission) return kActNone;
+  concealing_ = true;
+  click_.cancel();
+  c_frozen_ = false;
+  index_dirty_ = false;
+  view_.screen = Screen::Info;
+  return kActRedraw | kActCleanRefresh;
+}
+
 uint32_t App::on_button(const ButtonEvent &e) {
+  if (sleep_pending_) return kActNone;
+  last_activity_ms_ = e.t_ms;
+  if (concealing_) return kActNone;
+  if (view_.screen == Screen::Admission) return conceal_admission();
+  if (admission_armed_ && e.t_ms - admission_armed_ms_ >= 3000) admission_armed_ = false;
+  if (view_.screen == Screen::Info && cfg_.admission_configured && !cfg_.safe_mode) {
+    if (e.button == Button::A && e.gesture == Gesture::Long) {
+      admission_armed_ = true;
+      admission_armed_ms_ = e.t_ms;
+      click_.cancel();
+      c_frozen_ = false;
+      return kActNone;
+    }
+    if (admission_armed_ && e.button == Button::B) {
+      if (e.gesture == Gesture::Press) return kActNone;
+      if (e.gesture == Gesture::Long) {
+        admission_armed_ = false;
+        admission_open_ms_ = e.t_ms;
+        view_.screen = Screen::Admission;
+        return kActRedraw | kActCleanRefresh;
+      }
+    }
+  }
+  admission_armed_ = false;
   last_activity_ms_ = e.t_ms;
   if (sleep_pending_) return kActNone;  // committed to powering off
   uint32_t a = poll_click(e.t_ms);  // an expired single C acts first
@@ -255,6 +295,12 @@ uint32_t App::on_button(const ButtonEvent &e) {
 }
 
 uint32_t App::on_poll(uint32_t now_ms) {
+  if (admission_armed_ && now_ms - admission_armed_ms_ >= 3000) admission_armed_ = false;
+  if (concealing_) return kActNone;
+  if (view_.screen == Screen::Admission) {
+    if (now_ms - admission_open_ms_ >= uint32_t(cfg_.admission_timeout_s) * 1000u) return conceal_admission();
+    return kActNone;
+  }
   if (sleep_pending_) {
     click_.cancel();
     return kActNone;
@@ -265,6 +311,9 @@ uint32_t App::on_poll(uint32_t now_ms) {
 }
 
 uint32_t App::on_screen_request(Screen s, int project) {
+  admission_armed_ = false;
+  if (sleep_pending_ || admission_private()) return kActNone;
+  if (s >= Screen::Admission) return kActNone;
   if (s == Screen::Recovery && !cfg_.safe_mode) return kActNone;
   click_.cancel();  // a USB request changes the context: no late C action
   c_frozen_ = false;
@@ -296,6 +345,8 @@ uint32_t App::on_screen_request(Screen s, int project) {
 }
 
 uint32_t App::on_project_step(int delta) {
+  admission_armed_ = false;
+  if (admission_private()) return kActNone;
   const int n = cfg_.project_count;
   if (n <= 1) return kActNone;
   if (view_.screen == Screen::Index) {  // CLI 'project next|prev' in the index: move the highlight
@@ -309,12 +360,16 @@ uint32_t App::on_project_step(int delta) {
 }
 
 uint32_t App::set_gesture_mode(bool on) {
+  admission_armed_ = false;
+  if (admission_private()) return kActNone;
   if (on == gesture_on_) return kActNone;
   gesture_on_ = on;
   return kActGestureMode | kActRedraw;  // the status indicator changes
 }
 
 uint32_t App::on_swipe(Swipe s, uint32_t now_ms) {
+  admission_armed_ = false;
+  if (admission_private()) return kActNone;
   if (!gesture_on_ || sleep_pending_ || cfg_.safe_mode || view_.screen == Screen::Recovery) return kActNone;
   last_activity_ms_ = now_ms;
   if (view_.screen == Screen::Index) return kActNone;  // the index is modal: a stray wave never leaves it
@@ -341,8 +396,11 @@ uint32_t App::on_swipe(Swipe s, uint32_t now_ms) {
 }
 
 uint32_t App::on_config_changed(const AppConfig &cfg) {
+  admission_armed_ = false;
+  if (admission_private()) return kActNone;
   const bool leaving_safe = cfg_.safe_mode && !cfg.safe_mode;
   cfg_ = cfg;
+  cfg_.admission_configured &= Framebuffer::kWidth == 264 && Framebuffer::kHeight == 176;
   click_.cancel();
   c_frozen_ = false;
   view_.layout = uint8_t(cfg.layout ^ (layout_toggled_ ? 1 : 0));
@@ -359,11 +417,15 @@ uint32_t App::on_config_changed(const AppConfig &cfg) {
 }
 
 uint32_t App::on_activity(uint32_t now_ms) {
+  admission_armed_ = false;
   last_activity_ms_ = now_ms;
   return kActNone;
 }
 
 uint32_t App::on_tick(uint32_t now_ms, bool on_battery, bool display_settled) {
+  if (view_.screen == Screen::Admission && on_battery && cfg_.sleep_timeout_s &&
+      now_ms - last_activity_ms_ >= uint32_t(cfg_.sleep_timeout_s) * 1000u) return request_sleep();
+  if (admission_private()) return kActNone;
   uint32_t a = kActNone;
   if (gesture_on_ && cfg_.gesture_timeout_s && !sleep_pending_ &&
       now_ms - last_activity_ms_ >= uint32_t(cfg_.gesture_timeout_s) * 1000u) {
@@ -387,6 +449,7 @@ uint32_t App::on_tick_power(uint32_t now_ms, bool on_battery, bool display_settl
 
 View App::sleep_view() const {
   View v = view_;
+  if (admission_private()) v.screen = Screen::Info;
   if (cfg_.sleep_to_badge && v.screen != Screen::Recovery) v.screen = Screen::Badge;
   return v;
 }

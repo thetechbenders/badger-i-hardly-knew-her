@@ -6,6 +6,9 @@
 # directory per target; scripts/run-host-tests.sh builds both.
 cmake_minimum_required(VERSION 3.16)
 project(badger_host C CXX)
+if(BADGER_ADMISSION_FILE)
+  message(FATAL_ERROR "Private admission input is forbidden in host builds")
+endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_STANDARD 11)
@@ -28,6 +31,7 @@ if(BADGER_SANITIZE AND NOT MSVC)
 endif()
 
 add_library(badger_core STATIC
+  ${REPO_ROOT}/firmware/core/admission_disabled.cpp
   ${BADGER_CORE_SOURCES}
   ${BADGER_GENERATED_SOURCES}
 )
