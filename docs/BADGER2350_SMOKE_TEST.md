@@ -39,8 +39,10 @@ with **HOME in place of USR**, and check every step:
 
 1. A, B, C short: badge, card, projects; one refresh each; C acts about
    0.35 s after release.
-2. A long: clean (full) refresh. B long: full-screen contact QR; on a
-   project page, that project's QR; again: back. C double: project index.
+2. A long: clean (full) refresh. B long: contact QR when configured (from
+   non-project screens); on a linked project page, that project's QR; on
+   project QR, B long returns to the project. **On contact QR, B long stays
+   there** (short UP/DOWN returns to the card). C double: project index.
    C long: project 1. UP/DOWN short: previous/next project.
 3. UP/DOWN held on the index: the highlight repeats and the index redraws
    once after release (quiet browsing). DOWN held 3 s on the index: power off.
