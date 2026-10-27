@@ -34,6 +34,7 @@ constexpr int kI2cInstance = BADGER2040_I2C;
 constexpr unsigned kI2cSdaPin = BADGER2040_SDA_PIN, kI2cSclPin = BADGER2040_SCL_PIN;
 // 1.24 V reference, battery sense through a 1/3 divider (battery.hpp).
 constexpr BatteryCircuit kBatteryCircuit = kBadger2040Battery;
+constexpr bool kValidateUsbBatteryVoltage = false;  // USB sense is not a cell reading
 // What the battery-sense reading means while VBUS is present.
 constexpr const char *kUsbSenseNote = "reflects USB, not the cell";
 constexpr bool kHasActivityLed = true;  // front LED, lit while the panel refreshes

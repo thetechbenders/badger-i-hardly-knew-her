@@ -130,10 +130,13 @@ presses), and each commit is verified by reading it back.
 
 Everything above describes the original Badger 2040. On the **Badger 2350**
 (`badger2350_badge.uf2`, built with `-DBHIHKH_TARGET=badger2350`) the
-product is the same; the differences are below. **This target has not yet
-been validated on a physical badge**: treat these steps as the plan for
-[BADGER2350_SMOKE_TEST.md](BADGER2350_SMOKE_TEST.md), not as tested
-instructions.
+product is the same; the differences are below. **Owner-reported physical core
+parity passed for the limited checks on the older `b3125aa` build**, with only
+steps A2/B5/E2 retested on `dc20680`, as documented in the
+[2026-10-08 test record](test-records/2026-10-08-badger2350-parity-b3125aa-dc20680.md).
+This does **not** validate the current firmware head, all installation and
+recovery paths, optional gesture hardware, or battery sleep current. Follow
+the [Badger 2350 checklist](BADGER2350_SMOKE_TEST.md) for each new build.
 
 - **What it replaces.** The badge ships with Pimoroni's BadgeWare
   (MicroPython): 2 MiB firmware, a 1 MiB ROMFS, a 12 MiB FAT filesystem with
@@ -150,6 +153,18 @@ instructions.
   they carry the RP2350 UF2 family, `scripts/verify_artifacts.py --target
   badger2350` checks them, and the Badger 2040's `badger_badge*.uf2` fail
   that check.
+- **USB serial**: the pinned Pico SDK enumerates RP2350 application CDC as
+  `2E8A:0009` (observed in the October 8 physical record). The current
+  `tools/badgerctl.py` auto-detects only the RP2040's `2E8A:000A`.
+  Identify your serial port with `python3 -m serial.tools.list_ports -v`
+  (pyserial), then pass `--port` **before** the command, for example:
+
+  ```bash
+  python3 tools/badgerctl.py --port /dev/ttyACM0 cmd "version"
+  # Windows: replace /dev/ttyACM0 with your actual COM port, e.g. COM5
+  ```
+
+  Do not open the port at 1200 baud unless you intend to enter BOOTSEL.
 - **Buttons**: A, B, C, UP and DOWN as on the Badger 2040; **HOME** takes
   the USR button's role (diagnostics, layout toggle). Safe mode: hold
   **A + C** while pressing RESET or while waking the badge.
@@ -160,7 +175,9 @@ instructions.
 - **Battery**: the badge has a charger. The status area shows `USB` while
   VBUS is present, never "charging" (the charge-status line is on the
   wireless chip, which this firmware does not use). The meter's conversion
-  is BadgeWare's (BATTERY.md); its accuracy is unvalidated.
+  is BadgeWare's ([BATTERY.md](BATTERY.md)); an older USB-connected
+  comparison met the owner's ±50 mV criterion, but battery-only calibration
+  has not been established for current builds.
 - **Display**: full refreshes only (the reference SSD1680 driver has one
   waveform and no partial update), so `refresh.speed` and `refresh.partial`
   have no effect; `A long` still requests a clean full refresh. Black and

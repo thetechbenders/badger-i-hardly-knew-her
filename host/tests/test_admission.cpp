@@ -1,6 +1,7 @@
 #include <cstdlib>
 #include <string>
 #include "admission.hpp"
+#include "battery.hpp"
 #include "app.hpp"
 #include "check.hpp"
 #include "qr.hpp"
@@ -148,5 +149,24 @@ TEST(admission_cannot_rearm_during_sleep_and_idle_sleep_conceals) {
   CHECK(a.view().screen != Screen::Admission);
   CHECK(a.sleeping());
   a.on_screen_request(Screen::Admission);
+  CHECK(a.view().screen != Screen::Admission);
+}
+
+TEST(admission_and_2350_usb_numeric_recovery_remain_independent) {
+  if (!supported) return;
+  BatteryMeter battery({1100, 2}, true);
+  battery.configure(BatteryThresholds{});
+  const BatteryState &bad = battery.update({1358, 457}, true);
+  CHECK(bad.display == PowerDisplay::Usb);
+  CHECK(!bad.numeric_valid);
+  App a = opened();
+  CHECK(a.view().screen == Screen::Admission);
+  CHECK(a.on_button({Button::C, Gesture::Press, 1200}) & kActCleanRefresh);
+  CHECK(a.concealing_admission());
+  const BatteryState &recovered = battery.update({1358, 2538}, true);
+  CHECK(recovered.numeric_valid);
+  CHECK(recovered.last_mv >= 4100 && recovered.last_mv <= 4130);
+  CHECK(a.concealing_admission());
+  a.admission_concealed();
   CHECK(a.view().screen != Screen::Admission);
 }

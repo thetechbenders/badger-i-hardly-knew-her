@@ -26,8 +26,10 @@ works; the portrait is made at 104×176, the previews show the 264×176
 screens with the same fit and QR gates, and the output goes to
 `local/out/badge-badger2350/` (`fw/badger2350_badge.uf2`). A photo's default
 crop follows the taller portrait; an explicit `crop` must have that
-portrait's proportions (104:176). The Badger 2350 build is not yet validated
-on a physical badge ([INSTALL.md](INSTALL.md#badger-2350)).
+portrait's proportions (104:176). **Owner-reported core parity passed on a
+physical Badger 2350 for the older, specified firmware and checks in the
+[2026-10-08 test record](test-records/2026-10-08-badger2350-parity-b3125aa-dc20680.md);** this does not validate newer builds or deferred tests.
+See [INSTALL.md](INSTALL.md#badger-2350).
 
 The rest of this page, the flashing step above included, describes the
 default Badger 2040 target: `local/out/badge/`, `badger_badge.uf2`, the
@@ -199,6 +201,12 @@ like a JSON profile (contacts, QR, projects and preferences; the portrait
 is built into the firmware).
 
 ## Private backup
+
+**Badger 2040 only:** `scripts/private-backup.sh` hardcodes Badger 2040
+firmware artifacts and build/verification targets. It does **not** build,
+back up, or verify a Badger 2350 personalized UF2. Do not use its archive
+as a 2350 restore plan; use the [board-specific installation and recovery
+instructions](INSTALL.md#badger-2350) for a separate flash/firmware backup.
 
 `scripts/private-backup.sh create local/badge.toml` builds from the form
 (with all of the checks above) and archives the form, the files it refers
