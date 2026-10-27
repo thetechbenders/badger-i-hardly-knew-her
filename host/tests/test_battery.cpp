@@ -1,4 +1,5 @@
 #include "battery.hpp"
+#include "battery_info.hpp"
 #include "battery_helpers.hpp"
 #include "check.hpp"
 #include "renderer.hpp"
@@ -380,4 +381,24 @@ TEST(battery_2350_battery_only_still_requires_stable_valid_samples) {
   CHECK(s.numeric_valid);
   CHECK_EQ(s.samples, 1u);
   CHECK_EQ(n, 4);
+}
+
+TEST(battery_info_2350_usb_rejects_invalid_numeric_presentation) {
+  BatteryMeter meter({1100, 2}, true);
+  meter.configure(BatteryThresholds{});
+  char line[128];
+  const char *note = "cell on the charger, reads high";
+  const BatteryState &bad = meter.update({1358, 457}, true);
+  format_usb_battery_info(line, sizeof line, bad, "0.00 V", note);
+  CHECK_EQ(std::string(line), std::string("Power     USB | sense unavailable"));
+  const BatteryState &good = meter.update({1358, 2538}, true);
+  format_usb_battery_info(line, sizeof line, good, "4.11 V", note);
+  CHECK_EQ(std::string(line), std::string("Power     USB | sense 4.11 V (cell on the charger, reads high)"));
+}
+TEST(battery_info_2040_preserves_usb_display_note) {
+  BatteryMeter meter(kBadger2040Battery, false);
+  char line[128];
+  const BatteryState &usb = meter.update({0, 0}, true);
+  format_usb_battery_info(line, sizeof line, usb, "0.00 V", "reflects USB, not the cell");
+  CHECK_EQ(std::string(line), std::string("Power     USB | sense 0.00 V (reflects USB, not the cell)"));
 }

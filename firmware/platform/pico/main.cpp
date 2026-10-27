@@ -21,6 +21,7 @@
 #include "app.hpp"
 #include "assetpack.hpp"
 #include "battery_pack.hpp"
+#include "battery_info.hpp"
 #include "board.hpp"
 #include "build_info.hpp"
 #include "cli.hpp"
@@ -249,16 +250,20 @@ void add_battery_info(InfoLines &L) {
   fmt_mv(v, sizeof v, b.last_mv);
   fmt_mv(f, sizeof f, b.filtered_mv);
   if (!kBatteryPackChoice) {
-    if (b.display == PowerDisplay::Usb) L.add("Power     USB | sense %s (%s)", v, board::kUsbSenseNote);
-    else if (b.display == PowerDisplay::Invalid) L.add("Battery   INVALID reading %s", v);
+    if (b.display == PowerDisplay::Usb) {
+      char line[128];
+      format_usb_battery_info(line, sizeof line, b, v, board::kUsbSenseNote);
+      L.add("%s", line);
+    } else if (b.display == PowerDisplay::Invalid)
+      L.add(b.numeric_valid ? "Battery   INVALID reading %s" : "Battery   INVALID | sense unavailable", v);
     else L.add("Battery   %s (filtered %s) | %u/4 bars%s | approx.", v, f, b.bars, b.low ? " LOW" : "");
     return;
   }
   char pack[24];
   std::snprintf(pack, sizeof pack, "%s%s", battery_type_name(battery_type(g_staged.prefs)),
                 g_staged.prefs.battery_auto ? " auto" : "");
-  if (b.display == PowerDisplay::Usb) L.add("Power     USB | %s | sense %s", pack, v);
-  else if (b.display == PowerDisplay::Invalid) L.add("Battery   %s | INVALID reading %s", pack, v);
+  if (b.display == PowerDisplay::Usb) L.add(b.numeric_valid ? "Power     USB | %s | sense %s" : "Power     USB | %s | sense unavailable", pack, v);
+  else if (b.display == PowerDisplay::Invalid) L.add(b.numeric_valid ? "Battery   %s | INVALID reading %s" : "Battery   %s | INVALID | sense unavailable", pack, v);
   else L.add("Battery   %s | %s (%s) | %u/4%s", pack, v, f, b.bars, b.low ? " LOW" : "");
 }
 
