@@ -51,3 +51,11 @@ node --test tests_js/test_studio_browser.cjs
 ```
 
 Source of truth: [docs/STUDIO.md](../docs/STUDIO.md) and `studio/`. For firmware output, use [personalization](Personalization.md) and [builds](Builds-and-Artifacts.md). For a rejected token, start at [troubleshooting](Troubleshooting.md).
+
+## Portable project packages
+
+After **Validate & save**, use **Export .badgerpack** to download the saved
+configuration and processed portrait as one private archive. Build on a
+supported local machine with `scripts/build-badge.sh --package FILE.badgerpack`.
+See [package format and privacy limits](../docs/BADGERPACK.md). Studio still does
+not build or flash firmware itself.
