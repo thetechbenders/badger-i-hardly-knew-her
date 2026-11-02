@@ -25,6 +25,32 @@ class StudioTests(unittest.TestCase):
         self.auth = {"X-Studio-Token": self.token}
         self.form = self.client.get("/api/v1/workspace", headers=self.auth).json()
 
+    def test_package_export_is_authenticated_saved_only_and_targeted(self):
+        import sys
+        sys.path.insert(0, str(ROOT / "tools"))
+        import badgerpack
+
+        self.assertEqual(self.client.get("/api/v1/package").status_code, 403)
+        first = self.client.get("/api/v1/package", headers=self.auth)
+        self.assertEqual(first.status_code, 200, first.text[:200] if first.status_code != 200 else "")
+        target, members = badgerpack.read_package(first.content)
+        self.assertEqual(target, "badger2040")
+        self.assertEqual(members["badge.toml"].decode(), self.form["toml"])
+        # Unsaved browser edits are not submitted by this read-only endpoint.
+        self.assertNotIn(b"SECRET UNSAVED", members["badge.toml"])
+
+        updated = self.form["toml"].replace(
+            'processed = "sample-badger2040.png"',
+            'processed = "sample-badger2350.png"')
+        response = self.client.put("/api/v1/workspace", headers=self.auth,
+                                   json={"target": "badger2350", "toml": updated})
+        self.assertEqual(response.status_code, 200, response.text)
+        second = self.client.get("/api/v1/package", headers=self.auth)
+        self.assertEqual(second.status_code, 200, second.text[:200] if second.status_code != 200 else "")
+        target, members = badgerpack.read_package(second.content)
+        self.assertEqual(target, "badger2350")
+        self.assertIn("sample-badger2350.png", members)
+
     def test_screen_preview_reuses_canonical_pipeline_without_saving(self):
         """Unsaved TOML is rendered without persisting a workspace change."""
         import base64

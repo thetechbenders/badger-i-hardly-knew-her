@@ -31,6 +31,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
 sys.path.insert(0, str(ROOT / "scripts"))
 import badge_form  # noqa: E402
+import badgerpack  # noqa: E402
 import portrait as portrait_tool  # noqa: E402
 from studio import form_editor  # noqa: E402
 from bhihkh_targets import TARGETS  # noqa: E402
@@ -235,6 +236,25 @@ def create_app(workspace: Path | None = None) -> FastAPI:
     def stylesheet():
         return Response((STATIC / "style.css").read_text(encoding="utf-8"),
                         media_type="text/css")
+
+    @app.get("/api/v1/package")
+    def export_package():
+        """Download only the validated saved workspace, never unsaved browser edits."""
+        text = form_path.read_text(encoding="utf-8")
+        selected_target = active["target"]
+        check = validate(text, selected_target)
+        if not check["ok"]:
+            raise HTTPException(422, "Saved badge is invalid; validate and save before export")
+        try:
+            name = badgerpack._portrait_name(text.encode("utf-8"), selected_target)
+            portrait_file = work / name
+            if _portrait_file_problem(name, work):
+                raise HTTPException(422, "Managed portrait is missing or invalid")
+            payload = badgerpack.make_package(text.encode("utf-8"), portrait_file.read_bytes(), selected_target)
+        except badgerpack.PackageError as error:
+            raise HTTPException(422, str(error)) from None
+        return Response(payload, media_type="application/octet-stream",
+                        headers={"Content-Disposition": 'attachment; filename="badge.badgerpack"'})
 
     @app.get("/api/v1/targets")
     def targets():

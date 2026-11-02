@@ -14,7 +14,7 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 py="${PYTHON:-python3}"
 mode=build
 case "${1:-}" in
-  --new) shift; exec "$py" "$root/tools/badge_form.py" new "$@" ;;
+  --package) shift; exec "$py" "$root/tools/badgerpack.py" "$@" ;;\n  --new) shift; exec "$py" "$root/tools/badge_form.py" new "$@" ;;
   --check) mode=check; shift ;;
   --preview) mode=preview; shift ;;
   ""|-h|--help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
