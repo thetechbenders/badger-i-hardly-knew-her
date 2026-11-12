@@ -172,7 +172,7 @@ class PackageTests(unittest.TestCase):
                               side_effect=badgerpack.badge_form.FormError(
                                   ["person.name is required"])):
                 with self.assertRaisesRegex(badgerpack.PackageError,
-                                            r"person\\.name is required"):
+                                            r"person[.]name is required"):
                     badgerpack.build(pack, Path(tmp) / "output")
 
     def test_private_external_paths_rejected(self):
