@@ -12,7 +12,7 @@ jobs:
     name: Host tests and previews (both targets)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install host packages
         run: |
           sudo apt-get update
@@ -24,7 +24,7 @@ jobs:
         run: scripts/run-host-tests.sh
       - name: Studio browser bootstrap and reconnect tests
         run: node --test tests_js/test_studio_browser.cjs
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: previews
           path: build/previews/
@@ -49,14 +49,14 @@ jobs:
     env:
       BHIHKH_TARGET: ${{ matrix.target }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0   # git describe for build metadata
       # Cache downloaded .deb archives, not installed /usr toolchain trees.
       # Both targets use the same cache key; whichever saves first seeds later runs.
       # APT still checks package versions/hashes against updated Noble metadata.
       - name: Restore ARM toolchain package archives
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: .ci-apt-archives
           key: apt-noble-amd64-arm-gcc-15-13.2.rel1-2-newlib-v1
@@ -87,7 +87,7 @@ jobs:
           "$py" -c "import sys, PIL; print('Pillow', PIL.__version__, 'on', sys.executable); sys.exit(PIL.__version__ != '$pinned')"
           echo "BADGER_PYTHON=$py" >> "$GITHUB_ENV"
       - name: Cache pinned dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: deps
           key: deps-${{ hashFiles('deps.lock', 'scripts/fetch-deps.sh') }}
@@ -129,6 +129,35 @@ jobs:
         run: |
           "$BADGER_PYTHON" scripts/package_firmware.py ${{ matrix.build }} "$RUNNER_TEMP/${{ matrix.prefix }}.zip"
           "$BADGER_PYTHON" scripts/package_firmware.py --verify "$RUNNER_TEMP/${{ matrix.prefix }}.zip"
+      - name: Build fictional Studio package through public shell entry point
+        run: |
+          bash -n scripts/build-badge.sh
+          mkdir -p local/ci-fixtures
+          "$BADGER_PYTHON" - <<'PY'
+          from pathlib import Path
+          import sys
+          sys.path.insert(0, "tools")
+          import badgerpack
+          target = "${{ matrix.target }}"
+          form = Path("config/badge-form.toml").read_text()
+          form = form.replace(
+              'processed = "../assets/sample/portrait_placeholder.png"',
+              f'processed = "sample-{target}.png"')
+          image = Path("assets/sample") / ("portrait_placeholder.png" if target == "badger2040" else "portrait_placeholder_badger2350.png")
+          pack = badgerpack.make_package(form.encode(), image.read_bytes(), target)
+          Path("local/ci-fixtures/fictional.badgerpack").write_bytes(pack)
+          assert badgerpack.read_package(pack)[0] == target
+          other = "badger2350" if target == "badger2040" else "badger2040"
+          try:
+              badgerpack.make_package(form.encode(), image.read_bytes(), other)
+          except badgerpack.PackageError:
+              pass
+          else:
+              raise AssertionError("Accepted mismatched board target")
+          PY
+          PYTHON="$BADGER_PYTHON" scripts/build-badge.sh --package local/ci-fixtures/fictional.badgerpack --out "$PWD/local/out/ci-package-${{ matrix.target }}"
+          "$BADGER_PYTHON" scripts/verify_artifacts.py "local/out/ci-package-${{ matrix.target }}/fw" --require-clean --target "$BHIHKH_TARGET"
+          (cd "local/out/ci-package-${{ matrix.target }}/fw" && sha256sum -c SHA256SUMS)
       # badger2040 is configured without -DBHIHKH_TARGET, so this also shows
       # the default target builds the same image.
       - name: Reproducible from a different checkout path and build-directory name
@@ -160,7 +189,7 @@ jobs:
             -DBADGER_ADMISSION_FILE=build/private/fictional.toml \
             -DBADGER_PROFILE="$PWD/config/sample-profile.json" \
             -DBADGER_PORTRAIT="$PWD/assets/sample/portrait_placeholder_badger2350.png"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: firmware-sample-${{ matrix.target }}
           path: |
