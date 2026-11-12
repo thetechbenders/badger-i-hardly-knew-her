@@ -134,6 +134,7 @@ class PackageTests(unittest.TestCase):
             header = info.header_offset
             central = archive.start_dir
         changed[header + 8:header + 10] = (99).to_bytes(2, "little")
+        changed[central + 10:central + 12] = (99).to_bytes(2, "little")
         with self.assertRaises(badgerpack.PackageError):
             badgerpack.read_package(bytes(changed))
 
