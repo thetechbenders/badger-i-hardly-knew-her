@@ -177,6 +177,19 @@ test("session recovery preserves unsaved visual changes", async()=>{
   assert.match(b.elements.get("state").textContent,/unsaved changes preserved/i);
 });
 
+test("dirty Studio editor refuses package export before any request", async()=>{
+  const b=browser({hash:"#token="+VALID});
+  await b.settle();
+  const name=b.elements.get("person-fields").children[0].children[1];
+  name.value="Not saved";
+  name.listeners.input();
+  const before=b.requests.length;
+  await b.elements.get("export-package").listeners.click();
+  await b.settle();
+  assert.equal(b.requests.length,before);
+  assert.match(b.elements.get("state").textContent,/save your changes/i);
+});
+
 test("portrait crop accepts integer coordinates and rejects malformed values", async()=>{
   const b=browser({hash:"#token="+VALID});
   await b.settle();
