@@ -21,6 +21,7 @@ import zipfile
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "scripts"))
 from bhihkh_targets import TARGETS  # noqa: E402
 import badge_form  # noqa: E402
 
