@@ -93,8 +93,10 @@ class StudioTests(unittest.TestCase):
     def test_package_export_rejects_invalid_saved_form_and_missing_portrait(self):
         from unittest.mock import patch
         from studio import app as studio_module
-        with patch.object(studio_module, "_portrait_file_problem",
-                          return_value="missing"):
+        # Force the upstream saved-form check to succeed so this probes the
+        # missing-portrait branch rather than its earlier validation gate.
+        with patch.object(studio_module, "validate", return_value={"ok": True}), \
+             patch.object(studio_module, "_portrait_file_problem", return_value="missing"):
             response = self.client.get("/api/v1/package", headers=self.auth)
         self.assertEqual(response.status_code, 422)
         self.assertIn("portrait", response.text.lower())
