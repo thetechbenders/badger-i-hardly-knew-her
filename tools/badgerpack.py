@@ -18,6 +18,7 @@ import subprocess
 import sys
 import tempfile
 import zipfile
+import zlib
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -75,9 +76,15 @@ def make_package(form: bytes, portrait: bytes, target: str) -> bytes:
                 "files": {k: digest(v) for k, v in sorted(files.items())}}
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
-        archive.writestr("manifest.json", json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n")
-        for name, data in sorted(files.items()):
-            archive.writestr(name, data)
+        # Fixed timestamps and member ordering make identical saved content
+        # produce identical package bytes and stable content hashes.
+        for name, data in [("manifest.json", (json.dumps(
+                manifest, sort_keys=True, separators=(",", ":")) + "\n").encode()),
+                *sorted(files.items())]:
+            entry = zipfile.ZipInfo(name, date_time=(1980, 1, 1, 0, 0, 0))
+            entry.compress_type = zipfile.ZIP_DEFLATED
+            archive.writestr(entry, data, compress_type=zipfile.ZIP_DEFLATED,
+                             compresslevel=9)
     result = buf.getvalue()
     if len(result) > MAX_PACKAGE:
         raise PackageError("Package exceeds size limit")
@@ -97,7 +104,8 @@ def read_package(raw: bytes) -> tuple[str, dict[str, bytes]]:
                 path = info.filename
                 mode = info.external_attr >> 16
                 if (path.startswith("/") or "\\" in path or "/" in path or path in (".", "..")
-                        or info.flag_bits & 1 or (mode and stat.S_IFMT(mode) not in (0, stat.S_IFREG))
+                        or info.flag_bits & 1 or info.compress_type not in (zipfile.ZIP_STORED, zipfile.ZIP_DEFLATED)
+                        or (mode and stat.S_IFMT(mode) not in (0, stat.S_IFREG))
                         or info.file_size > MAX_PORTRAIT or info.compress_size > MAX_PACKAGE):
                     raise PackageError("Unsafe archive member")
             try:
@@ -136,7 +144,8 @@ def read_package(raw: bytes) -> tuple[str, dict[str, bytes]]:
             if re.search(r"-[0-9a-f]{64}\.png$", name) and digest(data[name]) != name[-68:-4]:
                 raise PackageError("Managed portrait hash mismatch")
             return target, data
-    except (zipfile.BadZipFile, zipfile.LargeZipFile, EOFError, KeyError) as exc:
+    except (zipfile.BadZipFile, zipfile.LargeZipFile, EOFError, KeyError,
+            zlib.error, NotImplementedError, RuntimeError) as exc:
         raise PackageError("Invalid package archive") from exc
 
 
@@ -158,14 +167,29 @@ def build(path: Path, out: Path | None = None) -> int:
         # Canonical form validator must accept the imported exact inputs before building.
         try:
             badge_form.load_form(form, target=target)
-        except badge_form.FormError:
-            raise PackageError("Imported profile failed canonical validation") from None
+        except badge_form.FormError as error:
+            raise PackageError("Imported profile failed canonical validation: "
+                               + "; ".join(error.problems)) from None
         output = out or (ROOT / "local" / "out" / ("badgerpack-" + digest(raw)[:12]))
         if not output.resolve().is_relative_to((ROOT / "local").resolve()):
             raise PackageError("Build output must remain under ignored local/")
         command = [str(ROOT / "scripts" / "build-badge.sh"), str(form),
                    "--target", target, "--out", str(output)]
-        return subprocess.call(command, cwd=ROOT)
+        result = subprocess.call(command, cwd=ROOT)
+        if result:
+            return result
+        # Provenance is written only after a successful verified firmware build.
+        # The output directory is owned by badge_form and is inside ignored local/.
+        provenance_path = output / "badgerpack-provenance.json"
+        if provenance_path.is_symlink():
+            raise PackageError("Unsafe provenance output path")
+        with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+            manifest = json.loads(archive.read("manifest.json"))
+        provenance = {"package_sha256": digest(raw), "target": target,
+                      "manifest": manifest}
+        provenance_path.write_text(json.dumps(provenance, sort_keys=True, indent=2) + "\n",
+                                   encoding="utf-8")
+        return 0
 
 
 def main(argv: list[str] | None = None) -> int:
