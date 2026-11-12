@@ -24,6 +24,17 @@ def fixture(target):
 
 
 class PackageTests(unittest.TestCase):
+    def test_shell_dispatcher_parses_and_reaches_package_cli(self):
+        import subprocess
+        script = ROOT / "scripts" / "build-badge.sh"
+        syntax = subprocess.run(["bash", "-n", str(script)], capture_output=True, text=True)
+        self.assertEqual(syntax.returncode, 0, syntax.stderr)
+        cli = subprocess.run([str(script), "--package", "--help"],
+                             capture_output=True, text=True)
+        self.assertEqual(cli.returncode, 0, cli.stderr)
+        self.assertIn("package", cli.stdout)
+        self.assertIn("--out", cli.stdout)
+
     def test_roundtrip_both_boards_and_canonical_validation(self):
         for target in ("badger2040", "badger2350"):
             with self.subTest(target=target):
