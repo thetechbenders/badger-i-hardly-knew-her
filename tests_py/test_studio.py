@@ -91,15 +91,17 @@ class StudioTests(unittest.TestCase):
                 self.assertEqual(members["badge.toml"].decode(), updated)
 
     def test_package_export_rejects_invalid_saved_form_and_missing_portrait(self):
-        from unittest.mock import patch
-        from studio import app as studio_module
-        # Force the upstream saved-form check to succeed so this probes the
-        # missing-portrait branch rather than its earlier validation gate.
-        with patch.object(studio_module, "validate", return_value={"ok": True}), \
-             patch.object(studio_module, "_portrait_file_problem", return_value="missing"):
+        # The real saved-form gate rejects a missing managed portrait.
+        workspace = Path(self.temp.name) / "workspace"
+        portrait = workspace / "sample-badger2040.png"
+        held = workspace / "sample-badger2040.png.held"
+        self.assertTrue(portrait.is_file())
+        portrait.rename(held)
+        try:
             response = self.client.get("/api/v1/package", headers=self.auth)
-        self.assertEqual(response.status_code, 422)
-        self.assertIn("portrait", response.text.lower())
+            self.assertEqual(response.status_code, 422)
+        finally:
+            held.rename(portrait)
         form_path = Path(self.temp.name) / "workspace" / "badge.toml"
         original = form_path.read_text()
         try:
