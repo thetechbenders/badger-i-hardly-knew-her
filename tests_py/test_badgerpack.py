@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import io
+import hashlib
 import json
 from pathlib import Path
 import sys
 import tempfile
 import unittest
 import zipfile
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
@@ -95,6 +97,82 @@ class PackageTests(unittest.TestCase):
                     dest.writestr("badge.toml", form)
             with self.subTest(duplicate=duplicate):
                 self.assertRaises(badgerpack.PackageError, badgerpack.read_package, stream.getvalue())
+
+    def test_package_export_is_byte_deterministic(self):
+        for target in ("badger2040", "badger2350"):
+            form, portrait = fixture(target)
+            first = badgerpack.make_package(form, portrait, target)
+            second = badgerpack.make_package(form, portrait, target)
+            self.assertEqual(first, second)
+            with zipfile.ZipFile(io.BytesIO(first)) as archive:
+                self.assertEqual(archive.namelist()[0], "manifest.json")
+                self.assertTrue(all(info.date_time == (1980, 1, 1, 0, 0, 0)
+                                    for info in archive.infolist()))
+
+    def test_corrupt_stream_and_unsupported_compression_fail_closed(self):
+        form, portrait = fixture("badger2040")
+        valid = badgerpack.make_package(form, portrait, "badger2040")
+        with zipfile.ZipFile(io.BytesIO(valid)) as archive:
+            info = archive.getinfo("badge.toml")
+            # Change the local data bytes, leaving the central directory untouched.
+            start = info.header_offset + 30 + len(info.filename.encode()) + len(info.extra)
+        damaged = bytearray(valid)
+        damaged[start:start + 12] = b"\\x00" * 12
+        with self.assertRaises(badgerpack.PackageError):
+            badgerpack.read_package(bytes(damaged))
+        unsupported = io.BytesIO()
+        with zipfile.ZipFile(unsupported, "w") as archive:
+            for name, data in (("badge.toml", form), ("portrait-badger2040.png", portrait)):
+                archive.writestr(name, data)
+            # A different compression type must be refused before decompression.
+            with zipfile.ZipFile(io.BytesIO(valid)) as source:
+                archive.writestr("manifest.json", source.read("manifest.json"))
+        changed = bytearray(unsupported.getvalue())
+        # A method unsupported by Python's zipfile should still surface PackageError.
+        with zipfile.ZipFile(io.BytesIO(changed)) as archive:
+            info = archive.getinfo("badge.toml")
+            header = info.header_offset
+            central = archive.start_dir
+        changed[header + 8:header + 10] = (99).to_bytes(2, "little")
+        with self.assertRaises(badgerpack.PackageError):
+            badgerpack.read_package(bytes(changed))
+
+    def test_provenance_written_after_successful_build_only(self):
+        (ROOT / "local").mkdir(exist_ok=True)
+        form, portrait = fixture("badger2040")
+        raw = badgerpack.make_package(form, portrait, "badger2040")
+        with tempfile.TemporaryDirectory(dir=ROOT / "local") as tmp:
+            pack = Path(tmp) / "fixture.badgerpack"
+            pack.write_bytes(raw)
+            out = Path(tmp) / "output"
+            def successful(command, cwd):
+                self.assertEqual(command[-4:-2], ["--target", "badger2040"])
+                out.mkdir()
+                return 0
+            with patch.object(badgerpack.subprocess, "call", side_effect=successful):
+                self.assertEqual(badgerpack.build(pack, out), 0)
+            provenance = json.loads((out / "badgerpack-provenance.json").read_text())
+            self.assertEqual(provenance["package_sha256"], hashlib.sha256(raw).hexdigest())
+            self.assertEqual(provenance["target"], "badger2040")
+            self.assertEqual(provenance["manifest"]["format"], badgerpack.SCHEMA)
+            (out / "badgerpack-provenance.json").unlink()
+            with patch.object(badgerpack.subprocess, "call", return_value=1):
+                self.assertEqual(badgerpack.build(pack, out), 1)
+            self.assertFalse((out / "badgerpack-provenance.json").exists())
+
+    def test_import_validation_reports_field_problems(self):
+        (ROOT / "local").mkdir(exist_ok=True)
+        form, portrait = fixture("badger2040")
+        raw = badgerpack.make_package(form, portrait, "badger2040")
+        with tempfile.TemporaryDirectory(dir=ROOT / "local") as tmp:
+            pack = Path(tmp) / "fixture.badgerpack"
+            pack.write_bytes(raw)
+            with patch.object(badgerpack.badge_form, "load_form",
+                              side_effect=badgerpack.badge_form.FormError(
+                                  ["person.name is required"])):
+                with self.assertRaisesRegex(badgerpack.PackageError,
+                                            r"person\\.name is required"):
+                    badgerpack.build(pack, Path(tmp) / "output")
 
     def test_private_external_paths_rejected(self):
         form, portrait = fixture("badger2040")
