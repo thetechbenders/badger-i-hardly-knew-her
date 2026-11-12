@@ -213,6 +213,27 @@ $("save").addEventListener("click",async()=>{
   } catch(e){note("Error: "+e.message);}
   finally {button.disabled=false;}
 });
+$("export-package").addEventListener("click", async () => {
+  if (dirty) {note("Save your changes before exporting a badge package."); return;}
+  const button=$("export-package");
+  button.disabled=true;
+  try {
+    const response=await fetch("/api/v1/package",{headers:{"X-Studio-Token":token}});
+    if (!response.ok) {
+      let message="Export failed ("+response.status+")";
+      try {const body=await response.json();if(body.detail)message=body.detail;}catch(_){}
+      throw new Error(message);
+    }
+    const blob=await response.blob();
+    const url=URL.createObjectURL(blob);
+    const anchor=document.createElement("a");
+    anchor.href=url;anchor.download="badge.badgerpack";
+    document.body.append(anchor);anchor.click();anchor.remove();
+    URL.revokeObjectURL(url);
+    note("Private badge package exported. Keep it out of GitHub.");
+  } catch(e) {note("Export failed: "+e.message);}
+  finally {button.disabled=false;}
+});
 window.addEventListener("beforeunload",e=>{if(dirty){e.preventDefault();e.returnValue="";}});
 function lockSession(message) {
   token = "";

@@ -25,6 +25,92 @@ class StudioTests(unittest.TestCase):
         self.auth = {"X-Studio-Token": self.token}
         self.form = self.client.get("/api/v1/workspace", headers=self.auth).json()
 
+    def test_package_export_is_authenticated_saved_only_and_targeted(self):
+        import sys
+        sys.path.insert(0, str(ROOT / "tools"))
+        import badgerpack
+
+        self.assertEqual(self.client.get("/api/v1/package").status_code, 403)
+        first = self.client.get("/api/v1/package", headers=self.auth)
+        self.assertEqual(first.status_code, 200, first.text[:200] if first.status_code != 200 else "")
+        target, members = badgerpack.read_package(first.content)
+        self.assertEqual(target, "badger2040")
+        self.assertEqual(members["badge.toml"].decode(), self.form["toml"])
+        # Export reads disk-backed saved TOML; it accepts no request body with edits.
+
+        updated = self.form["toml"].replace(
+            'processed = "sample-badger2040.png"',
+            'processed = "sample-badger2350.png"')
+        response = self.client.put("/api/v1/workspace", headers=self.auth,
+                                   json={"target": "badger2350", "toml": updated})
+        self.assertEqual(response.status_code, 200, response.text)
+        second = self.client.get("/api/v1/package", headers=self.auth)
+        self.assertEqual(second.status_code, 200, second.text[:200] if second.status_code != 200 else "")
+        target, members = badgerpack.read_package(second.content)
+        self.assertEqual(target, "badger2350")
+        self.assertIn("sample-badger2350.png", members)
+
+    def test_package_export_with_content_addressed_portrait(self):
+        import base64
+        import hashlib
+        import io
+        from PIL import Image
+        sys.path.insert(0, str(ROOT / "tools"))
+        import badgerpack
+
+        for target in ("badger2040", "badger2350"):
+            with self.subTest(target=target):
+                image = Image.new("1", (104, 128), 1)
+                image.putpixel((10, 10), 0)
+                stream = io.BytesIO()
+                image.save(stream, format="PNG")
+                raw = stream.getvalue()
+                selected = self.client.put("/api/v1/portrait/select",
+                    headers=self.auth,
+                    json={"target": target, "image": base64.b64encode(raw).decode()})
+                self.assertEqual(selected.status_code, 200, selected.text)
+                name = selected.json()["processed"]
+                self.assertEqual(name, "portrait-" + target + "-"
+                                 + hashlib.sha256(raw).hexdigest() + ".png")
+                original = self.client.get("/api/v1/workspace", headers=self.auth).json()
+                updated = original["toml"].replace(
+                    'processed = "sample-' + original["target"] + '.png"',
+                    'processed = "' + name + '"')
+                if updated == original["toml"]:
+                    import re
+                    updated = re.sub(r'processed = "portrait-[^"]+\.png"',
+                                     'processed = "' + name + '"', updated)
+                save = self.client.put("/api/v1/workspace", headers=self.auth,
+                    json={"target": target, "toml": updated})
+                self.assertEqual(save.status_code, 200, save.text)
+                export = self.client.get("/api/v1/package", headers=self.auth)
+                self.assertEqual(export.status_code, 200, export.text if export.status_code != 200 else "")
+                package_target, members = badgerpack.read_package(export.content)
+                self.assertEqual(package_target, target)
+                self.assertEqual(members[name], raw)
+                self.assertEqual(members["badge.toml"].decode(), updated)
+
+    def test_package_export_rejects_invalid_saved_form_and_missing_portrait(self):
+        # The real saved-form gate rejects a missing managed portrait.
+        workspace = Path(self.temp.name) / "workspace"
+        portrait = workspace / "sample-badger2040.png"
+        held = workspace / "sample-badger2040.png.held"
+        self.assertTrue(portrait.is_file())
+        portrait.rename(held)
+        try:
+            response = self.client.get("/api/v1/package", headers=self.auth)
+            self.assertEqual(response.status_code, 422)
+        finally:
+            held.rename(portrait)
+        form_path = Path(self.temp.name) / "workspace" / "badge.toml"
+        original = form_path.read_text()
+        try:
+            form_path.write_text("invalid = true\n")
+            response = self.client.get("/api/v1/package", headers=self.auth)
+            self.assertEqual(response.status_code, 422)
+        finally:
+            form_path.write_text(original)
+
     def test_screen_preview_reuses_canonical_pipeline_without_saving(self):
         """Unsaved TOML is rendered without persisting a workspace change."""
         import base64

@@ -14,6 +14,7 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 py="${PYTHON:-python3}"
 mode=build
 case "${1:-}" in
+  --package) shift; exec "$py" "$root/tools/badgerpack.py" "$@" ;;
   --new) shift; exec "$py" "$root/tools/badge_form.py" new "$@" ;;
   --check) mode=check; shift ;;
   --preview) mode=preview; shift ;;
