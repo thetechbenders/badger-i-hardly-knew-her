@@ -31,9 +31,10 @@ jobs:
 
   firmware:
     name: Firmware cross-build (${{ matrix.target }})
+    needs: host
     runs-on: ubuntu-24.04
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         include:
           - target: badger2040
