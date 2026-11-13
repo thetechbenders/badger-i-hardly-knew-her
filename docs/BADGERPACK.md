@@ -41,9 +41,10 @@ keep it private, out of Git, public CI and support reports.
 
 **Not included:** original source JPEG, custom external files, real Formnext
 admission tokens, firmware binaries, secrets, or the standalone 2350
-104×176 portrait pipeline. Studio's selected processed image currently uses
-104×128 on both boards. This package intentionally preserves the exact
-Studio-selected portrait and does not silently change its framing.
+104×176 portrait pipeline. Workshop-selected portraits use **104×128** on
+both boards; the bundled Badger 2350 sample placeholder remains **104×176**.
+This package preserves the exact Studio-managed portrait and does not silently
+change its framing.
 
 This workflow does not replace a recoverable backup of original portrait
 sources and build provenance. Preserve your source photograph separately.
