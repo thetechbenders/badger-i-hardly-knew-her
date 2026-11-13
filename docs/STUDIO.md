@@ -185,9 +185,11 @@ directories. No device flashing, firmware build, or workspace save occurs.
 The Badger 2040 firmware is `badger_badge.uf2`; the Badger 2350 firmware is
 `badger2350_badge.uf2`. Each has a separately flashable `-assets.uf2`.
 Do **not** substitute one board's images for the other. This package-based
-workflow preserves Studio's selected **104×128** portrait on both boards.
-The standalone form/photo workflow can instead generate a **104×176** portrait
-for Badger 2350; it is a different processing path.
+workflow preserves the workshop-selected **104×128** portrait on both boards.
+The bundled Badger 2350 sample placeholder remains **104×176** and is preserved
+at that size if exported without selecting a custom portrait. The standalone
+form/photo workflow can also generate a **104×176** portrait for Badger 2350;
+it is a different processing path.
 
 Package exports are deterministic for identical saved inputs, and CI checks
 byte-identical sample firmware across two independent package output directories.
