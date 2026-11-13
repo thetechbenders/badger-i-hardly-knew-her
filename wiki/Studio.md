@@ -2,7 +2,7 @@
 
 Studio is a **local-only browser interface** to the existing TOML validator and firmware C++ renderer. It supports visual identity, contact and portfolio editing, an Advanced TOML tab, managed portrait processing and native-size whole-screen previews.
 
-**What it does not currently do:** build/export a firmware UF2, flash a badge, manage arbitrary files, or expose a network service for collaborators.
+**What it does not do:** compile/export firmware UF2s directly, flash a badge, manage arbitrary files, or expose a network service for collaborators. Studio **does** export a private `.badgerpack` for offline building.
 
 ## Start it
 
@@ -50,12 +50,21 @@ python -m unittest tests_py.test_studio -v
 node --test tests_js/test_studio_browser.cjs
 ```
 
-Source of truth: [docs/STUDIO.md](../docs/STUDIO.md) and `studio/`. For firmware output, use [personalization](Personalization.md) and [builds](Builds-and-Artifacts.md). For a rejected token, start at [troubleshooting](Troubleshooting.md).
+Source of truth: [docs/STUDIO.md](../docs/STUDIO.md) and `studio/`. For firmware output, use [the package workflow](../docs/BADGERPACK.md), [personalization](Personalization.md) and [builds](Builds-and-Artifacts.md). For a rejected token, start at [troubleshooting](Troubleshooting.md).
 
 ## Portable project packages
 
 After **Validate & save**, use **Export .badgerpack** to download the saved
-configuration and processed portrait as one private archive. Build on a
-supported local machine with `scripts/build-badge.sh --package FILE.badgerpack`.
+configuration and processed portrait as one private archive. This is **not** a UF2.
+Build on a supported local machine with:
+
+```bash
+scripts/build-badge.sh --package /path/to/badge.badgerpack
+```
+
+The default output is under `local/out/badgerpack-<sha12>/`, including
+`fw/` (firmware and `SHA256SUMS`), `previews/` and
+`badgerpack-provenance.json` (full package SHA-256, target and manifest).
+Keep the input archive private and preserve the original photograph separately.
 See [package format and privacy limits](../docs/BADGERPACK.md). Studio still does
 not build or flash firmware itself.

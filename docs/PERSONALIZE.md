@@ -5,6 +5,22 @@ No C++ to edit, no JSON to write. The form is
 [`config/badge-form.toml`](../config/badge-form.toml); every field is
 explained in it, next to the field.
 
+## Choose a personalization workflow
+
+- **Studio visual editor:** Start the local-only editor as described in
+  [STUDIO.md](STUDIO.md), select the board, edit/preview, choose
+  **Validate & save**, then **Export .badgerpack**. The archive includes
+  the processed portrait and saved form, but no firmware or original photo.
+  Build it on a machine with pinned dependencies using
+  `scripts/build-badge.sh --package /path/to/badge.badgerpack`.
+  Keep `local/out/badgerpack-<sha12>/badgerpack-provenance.json` with the
+  output artifacts and preserve the input package privately.
+  See [BADGERPACK.md](BADGERPACK.md) for limits, verification and target-specific
+  filenames. Studio uses a 104×128 selected portrait on either board.
+- **Standalone TOML form:** Use an original photograph and the form-based
+  build below. This route can produce a 104×176 portrait for Badger 2350
+  rather than Studio's 104×128 composition.
+
 ## Walkthrough
 
 ```bash

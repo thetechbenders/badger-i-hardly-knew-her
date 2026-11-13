@@ -109,7 +109,24 @@ python3 tools/badgerctl.py cmd commit
 
 ## Make it yours
 
-Fill in a form, add your photo, build. No C++ or JSON editing:
+You can personalize the badge in the local [Studio visual editor](docs/STUDIO.md)
+or through the [documented TOML form](docs/PERSONALIZE.md). Studio's
+**Validate & save → Export .badgerpack** workflow creates a private,
+deterministic input archive containing the saved form and processed portrait.
+It is **not** firmware. Build it separately, without flashing:
+
+```bash
+scripts/build-badge.sh --package /path/to/badge.badgerpack
+```
+
+The resulting board-specific UF2, checksums, previews and package provenance
+are under `local/out/badgerpack-<sha12>/`. See
+[the package guide](docs/BADGERPACK.md) and
+[installation/recovery precautions](docs/INSTALL.md) before using a device.
+Keep your package, original portrait and personalized outputs private.
+
+For the standalone form/photo path, fill in a form, add your photo, and build.
+No C++ or JSON editing:
 
 ```bash
 scripts/build-badge.sh --new                       # 1. copy the template to local/badge.toml (private)

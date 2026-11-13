@@ -6,7 +6,7 @@ Yes, with **separate target builds**. The Badger 2040 defaults to RP2040 / 296×
 
 ### Does Studio build or flash my badge?
 
-**No.** Studio is a local visual editor and screen preview. Firmware export, USB flashing and file browsing are not implemented in the currently documented Studio phase. Use [personalization](Personalization.md) to produce UF2s.
+**Not directly.** Studio is a local visual editor and screen preview that exports a private `.badgerpack` after **Validate & save**. Build the archive into board-specific UF2s using `scripts/build-badge.sh --package /path/to/badge.badgerpack` ([Studio](Studio.md), [package guide](../docs/BADGERPACK.md)). Studio does not compile firmware, flash USB devices or browse arbitrary files. The standalone [personalization workflow](Personalization.md) is also supported.
 
 ### If I refresh Studio, why doesn't the Portrait Workshop show my original photo?
 

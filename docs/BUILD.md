@@ -30,7 +30,7 @@ flash) and `pimoroni_badger2350` (RP2350A, 16 MiB flash).
 ```bash
 sudo apt install cmake ninja-build python3 python3-pip python3-venv git \
     gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
-    build-essential libzbar0
+    build-essential libzbar0 zbar-tools
 python3 -m venv .venv
 source .venv/bin/activate
 python3 -m pip install -r tools/requirements.txt  # venv avoids PEP 668 restrictions

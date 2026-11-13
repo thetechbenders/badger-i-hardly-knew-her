@@ -24,7 +24,7 @@ scripts/build-badge.sh local/badge.toml
 
 For a 2350, add `--target badger2350` to the preview and build commands. See [personalization](Personalization.md) and the authoritative [form guide](../docs/PERSONALIZE.md).
 
-**Browser designer:** use [Studio](Studio.md) for a local visual editor and firmware-accurate screen previews. **Studio does not yet export firmware or flash hardware**. If you want to install a badge now, use the documented build/USB workflows rather than expecting a Studio download button.
+**Browser designer:** use [Studio](Studio.md) for a local visual editor and firmware-accurate screen previews. Studio can export a private `.badgerpack` input after **Validate & save**; build its firmware separately with `scripts/build-badge.sh --package /path/to/badge.badgerpack`. Studio itself does not build firmware or flash hardware. See [the package guide](../docs/BADGERPACK.md) and [installation and recovery](Installation-and-Recovery.md) before flashing.
 
 ## 4. Build the public sample (developers)
 
