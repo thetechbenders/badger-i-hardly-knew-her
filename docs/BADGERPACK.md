@@ -23,7 +23,8 @@ listed in `fw/SHA256SUMS`, which covers the firmware artifacts. No USB writes oc
 
 The archive contains exactly `manifest.json`, `badge.toml`, and one
 managed, target-specific, processed portrait PNG. Entries have fixed ZIP
-timestamps and ordering, so identical input bytes produce an identical archive. The manifest specifies
+timestamps and ordering, so identical inputs produce identical archive bytes
+with the same Python/zlib versions and platform. The manifest specifies
 `format: bhihkh.badgerpack`, integer `version: 1`, target, and SHA-256
 hashes for both data members. The import rejects unexpected or duplicate
 files, symlinks, traversal, missing data, oversized content, unknown format
