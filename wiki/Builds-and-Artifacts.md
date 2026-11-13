@@ -9,7 +9,7 @@ Linux/WSL (Ubuntu package names from the repository's build guide):
 ```bash
 sudo apt install cmake ninja-build python3 python3-pip python3-venv git \
     gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib \
-    build-essential libzbar0
+    build-essential libzbar0 zbar-tools
 python3 -m venv .venv
 source .venv/bin/activate
 python3 -m pip install -r tools/requirements.txt
@@ -36,6 +36,7 @@ scripts/build-firmware.sh -DBHIHKH_TARGET=badger2350
 | 2350 | `build/fw-badger2350/` | `badger2350_badge.uf2` |
 | 2040 filled-in TOML form | `local/out/<form-name>/fw/` | `badger_badge.uf2` |
 | 2350 filled-in TOML form | `local/out/<form-name>-badger2350/fw/` (default form output) | `badger2350_badge.uf2` |
+| `.badgerpack` input package, either board | `local/out/badgerpack-<sha12>/fw/` | Board-specific UF2 as above |
 
 Build outputs also include a separately flashable `*-assets.uf2`, ELF and map files, `memory-report.txt` and `SHA256SUMS`. The post-build check rejects overlap into reserved flash and insufficient heap headroom.
 
@@ -49,5 +50,11 @@ python3 scripts/package_firmware.py --verify badger2040-package.zip
 ```
 
 Do not distribute a **private** personalized UF2 by accident: profile fields and portrait data may be built into the binary. CI builds public sample content; a successful CI result does not verify a personalized build. Re-check the specific local artifact and hashes.
+
+For a Studio-exported archive, run `scripts/build-badge.sh --package /path/to/badge.badgerpack`.
+This checks saved inputs, renders previews and compiles the target-specific
+firmware without flashing. The output root contains `badgerpack-provenance.json`
+(full package hash, target and manifest); preserve it with the private package
+and `fw/SHA256SUMS`. See [the full package guide](../docs/BADGERPACK.md).
 
 Full flags, output guarantees and macOS notes: [BUILD.md](../docs/BUILD.md), [FORMATS.md](../docs/FORMATS.md), [test records](Testing-and-Validation.md).
