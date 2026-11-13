@@ -1,9 +1,13 @@
-# BHIHKH! Studio (visual editor in progress)
+# BHIHKH! Studio
 
 A **local-only** browser shell around the existing TOML-form validation
 pipeline. The visual editor now exposes identity, contacts, projects and QR options,
 with move/add/remove controls. The full original TOML remains available in
-Advanced mode. Portrait upload and four-method monochrome comparison are available. The firmware-accurate C++ screen preview is available; artifact exports are **not implemented yet**.
+Advanced mode. Portrait upload, four-method monochrome comparison and
+firmware-accurate C++ screen previews are available. After validating and saving,
+Studio can export a private `.badgerpack` input archive for a separate local
+firmware build. Studio does **not** generate a UF2 or flash a device.
+See [BADGERPACK.md](BADGERPACK.md) for the package format and build command.
 
 ## Start
 
@@ -71,8 +75,9 @@ programs running as your local user.
 
 The form starts from `config/badge-form.toml` with a bundled, non-personal
 sample portrait for each target. Studio refuses arbitrary TOML file references; managed portrait import and
-host-rendered badge screen previews are supported. Firmware build, USB flashing,
-and a filesystem browser are not implemented. Only successfully validated TOML is saved; failed edits
+host-rendered badge screen previews are supported. Direct firmware builds, USB flashing,
+and a filesystem browser are not implemented in Studio. Package export is available
+only after saving. Only successfully validated TOML is saved; failed edits
 stay in the browser, and the old saved form is retained.
 
 ### API contract
@@ -88,7 +93,8 @@ stay in the browser, and the old saved form is retained.
 | `PUT /api/v1/portrait/select` | Create or reuse an immutable content-addressed native-size, 1-bit PNG (no saved TOML mutation) |
 | `PUT /api/v1/portrait/reference` | Update only `[portrait].processed` in unsaved TOML, preserving comments and all other fields |
 | `PUT /api/v1/screens/preview` | Validate unsaved TOML and render all screens with the existing C++ host renderer, text-fit and QR gates |
-| Firmware artifact exports | Not yet implemented |
+| `GET /api/v1/package` | Token-authenticated download of the validated **saved** TOML and its managed portrait as a private `.badgerpack` |
+| Firmware UF2 export or flashing | Not implemented in Studio; use the separate local package build workflow |
 
 Every API request must include `X-Studio-Token`, sourced from a verified private launch URL or reconnect form. Mutations require JSON and accept bounded payloads.
 
@@ -134,8 +140,8 @@ Python converter, not an independent browser approximation. Comparing regenerate
 all four methods; clicking a method displays a 104×128 pixel 1:1 CSS preview.
 Physical e-paper size and optical appearance are not simulated. Badge 2350 still supports its taller target
 elsewhere in the existing converter, but the Studio workflow intentionally
-preserves the original shorter portrait composition. Firmware-accurate whole-screen previews are implemented; firmware artifact
-export remains a later milestone.
+preserves the original shorter portrait composition. Firmware-accurate whole-screen previews and private package export are
+implemented. Studio does not compile or flash the firmware itself.
 
 ### Firmware-accurate screen previews
 
@@ -152,3 +158,38 @@ serialized within a Studio process. The intermediate files are temporary,
 stored beneath the private workspace, and deleted after the preview request.
 Do not run multiple separate Studio processes against the same host build
 directories. No device flashing, firmware build, or workspace save occurs.
+
+## Exporting and building a private badge package
+
+1. Select the correct hardware target and finish the visual or Advanced TOML edits.
+2. Click **Validate & save**. Export uses the saved workspace only, never unsaved browser changes.
+3. Click **Export .badgerpack**. Keep the archive private: it includes your name,
+   contacts, links and processed portrait. Studio does not include the original
+   source photograph, an admission credential or firmware binaries.
+4. Transfer the archive to a checkout with the pinned build dependencies.
+   From that checkout, build without flashing:
+
+   ```bash
+   scripts/build-badge.sh --package /path/to/badge.badgerpack
+   ```
+
+5. Inspect `local/out/badgerpack-<sha12>/previews/` and
+   `local/out/badgerpack-<sha12>/fw/`. The build verifies text fit, QR decoding,
+   target-specific UF2 layout and artifact hashes. Its output directory also
+   contains `badgerpack-provenance.json`, with the full package SHA-256, target,
+   and input manifest. The `fw/SHA256SUMS` file covers firmware artifacts,
+   not that provenance JSON.
+6. Preserve the original photo and the private package separately. Before
+   flashing, follow the [board-specific installation and recovery instructions](INSTALL.md).
+
+The Badger 2040 firmware is `badger_badge.uf2`; the Badger 2350 firmware is
+`badger2350_badge.uf2`. Each has a separately flashable `-assets.uf2`.
+Do **not** substitute one board's images for the other. This package-based
+workflow preserves Studio's selected **104×128** portrait on both boards.
+The standalone form/photo workflow can instead generate a **104×176** portrait
+for Badger 2350; it is a different processing path.
+
+Package exports are deterministic for identical saved inputs, and CI checks
+byte-identical sample firmware across two independent package output directories.
+That does not replace a reproducibility check of your own private artifact or
+physical testing of the exact flashed build.
