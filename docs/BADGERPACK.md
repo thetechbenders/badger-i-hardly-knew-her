@@ -16,14 +16,19 @@ The command validates the archive, hashes, target, managed portrait and canonica
 badge form, then runs the existing portrait/profile/QR/text-fit/firmware/artifact
 pipeline. Results are under ignored `local/out/badgerpack-<sha12>/`; the
 firmware is in `fw/` as `badger_badge.uf2` (2040) or
-`badger2350_badge.uf2` (2350). No USB writes occur.
+`badger2350_badge.uf2` (2350), with matching `-assets.uf2` and `SHA256SUMS`.
+The output root contains `badgerpack-provenance.json` recording the complete
+package SHA-256, board target and package manifest. The provenance file is **not**
+listed in `fw/SHA256SUMS`, which covers the firmware artifacts. No USB writes occur.
 
 The archive contains exactly `manifest.json`, `badge.toml`, and one
-managed, target-specific, processed portrait PNG. The manifest specifies
+managed, target-specific, processed portrait PNG. Entries have fixed ZIP
+timestamps and ordering, so identical input bytes produce an identical archive. The manifest specifies
 `format: bhihkh.badgerpack`, integer `version: 1`, target, and SHA-256
 hashes for both data members. The import rejects unexpected or duplicate
 files, symlinks, traversal, missing data, oversized content, unknown format
-versions, unsupported targets and incorrect checksums. It performs no
+versions, unsupported compression methods and targets, incorrect checksums,
+and malformed compressed streams. It performs no
 arbitrary filesystem extraction: the validated members are written to a
 private temporary staging directory and removed after the build.
 
