@@ -4,6 +4,10 @@ from pathlib import Path
 import tomllib
 import re
 
+# Seconds the ticket stays revealed. On battery a shorter sleep.timeout_s
+# still conceals it sooner (sleep waits for the concealment to finish).
+MAX_TIMEOUT_S = 60
+
 
 def load(path):
     # Reading bytes before TOML parsing avoids universal-newline translation.
@@ -32,7 +36,7 @@ def load(path):
         advances[fields[0]] = fields[5]
     if any(sum(advances[ord(c)] for c in value[k]) > 82 for k in ("event", "holder")):
         raise ValueError()
-    if type(value["timeout_s"]) is not int or not 1 <= value["timeout_s"] <= 15:
+    if type(value["timeout_s"]) is not int or not 1 <= value["timeout_s"] <= MAX_TIMEOUT_S:
         raise ValueError()
     return value
 

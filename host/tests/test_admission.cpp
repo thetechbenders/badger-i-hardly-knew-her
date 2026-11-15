@@ -11,10 +11,11 @@ constexpr bool supported = Framebuffer::kHeight == 176;
 const char payload[] = "BEGIN:VCARD\r\nVERSION:3.0\r\nN:Example;Fictional;;;\r\nFN:Fictional Example\r\n"
     "ORG:Imaginary Exhibition 2026\r\nNOTE:TEST ONLY - NOT VALID FOR ADMISSION. Reference FAKE-00000000\r\n"
     "URL:https://example.invalid/ticket/fictional-reference\r\nEND:VCARD\r\n";
-App opened(uint32_t time = 100) {
+App opened(uint32_t time = 100, uint16_t timeout_s = 15) {
   App a;
   AppConfig c;
   c.admission_configured = true;
+  c.admission_timeout_s = timeout_s;
   c.gesture_default_on = true;
   a.boot(c, -1, 0);
   a.on_screen_request(Screen::Info);
@@ -67,6 +68,14 @@ TEST(admission_deliberate_sequence_and_cancellation) {
   CHECK(a.view().screen == Screen::Admission);
   CHECK_EQ(a.on_poll(15000), kActNone); // wrap: <15 seconds since reveal
   CHECK(a.on_poll(16000) & kActCleanRefresh);
+  CHECK(a.concealing_admission());
+}
+TEST(admission_configured_timeout_up_to_a_minute) {
+  if (!supported) return;
+  App a = opened(100, 60);  // revealed at 1150
+  CHECK(a.view().screen == Screen::Admission);
+  CHECK_EQ(a.on_poll(61149), kActNone);
+  CHECK(a.on_poll(61150) & kActCleanRefresh);
   CHECK(a.concealing_admission());
 }
 TEST(admission_dismissal_timeout_sleep_and_modal_replacement) {
