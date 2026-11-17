@@ -61,6 +61,8 @@ const FieldDesc kFields[] = {
     PROJECT(1), PROJECT(2), PROJECT(3), PROJECT(4), PROJECT(5), PROJECT(6),
     PROJECT(7), PROJECT(8), PROJECT(9), PROJECT(10), PROJECT(11), PROJECT(12),
     NUM_FIELD("layout", 0x300, FieldType::U8, prefs.layout, 0, 1, "0 = portrait left, 1 = portrait right"),
+    NUM_FIELD("badge.style", 0x319, FieldType::U8, prefs.badge_style, 0,
+              target::kDisplayWidth == 264 ? 2 : 0, "0 classic, 1 portrait focus, 2 readable (2350 only)"),
     NUM_FIELD("refresh.speed", 0x301, FieldType::U8, prefs.refresh_speed, 0, 3, "0 slow/clean .. 3 turbo"),
     NUM_FIELD("refresh.partial", 0x302, FieldType::Bool, prefs.partial_refresh, 0, 1, "allow partial refresh"),
     NUM_FIELD("refresh.max_partials", 0x303, FieldType::U8, prefs.max_partials, 0, 20, "partials before a full refresh"),
@@ -251,6 +253,7 @@ bool settings_validate(const Settings &s, const FieldDesc **first_bad) {
 void settings_defaults(Settings *s) {
   std::memset(s, 0, sizeof(*s));
   s->prefs.layout = uint8_t(Layout::PortraitLeft);
+  s->prefs.badge_style = uint8_t(BadgeStyle::Classic);
   s->prefs.refresh_speed = 1;
   s->prefs.partial_refresh = 1;
   s->prefs.max_partials = 5;
