@@ -175,6 +175,31 @@ test("failed saved portrait retrieval leaves editor accessible and displays erro
   assert.equal(b.elements.get("state").textContent,"Ready");
 });
 
+test("2350 style picker changes the visual model sent to compose", async()=>{
+  const b=browser({hash:"#token="+VALID,intercept(url){
+    if(url.endsWith("/targets")) return response({targets:[
+      {id:"badger2350",name:"Badger 2350",display:[264,176]}]});
+    if(url.endsWith("/workspace")) return response({
+      target:"badger2350",toml:'[preferences]\\nlayout = 0\\n[preferences.badge]\\nstyle = 0'});
+    if(url.endsWith("/parse")) return response({ok:true,fields:{
+      person:{name:"Alex",title:"Engineer",affiliation:"",event:"",interests:[]},
+      qr:{show:"link",link:"https://example.org",caption:"Scan"},
+      contacts:[],projects:[],presentation:{style:0}
+    }});
+  }});
+  await b.settle();
+  assert.equal(b.elements.get("badge-style-panel").classList.contains("hidden"),false);
+  const picker=b.elements.get("badge-style");
+  picker.value="1";
+  picker.listeners.change();
+  assert.match(b.elements.get("state").textContent,/Unsaved changes/);
+  b.context.showTab("toml");
+  await b.elements.get("visual-tab").listeners.click();
+  assert.equal(picker.value,"0","parse restores persisted selection rather than inventing one");
+  picker.value="2";picker.listeners.change();
+  assert.equal(b.context.model.presentation.style,2);
+});
+
 test("rejected cached token shows reconnect instead of an empty editor", async()=>{
   const b=browser({cached:STALE});
   await b.settle();
