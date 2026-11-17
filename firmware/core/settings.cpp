@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "battery_target.hpp"
+#include "display_target.hpp"
 #include "text.hpp"
 
 namespace badge {
