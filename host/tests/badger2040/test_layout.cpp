@@ -47,3 +47,13 @@ TEST(badger2040_card_status_uses_free_top_right) {
   CHECK_EQ(status.right(), Framebuffer::kWidth - 2);
   CHECK(status.bottom() <= card.qr.y);
 }
+
+TEST(badger2040_refuses_2350_only_badge_styles) {
+  settings_defaults(&g_s);
+  const FieldDesc *style = find_field("badge.style");
+  CHECK(style != nullptr);
+  CHECK_EQ(style->max, 0);
+  CHECK(settings_set(&g_s, *style, "0") == SetResult::Ok);
+  CHECK(settings_set(&g_s, *style, "1") == SetResult::OutOfRange);
+  CHECK(settings_set(&g_s, *style, "2") == SetResult::OutOfRange);
+}
