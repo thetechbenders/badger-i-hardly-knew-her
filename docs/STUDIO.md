@@ -118,7 +118,9 @@ portraits remain in the local private workspace.
 
 ### Badge layout presets (Badger 2350)
 
-The visual editor offers **Classic** (default, existing pixels), **Portrait Focus** (larger portrait), and **Readable** (more room for text and larger selected type). These are rendered by the same native C++ firmware renderer used for Studio screen previews. They are **not** drag-and-drop positioning and do not resize the stored 104×128 processed portrait: alternate layouts scale it in the renderer. The portrait-left/right preference remains separate. For non-Classic styles select Badger 2350; Badger 2040 refuses them. Render the badge screens and check legibility before exporting or flashing.
+The visual editor offers **Classic** (default, existing pixels), **Portrait Focus** (enlarges shorter portraits when there is space; preserves full-height portraits at their native size), and **Readable** (more room for text and larger selected type). These are rendered by the same native C++ firmware renderer used for Studio screen previews. They are **not** drag-and-drop positioning and do not resize the stored 104×128 processed portrait: alternate layouts scale it in the renderer. The portrait-left/right preference remains separate. For non-Classic styles select Badger 2350; Badger 2040 refuses them. Render the badge screens and check legibility before exporting or flashing.
+
+Nearest-neighbor scaling of already-dithered 1-bit portraits can introduce visible pixel duplication or banding. Inspect the native host preview and real panel before relying on a scaled portrait; resampling before dithering is separate future work.
 
 The persisted preference is `badge.style = 0|1|2` under `[preferences]` (TOML dotted key). Older badge files default to Classic. Native e-paper readability still needs physical validation.
 
