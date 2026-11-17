@@ -22,11 +22,26 @@ class EditorError(ValueError):
     """A proposed visual edit does not conform to the Studio editing contract."""
 
 
+def _saved_style(data: dict) -> int:
+    """Reject malformed preferences clearly instead of raising AttributeError."""
+    preferences = data.get("preferences", {})
+    if not isinstance(preferences, dict):
+        raise EditorError("preferences: expected a TOML table")
+    badge = preferences.get("badge", {})
+    if not isinstance(badge, dict):
+        raise EditorError("preferences.badge: expected a TOML table")
+    style = badge.get("style", 0)
+    if type(style) is not int or style not in (0, 1, 2):
+        raise EditorError("preferences.badge.style: expected 0, 1 or 2")
+    return style
+
+
 def view(toml_text: str) -> dict:
     """Extract only fields managed by the visual editor without mutating TOML."""
     data = tomllib.loads(toml_text)
     person = data.get("person", {})
     qr = data.get("qr", {})
+    style = _saved_style(data)
     return {
         "person": {k: person.get(k, [] if k == "interests" else "") for k in PERSON},
         "qr": {k: qr.get(k, "") for k in QR},
@@ -34,7 +49,7 @@ def view(toml_text: str) -> dict:
                      for row in data.get("contacts", [])],
         "projects": [{k: row.get(k, "") for k in PROJECT}
                      for row in data.get("projects", [])],
-        "presentation": {"style": data.get("preferences", {}).get("badge", {}).get("style", 0)},
+        "presentation": {"style": style},
     }
 
 
@@ -85,6 +100,7 @@ def apply(toml_text: str, changes: dict) -> str:
     # Do not silently delete unknown fields stored in an array-of-tables.
     # No stable per-row IDs exist yet, so preserve safety over convenience.
     source = tomllib.loads(toml_text)
+    _saved_style(source)
     for section, allowed in (("contacts", set(CONTACT)), ("projects", set(PROJECT))):
         for index, row in enumerate(source.get(section, []), 1):
             extra = set(row) - allowed
