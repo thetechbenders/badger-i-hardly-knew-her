@@ -90,6 +90,97 @@ class StudioTests(unittest.TestCase):
                 self.assertEqual(members[name], raw)
                 self.assertEqual(members["badge.toml"].decode(), updated)
 
+    def test_saved_portrait_restored_after_restart(self):
+        """Saved TOML and processed PNG remain available to a fresh Studio session."""
+        import base64
+        import io
+        from PIL import Image
+
+        workspace = Path(self.temp.name) / "workspace"
+        self.assertEqual(self.client.get("/api/v1/portrait/saved").status_code, 403)
+        for target in ("badger2040", "badger2350"):
+            with self.subTest(target=target):
+                image = Image.new("1", (104, 128), 1)
+                image.putpixel((8, 12), 0)
+                stream = io.BytesIO()
+                image.save(stream, format="PNG")
+                raw = stream.getvalue()
+                selected = self.client.put("/api/v1/portrait/select",
+                    headers=self.auth,
+                    json={"target": target, "image": base64.b64encode(raw).decode()})
+                self.assertEqual(selected.status_code, 200, selected.text)
+                name = selected.json()["processed"]
+                old = self.client.get("/api/v1/workspace", headers=self.auth).json()
+                from studio import form_editor
+                updated = form_editor.set_processed_portrait(old["toml"], name)
+                save = self.client.put("/api/v1/workspace", headers=self.auth,
+                    json={"target": target, "toml": updated})
+                self.assertEqual(save.status_code, 200, save.text)
+
+                # New process/app object reading the same private disk workspace.
+                restarted = TestClient(create_app(workspace),
+                                      base_url="http://127.0.0.1:8765")
+                auth = {"X-Studio-Token": restarted.app.state.studio_token}
+                self.assertNotEqual(auth, self.auth)
+                self.assertEqual(restarted.get("/api/v1/portrait/saved",
+                                               headers=self.auth).status_code, 403)
+                form = restarted.get("/api/v1/workspace", headers=auth)
+                self.assertEqual(form.status_code, 200)
+                self.assertEqual(form.json(), {"target": target, "toml": updated})
+                saved = restarted.get("/api/v1/portrait/saved", headers=auth)
+                self.assertEqual(saved.status_code, 200, saved.text)
+                self.assertEqual(saved.json()["processed"], name)
+                self.assertEqual(saved.json()["target"], target)
+                self.assertEqual(base64.b64decode(saved.json()["png"]), raw)
+
+    def test_saved_portrait_refuses_missing_managed_asset(self):
+        workspace = Path(self.temp.name) / "workspace"
+        asset = workspace / "sample-badger2040.png"
+        held = workspace / "sample-badger2040.png.held"
+        asset.rename(held)
+        try:
+            response = self.client.get("/api/v1/portrait/saved", headers=self.auth)
+            self.assertEqual(response.status_code, 409)
+        finally:
+            held.rename(asset)
+
+    def test_saved_portrait_refuses_target_mismatch_and_tampered_hash(self):
+        import base64
+        import io
+        from PIL import Image
+        from studio import form_editor
+
+        workspace = Path(self.temp.name) / "workspace"
+        image = Image.new("1", (104, 128), 1)
+        stream = io.BytesIO()
+        image.save(stream, format="PNG")
+        selected = self.client.put("/api/v1/portrait/select", headers=self.auth,
+            json={"target": "badger2040",
+                  "image": base64.b64encode(stream.getvalue()).decode("ascii")})
+        self.assertEqual(selected.status_code, 200, selected.text)
+        name = selected.json()["processed"]
+        initial = self.client.get("/api/v1/workspace", headers=self.auth).json()
+        updated = form_editor.set_processed_portrait(initial["toml"], name)
+        save = self.client.put("/api/v1/workspace", headers=self.auth,
+                               json={"target": "badger2040", "toml": updated})
+        self.assertEqual(save.status_code, 200, save.text)
+
+        file = workspace / name
+        original = file.read_bytes()
+        file.write_bytes(original + b"tampered")
+        try:
+            response = self.client.get("/api/v1/portrait/saved", headers=self.auth)
+            self.assertEqual(response.status_code, 409)
+        finally:
+            file.write_bytes(original)
+
+        # A persisted form changed independently of the active server target.
+        # The endpoint must not expose the wrong board's portrait.
+        wrong = form_editor.set_processed_portrait(updated, "sample-badger2350.png")
+        (workspace / "badge.toml").write_text(wrong)
+        response = self.client.get("/api/v1/portrait/saved", headers=self.auth)
+        self.assertEqual(response.status_code, 409)
+
     def test_package_export_rejects_invalid_saved_form_and_missing_portrait(self):
         # The real saved-form gate rejects a missing managed portrait.
         workspace = Path(self.temp.name) / "workspace"

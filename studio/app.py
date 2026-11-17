@@ -263,6 +263,24 @@ def create_app(workspace: Path | None = None) -> FastAPI:
                              "portrait_max_width": t.portrait_max_w}
                             for t in TARGETS.values()]}
 
+    @app.get("/api/v1/portrait/saved")
+    def saved_portrait():
+        """Return only the saved, managed portrait for the active target.
+
+        The editor's in-memory dither previews are not durable. On restart,
+        reconstruct the visible preview from the validated disk-backed asset.
+        """
+        text = form_path.read_text(encoding="utf-8")
+        parsed = badge_form.parse_form(form_path, text)
+        portrait = parsed.get("portrait", {})
+        name = portrait.get("processed") if isinstance(portrait, dict) else None
+        if _portrait_target(name) != active["target"]:
+            raise HTTPException(409, "Saved portrait target does not match the workspace")
+        if _portrait_file_problem(name, work):
+            raise HTTPException(409, "Saved managed portrait is missing or invalid")
+        return {"target": active["target"], "processed": name,
+                "png": base64.b64encode((work / name).read_bytes()).decode("ascii")}
+
     @app.get("/api/v1/workspace")
     def get_workspace():
         return {"target": active["target"], "toml": form_path.read_text(encoding="utf-8")}
