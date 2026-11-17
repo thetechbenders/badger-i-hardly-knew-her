@@ -201,8 +201,14 @@ void render_badge(Framebuffer &fb, const View &v, const RenderContext &ctx, Scre
   // Classic keeps existing pixels byte-for-byte. Presets are 2350-only.
   const bool focus = style == uint8_t(BadgeStyle::PortraitFocus);
   const bool readable = style == uint8_t(BadgeStyle::Readable);
-  const int pw = has_portrait ? (focus ? 118 : readable ? 88 : ctx.portrait.width) : 0;
-  const int ph = has_portrait ? (focus ? 145 : readable ? 112 : ctx.portrait.height) : 0;
+  // Preserve the original aspect ratio, including 2350's 104x176 sample.
+  // A short 104x128 custom portrait expands to about 118x145 in Focus mode.
+  const int max_focus_width = has_portrait ? H * ctx.portrait.width / ctx.portrait.height : 0;
+  const int focus_width = max_focus_width < 118 ? max_focus_width : 118;
+  const int pw = has_portrait ? (focus ? focus_width : readable ? 88 : ctx.portrait.width) : 0;
+  const int ph = has_portrait ? ((focus || readable)
+      ? (pw * ctx.portrait.height + ctx.portrait.width / 2) / ctx.portrait.width
+      : ctx.portrait.height) : 0;
   const bool right = v.layout == uint8_t(Layout::PortraitRight);
   const bool has_event = !str_empty(p.event);
 
