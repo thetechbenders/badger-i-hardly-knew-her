@@ -1,7 +1,7 @@
 # BHIHKH! Studio
 
 A **local-only** browser shell around the existing TOML-form validation
-pipeline. The visual editor now exposes identity, contacts, projects and QR options,
+pipeline. The visual editor now exposes identity, contacts, projects, QR options, and Badger 2350 badge presentation presets,
 with move/add/remove controls. The full original TOML remains available in
 Advanced mode. Portrait upload, four-method monochrome comparison and
 firmware-accurate C++ screen previews are available. After validating and saving,
@@ -115,6 +115,12 @@ settings and non-visual QR properties (e.g. vCard text) survive visual changes.
 Rebuilding contact/project tables may normalize comments *inside* those tables;
 other TOML comments/sections survive. Invalid edits cannot be saved. Portraits can be imported through the managed workshop; sample and selected
 portraits remain in the local private workspace.
+
+### Badge layout presets (Badger 2350)
+
+The visual editor offers **Classic** (default, existing pixels), **Portrait Focus** (larger portrait), and **Readable** (more room for text and larger selected type). These are rendered by the same native C++ firmware renderer used for Studio screen previews. They are **not** drag-and-drop positioning and do not resize the stored 104×128 processed portrait: alternate layouts scale it in the renderer. The portrait-left/right preference remains separate. For non-Classic styles select Badger 2350; Badger 2040 refuses them. Render the badge screens and check legibility before exporting or flashing.
+
+The persisted preference is `badge.style = 0|1|2` under `[preferences]` (TOML dotted key). Older badge files default to Classic. Native e-paper readability still needs physical validation.
 
 ### Portrait workshop
 
