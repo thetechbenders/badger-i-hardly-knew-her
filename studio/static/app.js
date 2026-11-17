@@ -275,6 +275,19 @@ async function connect(candidate) {
       });
       target.value=w.target;previousTarget=w.target;editor.value=w.toml;savedToml=w.toml;
       if (!await tomlToVisual()) throw new Error("Could not parse the saved badge form");
+      // Restore the saved PNG, not the original photo or ephemeral dither variants.
+      // A failed preview must not lock the editor or hide the saved form.
+      resetPreview();
+      try {
+        const {data:p} = await call("portrait/saved");
+        if (p.target === target.value) {
+          $("portrait-native-image").src = "data:image/png;base64," + p.png;
+          $("portrait-native").classList.remove("hidden");
+          portraitNote("Saved portrait loaded. Upload a photo to make a new version.");
+        }
+      } catch (e) {
+        portraitNote("Saved portrait unavailable: " + e.message);
+      }
       dirty = false;
       showTab("visual");
     }
