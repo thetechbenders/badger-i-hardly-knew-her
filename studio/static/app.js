@@ -116,6 +116,9 @@ function list(section, singular, labels, max) {
 }
 function render() {
   if(!model)return;
+  const stylesAvailable = target.value === "badger2350";
+  $("badge-style-panel").classList.toggle("hidden", !stylesAvailable);
+  $("badge-style").value = String(model.presentation?.style ?? 0);
   fields($("person-fields"),model.person,personLabels,"person");
   fields($("qr-fields"),model.qr,qrLabels,"qr");
   list("contacts","Contact",contactLabels,6);
@@ -153,6 +156,11 @@ $("visual-tab").addEventListener("click",async()=>{
 $("toml-tab").addEventListener("click",async()=>{
   if(activeView==="toml")return;
   try {if(await visualToToml())showTab("toml");}catch(e){note("Error: "+e.message);}
+});
+$("badge-style").addEventListener("change",()=>{
+  if (!model || target.value !== "badger2350") return;
+  model.presentation = {style: Number($("badge-style").value)};
+  changed();
 });
 $("contact-add").addEventListener("click",()=>{
   if(model.contacts.length>=6)return;
