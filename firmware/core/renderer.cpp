@@ -273,22 +273,29 @@ void render_badge(Framebuffer &fb, const View &v, const RenderContext &ctx, Scre
     col_line(fb, c, kNameChain, 3, p.name, readable ? 3 : 1, Align::Left, Ink::Black, &cut);
     f.name = !cut;
     cut = false;
-    col_title(fb, c, p.title, readable ? 3 : 1, &cut);
+    if (readable && text_width(fonts::sans_bold_14, p.title) <= c.w) {
+      const Font *const title[] = {&fonts::sans_bold_14};
+      col_line(fb, c, title, 1, p.title, 3, Align::Left, Ink::Black, &cut);
+    } else col_title(fb, c, p.title, readable ? 3 : 1, &cut);
     f.title = !cut;
     cut = false;
-    col_line(fb, c, kBodyChain, 2, p.affiliation, 0, Align::Left, Ink::Black, &cut);
+    if (readable) {
+      const Font *const affiliation[] = {&fonts::sans_bold_12, &fonts::sans_11};
+      col_line(fb, c, affiliation, 2, p.affiliation, 0, Align::Left, Ink::Black, &cut);
+    } else col_line(fb, c, kBodyChain, 2, p.affiliation, 0, Align::Left, Ink::Black, &cut);
     f.affiliation = !cut;
     if (!str_empty(p.interests)) {
       // Interests band: white text on black, anchored to the bottom edge.
+      const Font &interest_font = readable ? fonts::sans_11 : fonts::sans_10;
       WrapLine lines[3];
-      const int n = wrap_text(fonts::sans_10, p.interests, cw + 10 - 12, lines, 2);
-      const int band_h = n * fonts::sans_10.line_height + 6;
+      const int n = wrap_text(interest_font, p.interests, cw + 10 - 12, lines, 2);
+      const int band_h = n * interest_font.line_height + 6;
       const int band_y = H - band_h;
       f.interests = band_y >= c.y + 2 && n > 0 && !lines[n - 1].ellipsized;
       if (band_y >= c.y + 2) {
         fb.fill_rect({0, int16_t(band_y), int16_t(cx + cw), int16_t(band_h)}, Ink::Black);
         for (int i = 0; i < n; ++i)
-          draw_wrapped_line(fb, fonts::sans_10, p.interests, lines[i], cx, band_y + 3 + i * fonts::sans_10.line_height,
+          draw_wrapped_line(fb, interest_font, p.interests, lines[i], cx, band_y + 3 + i * interest_font.line_height,
                             Ink::White);
       }
     }
