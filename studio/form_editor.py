@@ -115,15 +115,19 @@ def apply(toml_text: str, changes: dict) -> str:
             fresh.append(tab)
         document[sec] = fresh
     if "presentation" in changes:
-        preferences = document.get("preferences")
-        if preferences is None:
-            preferences = tomlkit.table()
-            document["preferences"] = preferences
-        badge = preferences.get("badge")
-        if badge is None:
-            badge = tomlkit.table()
-            preferences["badge"] = badge
-        badge["style"] = changes["presentation"]["style"]
+        style = changes["presentation"]["style"]
+        existing = source.get("preferences", {}).get("badge", {})
+        # A Classic form needs no new key. Preserve legacy forms unchanged.
+        if style != 0 or "style" in existing:
+            preferences = document.get("preferences")
+            if preferences is None:
+                preferences = tomlkit.table()
+                document["preferences"] = preferences
+            badge = preferences.get("badge")
+            if badge is None:
+                badge = tomlkit.table()
+                preferences["badge"] = badge
+            badge["style"] = style
     return tomlkit.dumps(document)
 
 
