@@ -136,6 +136,45 @@ test("fresh launch URL unlocks Studio; old cached token is overwritten", async()
   assert.equal(b.elements.get("person-fields").children.length,5);
 });
 
+test("saved custom portrait is restored on fresh connection", async()=>{
+  const b=browser({hash:"#token="+VALID,intercept(url){
+    if(url.endsWith("/portrait/saved"))
+      return response({target:"badger2040",processed:"portrait-badger2040-"+ "a".repeat(64)+".png",png:"c2F2ZWQ="});
+  }});
+  await b.settle();
+  assert.equal(b.body.classList.contains("locked"),false);
+  assert.equal(b.elements.get("portrait-native").classList.contains("hidden"),false);
+  assert.equal(b.elements.get("portrait-native-image").src,"data:image/png;base64,c2F2ZWQ=");
+  assert.match(b.elements.get("portrait-status").textContent,/Saved portrait loaded/);
+});
+
+test("bundled Badger 2350 sample is not shown as a saved 104x128 portrait",async()=>{
+  const b=browser({hash:"#token="+VALID,intercept(url){
+    if(url.endsWith("/targets"))
+      return response({targets:[{id:"badger2350",name:"Badger 2350",display:[264,176]}]});
+    if(url.endsWith("/workspace"))
+      return response({target:"badger2350",toml:'[portrait]\\nprocessed = "sample-badger2350.png"'});
+    if(url.endsWith("/portrait/saved"))
+      return response({target:"badger2350",processed:"sample-badger2350.png",png:"c2FtcGxl"});
+  }});
+  await b.settle();
+  assert.equal(b.body.classList.contains("locked"),false);
+  assert.equal(b.elements.get("portrait-native").classList.contains("hidden"),true);
+  assert.doesNotMatch(b.elements.get("portrait-status").textContent,/Saved portrait loaded/);
+});
+
+test("failed saved portrait retrieval leaves editor accessible and displays error",async()=>{
+  const b=browser({hash:"#token="+VALID,intercept(url){
+    if(url.endsWith("/portrait/saved"))
+      return response({detail:"Saved managed portrait is missing or invalid"},409);
+  }});
+  await b.settle();
+  assert.equal(b.body.classList.contains("locked"),false);
+  assert.equal(b.elements.get("portrait-native").classList.contains("hidden"),true);
+  assert.match(b.elements.get("portrait-status").textContent,/Saved portrait unavailable/);
+  assert.equal(b.elements.get("state").textContent,"Ready");
+});
+
 test("rejected cached token shows reconnect instead of an empty editor", async()=>{
   const b=browser({cached:STALE});
   await b.settle();
