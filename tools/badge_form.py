@@ -401,6 +401,9 @@ def load_form(path: Path, text: str | None = None, target: str = DEFAULT_TARGET)
             extra = " (0 = never, otherwise at least 15)" if key == "sleep.timeout_s" else ""
             problems.append(f"{name}: {v} is outside {lo}..{hi}{extra}")
             continue
+        if key == "badge.style" and target != "badger2350" and v != 0:
+            problems.append(f"{name}: non-Classic styles require Badger 2350")
+            continue
         prefs[key] = v
 
     portrait = _portrait(problems, notes, form_dir, data.get("portrait"), target)

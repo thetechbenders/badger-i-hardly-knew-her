@@ -200,5 +200,8 @@ link = ""                       # empty: no QR code, no footer
 #                     otherwise 15..3600; default 120)
 [preferences]
 layout = 0
+# badge.style: 0 Classic, 1 Portrait Focus, 2 Readable (Badger 2350 only).
+# The current portrait-left/right setting remains independent.
+# badge.style = 0
 refresh.speed = 1
 sleep.timeout_s = 120

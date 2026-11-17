@@ -22,11 +22,26 @@ class EditorError(ValueError):
     """A proposed visual edit does not conform to the Studio editing contract."""
 
 
+def _saved_style(data: dict) -> int:
+    """Reject malformed preferences clearly instead of raising AttributeError."""
+    preferences = data.get("preferences", {})
+    if not isinstance(preferences, dict):
+        raise EditorError("preferences: expected a TOML table")
+    badge = preferences.get("badge", {})
+    if not isinstance(badge, dict):
+        raise EditorError("preferences.badge: expected a TOML table")
+    style = badge.get("style", 0)
+    if type(style) is not int or style not in (0, 1, 2):
+        raise EditorError("preferences.badge.style: expected 0, 1 or 2")
+    return style
+
+
 def view(toml_text: str) -> dict:
     """Extract only fields managed by the visual editor without mutating TOML."""
     data = tomllib.loads(toml_text)
     person = data.get("person", {})
     qr = data.get("qr", {})
+    style = _saved_style(data)
     return {
         "person": {k: person.get(k, [] if k == "interests" else "") for k in PERSON},
         "qr": {k: qr.get(k, "") for k in QR},
@@ -34,6 +49,7 @@ def view(toml_text: str) -> dict:
                      for row in data.get("contacts", [])],
         "projects": [{k: row.get(k, "") for k in PROJECT}
                      for row in data.get("projects", [])],
+        "presentation": {"style": style},
     }
 
 
@@ -43,8 +59,14 @@ def apply(toml_text: str, changes: dict) -> str:
     Only explicitly supported fields are touched. The canonical badge_form
     validator is still mandatory before any resulting document can be saved.
     """
-    if not isinstance(changes, dict) or set(changes) != {"person", "qr", "contacts", "projects"}:
+    required = {"person", "qr", "contacts", "projects"}
+    if not isinstance(changes, dict) or not required.issubset(changes) or set(changes) - required - {"presentation"}:
         raise EditorError("visual editor requires person, qr, contacts and projects")
+    if "presentation" in changes:
+        presentation = changes["presentation"]
+        if (not isinstance(presentation, dict) or set(presentation) != {"style"}
+                or type(presentation["style"]) is not int or presentation["style"] not in (0, 1, 2)):
+            raise EditorError("presentation.style: expected 0, 1 or 2")
     for sec in ("person", "qr"):
         row = changes[sec]
         allowed = PERSON if sec == "person" else QR
@@ -78,6 +100,7 @@ def apply(toml_text: str, changes: dict) -> str:
     # Do not silently delete unknown fields stored in an array-of-tables.
     # No stable per-row IDs exist yet, so preserve safety over convenience.
     source = tomllib.loads(toml_text)
+    _saved_style(source)
     for section, allowed in (("contacts", set(CONTACT)), ("projects", set(PROJECT))):
         for index, row in enumerate(source.get(section, []), 1):
             extra = set(row) - allowed
@@ -107,6 +130,20 @@ def apply(toml_text: str, changes: dict) -> str:
                 tab[key] = row[key]
             fresh.append(tab)
         document[sec] = fresh
+    if "presentation" in changes:
+        style = changes["presentation"]["style"]
+        existing = source.get("preferences", {}).get("badge", {})
+        # A Classic form needs no new key. Preserve legacy forms unchanged.
+        if style != 0 or "style" in existing:
+            preferences = document.get("preferences")
+            if preferences is None:
+                preferences = tomlkit.table()
+                document["preferences"] = preferences
+            badge = preferences.get("badge")
+            if badge is None:
+                badge = tomlkit.table()
+                preferences["badge"] = badge
+            badge["style"] = style
     return tomlkit.dumps(document)
 
 

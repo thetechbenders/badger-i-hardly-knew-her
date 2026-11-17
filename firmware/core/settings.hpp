@@ -44,10 +44,13 @@ struct Profile {
 };
 
 enum class Layout : uint8_t { PortraitLeft = 0, PortraitRight = 1 };
+// Badger 2350 badge presentation presets. Badger 2040 accepts Classic only.
+enum class BadgeStyle : uint8_t { Classic = 0, PortraitFocus = 1, Readable = 2 };
 enum class SleepScreen : uint8_t { Keep = 0, Badge = 1 };
 
 struct Prefs {
   uint8_t layout;              // Layout
+  uint8_t badge_style;         // BadgeStyle (2350 only)
   uint8_t refresh_speed;       // 0 = OTP LUT (slowest, cleanest) .. 3 = turbo
   uint8_t partial_refresh;     // bool: allow partial updates for small changes
   uint8_t max_partials;        // partial updates before a forced full refresh

@@ -463,6 +463,49 @@ class StudioTests(unittest.TestCase):
             json={"target":"badger2040","toml":text})
         self.assertEqual(saved.status_code, 200, saved.text)
 
+    def test_2350_visual_badge_style_roundtrip_and_classic_gate(self):
+        from studio import form_editor
+        source = self.form["toml"].replace("sample-badger2040.png", "sample-badger2350.png")
+        visual = form_editor.view(source)
+        self.assertEqual(visual["presentation"], {"style": 0})
+        for style in (0, 1, 2):
+            with self.subTest(style=style):
+                visual["presentation"]["style"] = style
+                response = self.client.put("/api/v1/compose", headers=self.auth,
+                    json={"target": "badger2350", "toml": source, "fields": visual})
+                self.assertEqual(response.status_code, 200, response.text)
+                toml = response.json()["toml"]
+                self.assertIn("layout = 0", toml)
+                self.assertEqual(form_editor.view(toml)["presentation"]["style"], style)
+                save = self.client.put("/api/v1/workspace", headers=self.auth,
+                    json={"target": "badger2350", "toml": toml})
+                self.assertEqual(save.status_code, 200, save.text)
+                if style:
+                    rejected = self.client.put("/api/v1/workspace", headers=self.auth,
+                        json={"target": "badger2040",
+                              "toml": toml.replace("sample-badger2350.png", "sample-badger2040.png")})
+                    self.assertEqual(rejected.status_code, 422, rejected.text)
+                    self.assertIn("badge.style", str(rejected.json()))
+
+        visual["presentation"] = {"style": True}
+        self.assertEqual(self.client.put("/api/v1/compose", headers=self.auth,
+            json={"target": "badger2350", "toml": source, "fields": visual}).status_code, 422)
+
+    def test_visual_badge_style_malformed_preferences_are_422(self):
+        from studio import form_editor
+        base = self.form["toml"]
+        cases = [
+            base + '\n[preferences.badge]\nstyle = "2"\n',
+            base.replace("[preferences]\n", "[preferences]\nbadge = 3\n", 1),
+        ]
+        for malformed in cases:
+            with self.subTest(source=malformed[-90:]):
+                with self.assertRaises(ValueError):
+                    form_editor.view(malformed)
+                response = self.client.put("/api/v1/parse", headers=self.auth,
+                    json={"target": "badger2040", "toml": malformed})
+                self.assertEqual(response.status_code, 422, response.text)
+
     def test_visual_invalid_input_never_changes_workspace(self):
         baseline = self.form["toml"]
         view = self.client.put("/api/v1/parse", headers=self.auth,
