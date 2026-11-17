@@ -144,6 +144,43 @@ class StudioTests(unittest.TestCase):
         finally:
             held.rename(asset)
 
+    def test_saved_portrait_refuses_target_mismatch_and_tampered_hash(self):
+        import base64
+        import io
+        from PIL import Image
+        from studio import form_editor
+
+        workspace = Path(self.temp.name) / "workspace"
+        image = Image.new("1", (104, 128), 1)
+        stream = io.BytesIO()
+        image.save(stream, format="PNG")
+        selected = self.client.put("/api/v1/portrait/select", headers=self.auth,
+            json={"target": "badger2040",
+                  "image": base64.b64encode(stream.getvalue()).decode("ascii")})
+        self.assertEqual(selected.status_code, 200, selected.text)
+        name = selected.json()["processed"]
+        initial = self.client.get("/api/v1/workspace", headers=self.auth).json()
+        updated = form_editor.set_processed_portrait(initial["toml"], name)
+        save = self.client.put("/api/v1/workspace", headers=self.auth,
+                               json={"target": "badger2040", "toml": updated})
+        self.assertEqual(save.status_code, 200, save.text)
+
+        file = workspace / name
+        original = file.read_bytes()
+        file.write_bytes(original + b"tampered")
+        try:
+            response = self.client.get("/api/v1/portrait/saved", headers=self.auth)
+            self.assertEqual(response.status_code, 409)
+        finally:
+            file.write_bytes(original)
+
+        # A persisted form changed independently of the active server target.
+        # The endpoint must not expose the wrong board's portrait.
+        wrong = form_editor.set_processed_portrait(updated, "sample-badger2350.png")
+        (workspace / "badge.toml").write_text(wrong)
+        response = self.client.get("/api/v1/portrait/saved", headers=self.auth)
+        self.assertEqual(response.status_code, 409)
+
     def test_package_export_rejects_invalid_saved_form_and_missing_portrait(self):
         # The real saved-form gate rejects a missing managed portrait.
         workspace = Path(self.temp.name) / "workspace"
