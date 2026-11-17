@@ -147,7 +147,7 @@ TEST(badger2350_presets_preserve_portrait_bounds_for_valid_aspects) {
         CHECK(settings_set(&g_s, *find_field("badge.style"),
                            style == 1 ? "1" : "2") == SetResult::Ok);
         render(g_fb, v, c);
-        const int expected_width = style == 1 ? width : (width < 88 ? width : 88);
+        const int expected_width = style == 1 ? width : (width < 96 ? width : 96);
         const int expected_height = (expected_width * height + width / 2) / width;
         const int expected_x = orientation ? Framebuffer::kWidth - expected_width : 0;
         const int expected_y = (Framebuffer::kHeight - expected_height) / 2;
@@ -185,5 +185,37 @@ TEST(badger2350_focus_enlarges_short_user_portrait_without_cropping) {
     CHECK(g_fb.get(x + w - 1, y + h - 1) == Ink::Black);
     CHECK(g_fb.get(x, y - 1) == Ink::White);
     CHECK(g_fb.get(x, y + h) == Ink::White);
+  }
+}
+
+TEST(badger2350_readable_keeps_96px_portrait_and_text_fit) {
+  settings_defaults(&g_s);
+  set(g_s, "name", "Dan Brown");
+  set(g_s, "title", "Sr. Hardware Eng.");
+  set(g_s, "affiliation", "The Techbenders");
+  set(g_s, "interests", "3D Printing; Hardware Hacking; Open Source");
+  uint8_t bits[13 * 176];
+  for (size_t i = 0; i < sizeof(bits); ++i) bits[i] = 0xFF;
+  RenderContext c = context(g_s);
+  c.portrait = {bits, 104, 176, 13};
+  CHECK(settings_set(&g_s, *find_field("badge.style"), "2") == SetResult::Ok);
+  for (int orientation = 0; orientation < 2; ++orientation) {
+    View v;
+    v.screen = Screen::Badge;
+    v.layout = uint8_t(orientation);
+    render(g_fb, v, c);
+    const int width = 96;
+    const int height = (width * 176 + 104 / 2) / 104;
+    const int x = orientation ? Framebuffer::kWidth - width : 0;
+    const int y = (Framebuffer::kHeight - height) / 2;
+    CHECK_EQ(height, 162);
+    CHECK(g_fb.get(x, y) == Ink::Black);
+    CHECK(g_fb.get(x + width - 1, y + height - 1) == Ink::Black);
+    CHECK(g_fb.get(x, y - 1) == Ink::White);
+    CHECK(g_fb.get(x, y + height) == Ink::White);
+    const ScreenFit fit = badge_fit(g_fb, c, orientation);
+    CHECK(fit.name);
+    CHECK(fit.title);
+    CHECK(fit.affiliation);
   }
 }
