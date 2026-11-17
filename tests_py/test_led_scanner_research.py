@@ -45,7 +45,7 @@ class ScannerResearchTests(unittest.TestCase):
                 self.assertEqual(len(state.levels), 4)
                 self.assertTrue(all(isinstance(x, int) and 0 <= x <= 35
                                     for x in state.levels))
-        high = frame(360, 0, ScanConfig(trail_percent=100), enabled=True)
+        high = frame(540, 0, ScanConfig(trail_percent=100), enabled=True)
         self.assertTrue(all(v == 35 for v in high.levels))
 
     def test_wraparound_deadline_and_expiry(self):
