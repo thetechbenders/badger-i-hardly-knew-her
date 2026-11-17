@@ -201,14 +201,22 @@ void render_badge(Framebuffer &fb, const View &v, const RenderContext &ctx, Scre
   // Classic keeps existing pixels byte-for-byte. Presets are 2350-only.
   const bool focus = style == uint8_t(BadgeStyle::PortraitFocus);
   const bool readable = style == uint8_t(BadgeStyle::Readable);
-  // Preserve the original aspect ratio, including 2350's 104x176 sample.
-  // A short 104x128 custom portrait expands to about 118x145 in Focus mode.
-  const int max_focus_width = has_portrait ? H * ctx.portrait.width / ctx.portrait.height : 0;
-  const int focus_width = max_focus_width < 118 ? max_focus_width : 118;
-  const int pw = has_portrait ? (focus ? focus_width : readable ? 88 : ctx.portrait.width) : 0;
-  const int ph = has_portrait ? ((focus || readable)
-      ? (pw * ctx.portrait.height + ctx.portrait.width / 2) / ctx.portrait.width
-      : ctx.portrait.height) : 0;
+  // Fit within the panel without cropping, respecting original dimensions.
+  // Focus enlarges short portraits if there is headroom; a full-height
+  // portrait cannot grow vertically without cropping and is never shrunk.
+  const int original_w = has_portrait ? ctx.portrait.width : 0;
+  const int original_h = has_portrait ? ctx.portrait.height : 0;
+  const int height_limited_w = has_portrait ? H * original_w / original_h : 0;
+  int pw = original_w;
+  if (focus && original_h < H) {
+    int candidate = height_limited_w < 118 ? height_limited_w : 118;
+    if (candidate > original_w) pw = candidate;
+  } else if (readable) {
+    pw = original_w < 88 ? original_w : 88;
+    if (pw > height_limited_w) pw = height_limited_w;
+  }
+  const int ph = has_portrait && (focus || readable) ?
+      (pw * original_h + original_w / 2) / original_w : original_h;
   const bool right = v.layout == uint8_t(Layout::PortraitRight);
   const bool has_event = !str_empty(p.event);
 
@@ -243,13 +251,14 @@ void render_badge(Framebuffer &fb, const View &v, const RenderContext &ctx, Scre
       col_line(fb, c, affiliation, 2, p.affiliation, 0, Align::Left, Ink::Black, &cut);
     } else col_line(fb, c, kBodyChain, 2, p.affiliation, 0, Align::Left, Ink::Black, &cut);
     f.affiliation = !cut;
-    if (!str_empty(p.interests) && c.y + 6 + fonts::sans_10.line_height <= bottom) {
+    const Font &interest_font = readable ? fonts::sans_11 : fonts::sans_10;
+    if (!str_empty(p.interests) && c.y + 6 + interest_font.line_height <= bottom) {
       c.y += 4;
       fb.hline(cx, c.y, 24, Ink::Black);
       fb.hline(cx, c.y + 1, 24, Ink::Black);
       c.y += 6;
       cut = false;
-      col_wrapped(fb, c, readable ? fonts::sans_11 : fonts::sans_10, p.interests,
+      col_wrapped(fb, c, interest_font, p.interests,
                   target::kBadgeInterestLines, 0, Ink::Black, &cut);
       f.interests = !cut;
     } else if (!str_empty(p.interests)) {
