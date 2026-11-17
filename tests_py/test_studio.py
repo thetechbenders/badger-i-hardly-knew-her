@@ -491,6 +491,21 @@ class StudioTests(unittest.TestCase):
         self.assertEqual(self.client.put("/api/v1/compose", headers=self.auth,
             json={"target": "badger2350", "toml": source, "fields": visual}).status_code, 422)
 
+    def test_visual_badge_style_malformed_preferences_are_422(self):
+        from studio import form_editor
+        base = self.form["toml"]
+        cases = [
+            base + '\\n[preferences.badge]\\nstyle = "2"\\n',
+            base.replace("[preferences]\\n", "[preferences]\\nbadge = 3\\n", 1),
+        ]
+        for malformed in cases:
+            with self.subTest(source=malformed[-90:]):
+                with self.assertRaises(ValueError):
+                    form_editor.view(malformed)
+                response = self.client.put("/api/v1/parse", headers=self.auth,
+                    json={"target": "badger2040", "toml": malformed})
+                self.assertEqual(response.status_code, 422, response.text)
+
     def test_visual_invalid_input_never_changes_workspace(self):
         baseline = self.form["toml"]
         view = self.client.put("/api/v1/parse", headers=self.auth,
