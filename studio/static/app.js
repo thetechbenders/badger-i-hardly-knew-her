@@ -183,11 +183,29 @@ target.addEventListener("change",async()=>{
       body:JSON.stringify({target:requested,toml:source})
     });
     if(!res.ok) throw new Error((data.problems||[data.detail||"Target switch failed"]).join("; "));
+    let nextToml = data.toml;
+    // A 2350-only preset must not make the switched 2040 form unsaveable.
+    if (requested === "badger2040") {
+      const parsed = await call("parse",{method:"PUT",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({target:requested,toml:nextToml})});
+      if(!parsed.res.ok) throw new Error("Cannot read badge preferences after target switch.");
+      if (parsed.data.fields.presentation?.style) {
+        parsed.data.fields.presentation.style = 0;
+        const composed = await call("compose",{method:"PUT",
+          headers:{"Content-Type":"application/json"},
+          body:JSON.stringify({target:requested,toml:nextToml,fields:parsed.data.fields})});
+        if(!composed.res.ok) throw new Error("Cannot reset the 2350-only presentation preset.");
+        nextToml = composed.data.toml;
+      }
+    }
     if(editor.value!==source || editRevision!==revision || target.value!==requested)
       throw new Error("Badge settings changed while switching; retry.");
-    editor.value=data.toml;
+    editor.value=nextToml;
     previousTarget=requested;
+    if(model?.presentation && requested === "badger2040") model.presentation.style = 0;
     changed();
+    render();
     resetPreview();
     cropIds.forEach(id=>{$(id).value="";});
     portraitNote("Target changed. Compare again before selecting a portrait.");
