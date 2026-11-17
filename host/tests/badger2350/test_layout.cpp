@@ -94,3 +94,30 @@ TEST(badger2350_index_rows_fit) {
   CHECK_EQ(kIndexRowH, 20);
   CHECK(g.list.bottom() <= Framebuffer::kHeight - fonts::sans_10.line_height);
 }
+
+TEST(badger2350_badge_style_presets_render_distinct_frames) {
+  settings_defaults(&g_s);
+  set(g_s, "name", "Dan Brown");
+  set(g_s, "title", "Sr. Hardware Eng.");
+  set(g_s, "affiliation", "The Techbenders");
+  RenderContext c = context(g_s);
+  View v;
+  v.screen = Screen::Badge;
+  CHECK(find_field("badge.style") != nullptr);
+  for (int orientation = 0; orientation < 2; ++orientation) {
+    v.layout = uint8_t(orientation);
+    CHECK(settings_set(&g_s, *find_field("badge.style"), "0") == SetResult::Ok);
+    render(g_fb, v, c);
+    const uint32_t classic = g_fb.hash();
+    CHECK(settings_set(&g_s, *find_field("badge.style"), "1") == SetResult::Ok);
+    render(g_fb, v, c);
+    const uint32_t portrait = g_fb.hash();
+    CHECK(settings_set(&g_s, *find_field("badge.style"), "2") == SetResult::Ok);
+    render(g_fb, v, c);
+    const uint32_t readable = g_fb.hash();
+    CHECK(classic != portrait);
+    CHECK(classic != readable);
+    CHECK(portrait != readable);
+    CHECK(settings_set(&g_s, *find_field("badge.style"), "3") == SetResult::OutOfRange);
+  }
+}
