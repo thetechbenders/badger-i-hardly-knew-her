@@ -34,6 +34,7 @@ def view(toml_text: str) -> dict:
                      for row in data.get("contacts", [])],
         "projects": [{k: row.get(k, "") for k in PROJECT}
                      for row in data.get("projects", [])],
+        "presentation": {"style": data.get("preferences", {}).get("badge", {}).get("style", 0)},
     }
 
 
@@ -43,8 +44,14 @@ def apply(toml_text: str, changes: dict) -> str:
     Only explicitly supported fields are touched. The canonical badge_form
     validator is still mandatory before any resulting document can be saved.
     """
-    if not isinstance(changes, dict) or set(changes) != {"person", "qr", "contacts", "projects"}:
+    required = {"person", "qr", "contacts", "projects"}
+    if not isinstance(changes, dict) or not required.issubset(changes) or set(changes) - required - {"presentation"}:
         raise EditorError("visual editor requires person, qr, contacts and projects")
+    if "presentation" in changes:
+        presentation = changes["presentation"]
+        if (not isinstance(presentation, dict) or set(presentation) != {"style"}
+                or type(presentation["style"]) is not int or presentation["style"] not in (0, 1, 2)):
+            raise EditorError("presentation.style: expected 0, 1 or 2")
     for sec in ("person", "qr"):
         row = changes[sec]
         allowed = PERSON if sec == "person" else QR
@@ -107,6 +114,16 @@ def apply(toml_text: str, changes: dict) -> str:
                 tab[key] = row[key]
             fresh.append(tab)
         document[sec] = fresh
+    if "presentation" in changes:
+        preferences = document.get("preferences")
+        if preferences is None:
+            preferences = tomlkit.table()
+            document["preferences"] = preferences
+        badge = preferences.get("badge")
+        if badge is None:
+            badge = tomlkit.table()
+            preferences["badge"] = badge
+        badge["style"] = changes["presentation"]["style"]
     return tomlkit.dumps(document)
 
 
