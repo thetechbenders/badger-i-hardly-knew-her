@@ -41,7 +41,7 @@ class AdmissionConfiguration(unittest.TestCase):
                                     str(p), "--out", str(Path(d) / "out.cpp")], capture_output=True)
                 self.assertNotEqual(r.returncode, 0)
                 self.assertNotIn(b"SECRET", r.stderr + r.stdout)
-        for change in ('timeout_s = 16', 'holder = "WWWWWWWWWWWWWWWW"', 'holder = "\\u2603"'):
+        for change in ('timeout_s = 0', 'timeout_s = 61', 'holder = "WWWWWWWWWWWWWWWW"', 'holder = "\\u2603"'):
             with tempfile.TemporaryDirectory() as d:
                 p = Path(d) / "fictional.toml"
                 text = fixture()
@@ -50,6 +50,14 @@ class AdmissionConfiguration(unittest.TestCase):
                 p.write_text(text)
                 with self.assertRaises(ValueError):
                     gen.load(p)
+
+    def test_timeout_accepts_up_to_a_minute(self):
+        for seconds in (1, 15, 60):
+            with tempfile.TemporaryDirectory() as d:
+                p = Path(d) / "fictional.toml"
+                p.write_text(fixture().replace("timeout_s = 15", f"timeout_s = {seconds}"))
+                self.assertEqual(gen.load(p)["timeout_s"], seconds)
+                self.assertIn(f",{seconds}}};", gen.generate(gen.load(p)))
 
     def test_cmake_disabled_2040_and_build_location(self):
         with tempfile.TemporaryDirectory() as d:
