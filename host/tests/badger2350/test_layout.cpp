@@ -213,7 +213,7 @@ TEST(badger2350_readable_keeps_96px_portrait_and_text_fit) {
     CHECK(g_fb.get(x + width - 1, y + height - 1) == Ink::Black);
     CHECK(g_fb.get(x, y - 1) == Ink::White);
     CHECK(g_fb.get(x, y + height) == Ink::White);
-    const ScreenFit fit = badge_fit(g_fb, c, orientation);
+    const ScreenFit fit = screen_fit(g_fb, c, Screen::Badge, uint8_t(orientation));
     CHECK(fit.name);
     CHECK(fit.title);
     CHECK(fit.affiliation);
