@@ -212,7 +212,7 @@ void render_badge(Framebuffer &fb, const View &v, const RenderContext &ctx, Scre
     int candidate = height_limited_w < 118 ? height_limited_w : 118;
     if (candidate > original_w) pw = candidate;
   } else if (readable) {
-    pw = original_w < 88 ? original_w : 88;
+    pw = original_w < 96 ? original_w : 96;
     if (pw > height_limited_w) pw = height_limited_w;
   }
   const int ph = has_portrait && (focus || readable) ?
