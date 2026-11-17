@@ -197,7 +197,7 @@ test("2350 style picker changes the visual model sent to compose", async()=>{
   await b.elements.get("visual-tab").listeners.click();
   assert.equal(picker.value,"0","parse restores persisted selection rather than inventing one");
   picker.value="2";picker.listeners.change();
-  assert.equal(b.context.model.presentation.style,2);
+  assert.equal(vm.runInNewContext('model.presentation.style', b.context),2);
 });
 
 test("rejected cached token shows reconnect instead of an empty editor", async()=>{
