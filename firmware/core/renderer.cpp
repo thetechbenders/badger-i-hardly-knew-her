@@ -95,6 +95,20 @@ void draw_portrait(Framebuffer &fb, const MonoBitmap &p, int x, int y) {
   fb.blit_mono(p.bits, p.width, p.height, p.stride, x, y);
 }
 
+// Nearest-neighbor is deterministic for a 1-bit portrait, including the
+// managed 104x128 Studio format. The source asset itself is never rewritten.
+void draw_portrait_scaled(Framebuffer &fb, const MonoBitmap &p, int x, int y, int w, int h) {
+  for (int dy = 0; dy < h; ++dy) {
+    const int sy = dy * p.height / h;
+    const uint8_t *row = p.bits + size_t(sy) * p.stride;
+    for (int dx = 0; dx < w; ++dx) {
+      const int sx = dx * p.width / w;
+      fb.set(x + dx, y + dy,
+             (row[sx >> 3] & (0x80u >> (sx & 7))) ? Ink::Black : Ink::White);
+    }
+  }
+}
+
 // ------------------------------------------------------------- status
 // 16 x 7 battery: 15 x 7 body, 1 px terminal, four 2 px bars.
 void draw_battery_icon(Framebuffer &fb, int x, int y, int bars, Ink ink) {
@@ -183,7 +197,12 @@ void render_badge(Framebuffer &fb, const View &v, const RenderContext &ctx, Scre
   bool cut = false;
   const Profile &p = ctx.settings->profile;
   const bool has_portrait = ctx.portrait.valid();
-  const int pw = has_portrait ? ctx.portrait.width : 0;
+  const uint8_t style = W == 264 && H == 176 ? ctx.settings->prefs.badge_style : 0;
+  // Classic keeps existing pixels byte-for-byte. Presets are 2350-only.
+  const bool focus = style == uint8_t(BadgeStyle::PortraitFocus);
+  const bool readable = style == uint8_t(BadgeStyle::Readable);
+  const int pw = has_portrait ? (focus ? 118 : readable ? 88 : ctx.portrait.width) : 0;
+  const int ph = has_portrait ? (focus ? 145 : readable ? 112 : ctx.portrait.height) : 0;
   const bool right = v.layout == uint8_t(Layout::PortraitRight);
   const bool has_event = !str_empty(p.event);
 
@@ -191,20 +210,32 @@ void render_badge(Framebuffer &fb, const View &v, const RenderContext &ctx, Scre
   if (!has_portrait) { cx = 10; cw = W - 20; }
   else if (right) { px = W - pw; cx = 10; cw = px - 10 - 8; }
   else { px = 0; cx = pw + 10; cw = W - cx - 8; }
-  if (has_portrait) draw_portrait(fb, ctx.portrait, px, (H - ctx.portrait.height) / 2);
+  if (has_portrait) {
+    if (focus || readable) draw_portrait_scaled(fb, ctx.portrait, px, (H - ph) / 2, pw, ph);
+    else draw_portrait(fb, ctx.portrait, px, (H - ph) / 2);
+  }
 
   if (!right) {
     // Candidate A: portrait left, stacked identity, event strip at the bottom.
     const int bar_x = has_portrait ? pw : 0;
     const int bottom = has_event ? H - 16 - 4 : H - 6;
     Column c{cx, cw, 10, bottom};
-    col_line(fb, c, kNameChain, 3, p.name, 2, Align::Left, Ink::Black, &cut);
+    col_line(fb, c, kNameChain, 3, p.name, readable ? 4 : 2, Align::Left, Ink::Black, &cut);
     f.name = !cut;
     cut = false;
-    col_title(fb, c, p.title, 1, &cut);
+    if (readable) {
+      // Make the role prominent while retaining the fit gate for long titles.
+      if (text_width(fonts::sans_bold_14, p.title) <= c.w) {
+        const Font *const title[] = {&fonts::sans_bold_14};
+        col_line(fb, c, title, 1, p.title, 3, Align::Left, Ink::Black, &cut);
+      } else col_title(fb, c, p.title, 3, &cut);
+    } else col_title(fb, c, p.title, 1, &cut);
     f.title = !cut;
     cut = false;
-    col_line(fb, c, kBodyChain, 2, p.affiliation, 0, Align::Left, Ink::Black, &cut);
+    if (readable) {
+      const Font *const affiliation[] = {&fonts::sans_bold_12, &fonts::sans_11};
+      col_line(fb, c, affiliation, 2, p.affiliation, 0, Align::Left, Ink::Black, &cut);
+    } else col_line(fb, c, kBodyChain, 2, p.affiliation, 0, Align::Left, Ink::Black, &cut);
     f.affiliation = !cut;
     if (!str_empty(p.interests) && c.y + 6 + fonts::sans_10.line_height <= bottom) {
       c.y += 4;
@@ -212,7 +243,8 @@ void render_badge(Framebuffer &fb, const View &v, const RenderContext &ctx, Scre
       fb.hline(cx, c.y + 1, 24, Ink::Black);
       c.y += 6;
       cut = false;
-      col_wrapped(fb, c, fonts::sans_10, p.interests, target::kBadgeInterestLines, 0, Ink::Black, &cut);
+      col_wrapped(fb, c, readable ? fonts::sans_11 : fonts::sans_10, p.interests,
+                  target::kBadgeInterestLines, 0, Ink::Black, &cut);
       f.interests = !cut;
     } else if (!str_empty(p.interests)) {
       f.interests = false;  // no room left below the title
@@ -232,10 +264,10 @@ void render_badge(Framebuffer &fb, const View &v, const RenderContext &ctx, Scre
     } else {
       c.y += 4;
     }
-    col_line(fb, c, kNameChain, 3, p.name, 1, Align::Left, Ink::Black, &cut);
+    col_line(fb, c, kNameChain, 3, p.name, readable ? 3 : 1, Align::Left, Ink::Black, &cut);
     f.name = !cut;
     cut = false;
-    col_title(fb, c, p.title, 1, &cut);
+    col_title(fb, c, p.title, readable ? 3 : 1, &cut);
     f.title = !cut;
     cut = false;
     col_line(fb, c, kBodyChain, 2, p.affiliation, 0, Align::Left, Ink::Black, &cut);
