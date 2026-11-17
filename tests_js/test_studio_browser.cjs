@@ -193,9 +193,9 @@ test("2350 style picker changes the visual model sent to compose", async()=>{
   picker.value="1";
   picker.listeners.change();
   assert.match(b.elements.get("state").textContent,/Unsaved changes/);
-  b.context.showTab("toml");
-  await b.elements.get("visual-tab").listeners.click();
-  assert.equal(picker.value,"0","parse restores persisted selection rather than inventing one");
+  await b.context.visualToToml();
+  const compose=b.requests.find(r=>r.url.endsWith("/compose"));
+  assert.equal(JSON.parse(compose.body).fields.presentation.style,1);
   picker.value="2";picker.listeners.change();
   assert.equal(vm.runInNewContext('model.presentation.style', b.context),2);
 });
