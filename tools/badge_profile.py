@@ -27,7 +27,7 @@ FIELD_LIMITS: dict[str, tuple] = {
     **{f"project{i}.link": ("str", 72) for i in range(1, 13)},
     **{f"project{i}.status": ("str", 48) for i in range(1, 13)},
     **{f"project{i}.banner": ("str", 40) for i in range(1, 13)},
-    "layout": ("u8", (0, 1)), "refresh.speed": ("u8", (0, 3)), "refresh.partial": ("bool", (0, 1)),
+    "layout": ("u8", (0, 1)), "badge.style": ("u8", (0, 2)), "refresh.speed": ("u8", (0, 3)), "refresh.partial": ("bool", (0, 1)),
     "refresh.max_partials": ("u8", (0, 20)), "sleep.timeout_s": ("u16", (0, 3600)),
     "sleep.screen": ("u8", (0, 1)), "wake.selects_screen": ("bool", (0, 1)),
     "diag.single_core": ("bool", (0, 1)), "led.level": ("u8", (0, 255)),
