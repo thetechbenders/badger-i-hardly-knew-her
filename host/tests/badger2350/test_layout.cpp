@@ -101,6 +101,12 @@ TEST(badger2350_badge_style_presets_render_distinct_frames) {
   set(g_s, "title", "Sr. Hardware Eng.");
   set(g_s, "affiliation", "The Techbenders");
   RenderContext c = context(g_s);
+  // The bundled 2350 placeholder is already full height (104x176).
+  // Use a user-selected 104x128 portrait to exercise actual enlargement.
+  uint8_t portrait_bits[13 * 128];
+  for (size_t i = 0; i < sizeof(portrait_bits); ++i)
+    portrait_bits[i] = i % 3 == 0 ? 0xAA : 0x55;
+  c.portrait = {portrait_bits, 104, 128, 13};
   View v;
   v.screen = Screen::Badge;
   CHECK(find_field("badge.style") != nullptr);
