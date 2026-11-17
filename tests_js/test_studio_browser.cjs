@@ -200,6 +200,34 @@ test("2350 style picker changes the visual model sent to compose", async()=>{
   assert.equal(vm.runInNewContext('model.presentation.style', b.context),2);
 });
 
+test("switching 2350 to 2040 resets incompatible presentation style",async()=>{
+  const fields={
+    person:{name:"Alex",title:"Engineer",affiliation:"",event:"",interests:[]},
+    qr:{show:"link",link:"https://example.org",caption:"Scan"},
+    contacts:[],projects:[],presentation:{style:1}
+  };
+  const b=browser({hash:"#token="+VALID,intercept(url,options){
+    if(url.endsWith("/targets")) return response({targets:[
+      {id:"badger2350",name:"Badger 2350",display:[264,176]},
+      {id:"badger2040",name:"Badger 2040",display:[296,128]}]});
+    if(url.endsWith("/workspace")) return response({target:"badger2350",
+      toml:'[portrait]\\nprocessed = "sample-badger2350.png"\\n[preferences.badge]\\nstyle = 1'});
+    if(url.endsWith("/parse")) return response({ok:true,fields:JSON.parse(JSON.stringify(fields))});
+    if(url.endsWith("/portrait/reference")) return response({ok:true,
+      toml:'[portrait]\\nprocessed = "sample-badger2040.png"\\n[preferences.badge]\\nstyle = 1'});
+    if(url.endsWith("/compose")) return response({ok:true,
+      toml:'[portrait]\\nprocessed = "sample-badger2040.png"\\n[preferences.badge]\\nstyle = 0'});
+  }});
+  await b.settle();
+  b.elements.get("target").value="badger2040";
+  await b.elements.get("target").listeners.change();
+  assert.equal(b.elements.get("target").value,"badger2040");
+  assert.match(b.elements.get("toml").value,/style = 0/);
+  assert.equal(b.elements.get("badge-style-panel").classList.contains("hidden"),true);
+  const compose=b.requests.find(r=>r.url.endsWith("/compose"));
+  assert.equal(JSON.parse(compose.body).fields.presentation.style,0);
+});
+
 test("rejected cached token shows reconnect instead of an empty editor", async()=>{
   const b=browser({cached:STALE});
   await b.settle();
