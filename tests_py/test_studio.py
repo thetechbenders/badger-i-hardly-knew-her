@@ -495,8 +495,8 @@ class StudioTests(unittest.TestCase):
         from studio import form_editor
         base = self.form["toml"]
         cases = [
-            base + '\\n[preferences.badge]\\nstyle = "2"\\n',
-            base.replace("[preferences]\\n", "[preferences]\\nbadge = 3\\n", 1),
+            base + '\n[preferences.badge]\nstyle = "2"\n',
+            base.replace("[preferences]\n", "[preferences]\nbadge = 3\n", 1),
         ]
         for malformed in cases:
             with self.subTest(source=malformed[-90:]):
