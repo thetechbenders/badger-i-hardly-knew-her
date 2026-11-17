@@ -38,6 +38,37 @@ These are **hypotheses / design sketches**, not measured capabilities or finishe
 6. Host-test sequences, wraparound timing, low-battery fallback, all-off behavior, cancellation, and accidental rapid retriggering. The test harness should simulate LED values without touching hardware.
 7. Only after independent pin/electrical verification and explicit permission, construct a separately authorized device test with USB power first, low duty cycle, measured current, then battery testing.
 
+## Host-only scanner prototype
+
+The first isolated experiment is implemented in
+[`research/badger2350_led_scanner.py`](../../research/badger2350_led_scanner.py)
+with [`tests_py/test_led_scanner_research.py`](../../tests_py/test_led_scanner_research.py).
+
+Run without special dependencies or connected hardware:
+
+```bash
+python3 -m unittest tests_py.test_led_scanner_research -v
+python3 research/badger2350_led_scanner.py --trail 45 --peak 35 --step-ms 180 --duration-ms 5400 --frames 18
+python3 research/badger2350_led_scanner.py --trail 0 --frames 12   # no trail
+python3 research/badger2350_led_scanner.py --trail 80 --frames 12  # long visible tail
+```
+
+The preview prints four logical LED brightness channels and never touches a board.
+`frame(now_ms, start_ms, config, enabled=True)` is a deterministic function
+returning four integer brightness percentages, an unsigned 32-bit next tick
+deadline, and an active flag. It follows a bouncing `0→1→2→3→2→1` sweep,
+blends up to three previous positions with configurable integer attenuation,
+enforces a 35% default/maximum brightness, and stops at 5.4 seconds by default
+(30 seconds maximum). It can immediately return all-off for `cancelled=True`,
+`low_battery=True`, or the default `enabled=False`. Repeated calls at the
+same timestamp return identical output; caller state (not this module) decides
+if an event can retrigger.
+
+These brightness values represent **simulated duty percentages**, not actual
+validated PWM duty cycles. No electrical or optical calibration has occurred.
+No pin definitions, SDK hooks, settings changes, firmware target, or USB operations
+are introduced here. Hardware integration remains a separate authorization gate.
+
 ## Acceptance questions
 
 - What are the verified GPIOs, active levels, drive characteristics, and whether PWM is safe on all four zones?
